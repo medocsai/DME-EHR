@@ -1,0 +1,123 @@
+@{
+    ViewData["Title"] = "Patients";
+    ViewData["ActivePage"] = "patients";
+}
+
+<!-- Patients Page -->
+<div class="page active" id="patientsPage">
+    <div class="page-header">
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary hide-from-biller hide-from-therapist hide-from-ma-nurse" data-bs-toggle="modal" data-bs-target="#patientModal">
+                <i class="bi bi-plus-lg me-1"></i>New Patient
+            </button>
+            <button class="btn btn-outline-primary requires-admin" onclick="copyPortalLinkToClipboard(); return false;" title="Copy portal login link for patients">
+                <i class="bi bi-link-45deg me-1"></i>Copy Portal Link
+            </button>
+            <button class="btn btn-info text-white requires-admin" onclick="openPortalInvitations(); return false;">
+                <i class="bi bi-envelope-paper me-1"></i>Send Registration Link
+            </button>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <div class="row g-3 align-items-center mb-3">
+                <div class="col-12 col-lg-6">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" placeholder="Search by name, MRN, phone (min 3 chars)..." id="patientSearch" autocomplete="off">
+                    </div>
+                </div>
+            </div>
+            <div class="patient-filters-row">
+                <div class="filter-group" id="statusFilterGroup">
+                    <label class="filter-group-label">Patient Status</label>
+                    <div class="filter-btn-group" id="patientStatusFilter">
+                        <button type="button" class="filter-btn filter-btn-all selected" data-value="all" data-selected="true">
+                            <span class="filter-btn-check"><i class="bi bi-check2"></i></span>
+                            <span class="filter-btn-text">All</span>
+                        </button>
+                        <button type="button" class="filter-btn filter-btn-active" data-value="0" data-selected="false">
+                            <span class="filter-btn-check"><i class="bi bi-check2"></i></span>
+                            <span class="filter-btn-text">Active</span>
+                        </button>
+                        <button type="button" class="filter-btn filter-btn-no-episode" data-value="1" data-selected="false">
+                            <span class="filter-btn-check"><i class="bi bi-check2"></i></span>
+                            <span class="filter-btn-text">Inactive</span>
+                        </button>
+                        <button type="button" class="filter-btn filter-btn-discharged" data-value="2" data-selected="false">
+                            <span class="filter-btn-check"><i class="bi bi-check2"></i></span>
+                            <span class="filter-btn-text">Discharged</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="filter-group hide-from-therapist hide-from-biller hide-from-ma-nurse" id="archiveFilterGroup">
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" id="includeArchivedCheckbox">
+                        <label class="form-check-label small text-muted" for="includeArchivedCheckbox">
+                            Show Archived Patients
+                        </label>
+                    </div>
+                </div>
+                <div class="filter-group hide-from-therapist hide-from-biller hide-from-ma-nurse" id="profileFilterGroup">
+                    <label class="filter-group-label">Profile</label>
+                    <div class="filter-btn-group" id="patientValidationFilter">
+                        <button type="button" class="filter-btn filter-btn-all selected" data-value="" data-selected="true">
+                            <span class="filter-btn-check"><i class="bi bi-check2"></i></span>
+                            <span class="filter-btn-text">All Profiles</span>
+                        </button>
+                        <button type="button" class="filter-btn filter-btn-incomplete" data-value="1" data-selected="false">
+                            <span class="filter-btn-check"><i class="bi bi-check2"></i></span>
+                            <span class="filter-btn-text">Incomplete</span>
+                        </button>
+                        <button type="button" class="filter-btn filter-btn-complete" data-value="2" data-selected="false">
+                            <span class="filter-btn-check"><i class="bi bi-check2"></i></span>
+                            <span class="filter-btn-text">Complete</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="filter-count-badge d-none" id="activeFiltersBadge">
+                    <span id="activeFiltersCount">0</span> filters active
+                    <button type="button" class="filter-clear-btn" id="clearAllFilters" title="Clear all filters">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="patientsTable">
+                    <thead>
+                        <tr>
+                            <th>MRN</th>
+                            <th>Name</th>
+                            <th>DOB</th>
+                            <th>Phone</th>
+                            <th>Primary Insurance</th>
+                            <th>Status</th>
+                            <th class="hide-from-therapist hide-from-biller hide-from-ma-nurse">Profile</th>
+                            <th>Last Visit</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="patientsTableBody"></tbody>
+                </table>
+            </div>
+            <!-- Pagination Controls -->
+            <div class="card-footer d-flex flex-column align-items-center py-3" id="patientPaginationControls" style="display: none !important;">
+                <nav>
+                    <ul class="pagination pagination-sm mb-1" id="patientPaginationButtons"></ul>
+                </nav>
+                <small class="text-muted" id="patientPaginationInfo">Showing 0 of 0</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Modals {
+    <!-- Patient Modal is in shared _Modals.cshtml -->
+    <partial name="_Modals" />
+}
+
+@section Scripts {
+    <!-- Page-specific JavaScript -->
+}

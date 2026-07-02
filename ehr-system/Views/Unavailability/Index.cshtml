@@ -1,0 +1,32 @@
+@{
+    ViewData["Title"] = "Time Off";
+    ViewData["ActivePage"] = "unavailability";
+}
+
+<!-- Unavailability Page -->
+<div class="page active" id="unavailabilityPage">
+    <div class="page-header">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#unavailabilityModal">
+            <i class="bi bi-plus-lg me-1"></i>Request Time Off
+        </button>
+    </div>
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="unavailabilityTable">
+                    <thead>
+                        <tr><th>Provider</th><th>Dates</th><th>Type</th><th>Reason</th><th>Status</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Modals {
+    <partial name="_Modals" />
+}
+
+@section Scripts {
+}

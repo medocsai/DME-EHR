@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Portal - My Documents (Mockup)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --portal-primary: #0D9488;
+            --portal-primary-hover: #0F766E;
+            --portal-primary-light: #CCFBF1;
+            --portal-primary-dark: #115E59;
+            --portal-bg: #F0FDFA;
+            --portal-card-bg: #FFFFFF;
+            --portal-text: #1F2937;
+            --portal-text-muted: #6B7280;
+            --portal-border: #E5E7EB;
+            --portal-navbar-bg: #0F766E;
+            --portal-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            --portal-radius: 10px;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 14px;
+            line-height: 1.7;
+            background-color: var(--portal-bg);
+            margin: 0;
+            color: var(--portal-text);
+        }
+
+        /* Navbar */
+        .portal-navbar {
+            background: var(--portal-navbar-bg);
+            padding: 8px 16px;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .portal-brand {
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .portal-brand-text {
+            color: #fff;
+            font-weight: 700;
+            font-size: 15px;
+        }
+
+        .portal-nav-links {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            margin-left: 24px;
+        }
+
+        .portal-nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 150ms ease;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .portal-nav-link:hover,
+        .portal-nav-link.active {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        /* Content */
+        .portal-content {
+            padding: 16px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Cards */
+        .portal-card {
+            border: 1px solid var(--portal-border);
+            border-radius: var(--portal-radius);
+            box-shadow: var(--portal-shadow);
+            background: var(--portal-card-bg);
+            overflow: hidden;
+        }
+
+        .portal-card .card-header {
+            background: #F9FAFB;
+            border-bottom: 1px solid var(--portal-border);
+            padding: 10px 16px;
+        }
+
+        .portal-card .card-body {
+            padding: 12px 16px;
+        }
+
+        /* Stat Cards */
+        .portal-stat-card {
+            background: var(--portal-card-bg);
+            border: 1px solid var(--portal-border);
+            border-radius: var(--portal-radius);
+            padding: 16px;
+            text-align: center;
+            box-shadow: var(--portal-shadow);
+            cursor: pointer;
+            transition: all 150ms ease;
+        }
+
+        .portal-stat-card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .portal-stat-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        .portal-stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            line-height: 1;
+            color: var(--portal-text);
+        }
+
+        .portal-stat-label {
+            font-size: 11px;
+            color: var(--portal-text-muted);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        /* Quick Links */
+        .portal-quick-link {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            padding: 16px 8px;
+            border-radius: 8px;
+            text-decoration: none;
+            color: var(--portal-text);
+            font-size: 12px;
+            font-weight: 500;
+            transition: background 150ms;
+            text-align: center;
+        }
+
+        .portal-quick-link i {
+            font-size: 24px;
+            color: var(--portal-primary);
+        }
+
+        .portal-quick-link:hover {
+            background: var(--portal-primary-light);
+            color: var(--portal-primary-dark);
+        }
+
+        /* Buttons */
+        .btn-primary {
+            background-color: var(--portal-primary) !important;
+            border-color: var(--portal-primary) !important;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--portal-primary-hover) !important;
+            border-color: var(--portal-primary-hover) !important;
+        }
+
+        .btn-outline-primary {
+            color: var(--portal-primary) !important;
+            border-color: var(--portal-primary) !important;
+        }
+
+        .btn-outline-primary:hover {
+            background-color: var(--portal-primary) !important;
+            color: #fff !important;
+        }
+
+        /* View Switcher */
+        .view-switcher .btn {
+            padding: 4px 10px;
+            font-size: 13px;
+        }
+
+        .view-switcher .btn.active {
+            background-color: var(--portal-primary) !important;
+            border-color: var(--portal-primary) !important;
+            color: #fff !important;
+        }
+
+        /* Upload Zone - full page drag overlay (Google Drive / OneDrive style) */
+        .upload-zone-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            background: var(--portal-primary-light);
+            color: var(--portal-primary);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 12px;
+        }
+
+        .drag-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 9999;
+            background: rgba(13, 148, 136, 0.08);
+            backdrop-filter: blur(2px);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .drag-overlay.visible {
+            display: flex;
+        }
+
+        .drag-overlay-inner {
+            background: #fff;
+            border: 3px dashed var(--portal-primary);
+            border-radius: 20px;
+            padding: 60px 80px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+            pointer-events: none;
+        }
+
+        .drag-overlay-inner .upload-zone-icon {
+            width: 72px;
+            height: 72px;
+            font-size: 32px;
+            margin-bottom: 16px;
+        }
+
+        /* Document List (Google Drive style) */
+        .doc-list-header {
+            display: grid;
+            grid-template-columns: 1fr 120px 80px;
+            padding: 8px 16px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--portal-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            border-bottom: 1px solid var(--portal-border);
+        }
+
+        .doc-list-item {
+            display: grid;
+            grid-template-columns: 1fr 120px 80px;
+            padding: 10px 16px;
+            align-items: center;
+            border-bottom: 1px solid #F3F4F6;
+            transition: background 100ms;
+            cursor: pointer;
+        }
+
+        .doc-list-item:hover {
+            background: #F9FAFB;
+        }
+
+        .doc-list-item:last-child {
+            border-bottom: none;
+        }
+
+        .doc-file-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .doc-file-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .doc-file-icon.pdf { background: #FEE2E2; color: #DC2626; }
+        .doc-file-icon.image { background: #DBEAFE; color: #2563EB; }
+        .doc-file-icon.doc { background: #E0E7FF; color: #4F46E5; }
+        .doc-file-icon.other { background: #F3F4F6; color: #6B7280; }
+
+        .doc-file-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--portal-text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .doc-file-category {
+            font-size: 11px;
+            color: var(--portal-text-muted);
+        }
+
+        .doc-meta {
+            font-size: 12px;
+            color: var(--portal-text-muted);
+        }
+
+        .doc-actions .btn {
+            padding: 4px 8px;
+            font-size: 13px;
+        }
+
+        /* Grid View */
+        .doc-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 12px;
+        }
+
+        .doc-grid-item {
+            border: 1px solid var(--portal-border);
+            border-radius: var(--portal-radius);
+            padding: 16px 12px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 150ms ease;
+            background: #fff;
+        }
+
+        .doc-grid-item:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .doc-grid-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            margin-bottom: 8px;
+        }
+
+        .doc-grid-icon.pdf { background: #FEE2E2; color: #DC2626; }
+        .doc-grid-icon.image { background: #DBEAFE; color: #2563EB; }
+        .doc-grid-icon.doc { background: #E0E7FF; color: #4F46E5; }
+
+        .doc-grid-name {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--portal-text);
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .doc-grid-meta {
+            font-size: 11px;
+            color: var(--portal-text-muted);
+        }
+
+        /* Upload Progress */
+        .upload-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            border-bottom: 1px solid #F3F4F6;
+        }
+
+        .upload-item:last-child {
+            border-bottom: none;
+        }
+
+        .upload-progress-bar {
+            height: 4px;
+            border-radius: 2px;
+            background: #E5E7EB;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .upload-progress-fill {
+            height: 100%;
+            background: var(--portal-primary);
+            border-radius: 2px;
+            transition: width 300ms ease;
+        }
+
+        /* Category Badge */
+        .category-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .category-badge.medical { background: #DCFCE7; color: #166534; }
+        .category-badge.insurance { background: #DBEAFE; color: #1E40AF; }
+        .category-badge.id { background: #FEF3C7; color: #92400E; }
+        .category-badge.referral { background: #F3E8FF; color: #6B21A8; }
+        .category-badge.consent { background: #FCE7F3; color: #9D174D; }
+        .category-badge.other { background: #F3F4F6; color: #374151; }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px 16px;
+        }
+
+        .empty-state-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 16px;
+            background: var(--portal-primary-light);
+            color: var(--portal-primary);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin-bottom: 12px;
+        }
+
+        /* Page Switcher (mockup only) */
+        .page-switcher {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 999;
+        }
+
+        .page-switcher .btn-group .btn {
+            padding: 10px 20px;
+            font-weight: 600;
+        }
+
+        .page-switcher .btn-group .btn.active-sw {
+            background: var(--portal-primary) !important;
+            border-color: var(--portal-primary) !important;
+            color: #fff !important;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .doc-list-header { display: none; }
+            .doc-list-item {
+                grid-template-columns: 1fr auto;
+                gap: 4px;
+            }
+            .doc-list-item .doc-meta.hide-mobile { display: none; }
+            .doc-grid {
+                grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Navbar -->
+    <nav class="portal-navbar">
+        <div class="container-fluid d-flex align-items-center">
+            <a href="#" class="portal-brand">
+                <span class="portal-brand-text">MEDOCS</span>
+                <span style="color: rgba(255,255,255,0.7); font-size: 13px;" class="d-none d-sm-inline">Patient Portal</span>
+            </a>
+            <div class="portal-nav-links d-none d-md-flex">
+                <a href="#" class="portal-nav-link" onclick="showPage('dashboard')">
+                    <i class="bi bi-house-door"></i> Dashboard
+                </a>
+                <a href="#" class="portal-nav-link">
+                    <i class="bi bi-calendar-check"></i> Appointments
+                </a>
+                <a href="#" class="portal-nav-link">
+                    <i class="bi bi-journal-medical"></i> Notes
+                </a>
+                <a href="#" class="portal-nav-link">
+                    <i class="bi bi-capsule"></i> Medications
+                </a>
+                <a href="#" class="portal-nav-link" onclick="showPage('documents')">
+                    <i class="bi bi-folder2-open"></i> Documents
+                </a>
+                <a href="#" class="portal-nav-link">
+                    <i class="bi bi-credit-card"></i> Billing
+                </a>
+                <a href="#" class="portal-nav-link">
+                    <i class="bi bi-person"></i> Profile
+                </a>
+            </div>
+            <div class="ms-auto d-flex align-items-center gap-2">
+                <button class="btn btn-outline-light btn-sm position-relative">
+                    <i class="bi bi-chat-dots"></i>
+                    <span class="d-none d-sm-inline ms-1">Messages</span>
+                    <span class="badge bg-danger rounded-pill position-absolute top-0 start-100 translate-middle">2</span>
+                </button>
+                <span class="d-none d-sm-inline" style="color: rgba(255,255,255,0.8); font-size: 13px;">John Smith</span>
+                <button class="btn btn-outline-light btn-sm">
+                    <i class="bi bi-box-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ===== PAGE 1: DASHBOARD ===== -->
+    <main class="portal-content" id="pageDashboard">
+        <div class="mb-3">
+            <h5 class="mb-1">Welcome, John</h5>
+            <p class="text-muted small mb-0">Here's a summary of your health information</p>
+        </div>
+
+        <!-- Stat Cards -->
+        <div class="row g-2 mb-3">
+            <div class="col-6 col-md-3">
+                <div class="portal-stat-card">
+                    <div class="portal-stat-icon bg-primary-subtle text-primary">
+                        <i class="bi bi-calendar-check"></i>
+                    </div>
+                    <div class="portal-stat-value">2</div>
+                    <div class="portal-stat-label">Upcoming Appointments</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="portal-stat-card" onclick="showPage('documents')">
+                    <div class="portal-stat-icon" style="background: #CCFBF1; color: #0D9488;">
+                        <i class="bi bi-folder2-open"></i>
+                    </div>
+                    <div class="portal-stat-value">3</div>
+                    <div class="portal-stat-label">My Documents</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="portal-stat-card">
+                    <div class="portal-stat-icon bg-warning-subtle text-warning">
+                        <i class="bi bi-capsule"></i>
+                    </div>
+                    <div class="portal-stat-value">5</div>
+                    <div class="portal-stat-label">Active Medications</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="portal-stat-card">
+                    <div class="portal-stat-icon bg-danger-subtle text-danger">
+                        <i class="bi bi-exclamation-triangle"></i>
+                    </div>
+                    <div class="portal-stat-value">2</div>
+                    <div class="portal-stat-label">Known Allergies</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Next Appointment + Documents Quick Action -->
+        <div class="row g-3 mb-3">
+            <div class="col-md-7">
+                <div class="card portal-card h-100">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-calendar-event me-2"></i>Next Appointment</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="fw-semibold">Annual Physical Exam</div>
+                                <div class="text-muted small">Dr. Sarah Johnson</div>
+                                <div class="text-muted small">MedGroup Internal Medicine - Main Office</div>
+                            </div>
+                            <div class="text-end">
+                                <div class="fw-semibold" style="color: var(--portal-primary);">Apr 18, 2026</div>
+                                <div class="text-muted small">10:00 AM EST</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Documents Quick Action -->
+            <div class="col-md-5">
+                <div class="card portal-card h-100" style="cursor: pointer; border-color: var(--portal-primary); border-width: 1.5px;" onclick="showPage('documents')">
+                    <div class="card-body d-flex flex-column align-items-center justify-content-center text-center py-4">
+                        <div class="upload-zone-icon mb-2">
+                            <i class="bi bi-cloud-arrow-up"></i>
+                        </div>
+                        <div class="fw-semibold mb-1">Upload Documents for Your Visit</div>
+                        <div class="text-muted small mb-2">Share reports, lab results, or records before your appointment</div>
+                        <span class="btn btn-primary px-4">
+                            <i class="bi bi-folder2-open me-1"></i>View / Upload Documents
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Links -->
+        <div class="card portal-card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-grid me-2"></i>Quick Links</h6>
+            </div>
+            <div class="card-body p-2">
+                <div class="row g-2">
+                    <div class="col-4 col-md-2">
+                        <a href="#" class="portal-quick-link">
+                            <i class="bi bi-calendar-check"></i>
+                            <span>Appointments</span>
+                        </a>
+                    </div>
+                    <div class="col-4 col-md-2">
+                        <a href="#" class="portal-quick-link">
+                            <i class="bi bi-journal-medical"></i>
+                            <span>Notes</span>
+                        </a>
+                    </div>
+                    <div class="col-4 col-md-2">
+                        <a href="#" class="portal-quick-link" onclick="showPage('documents')">
+                            <i class="bi bi-folder2-open"></i>
+                            <span>Documents</span>
+                        </a>
+                    </div>
+                    <div class="col-4 col-md-2">
+                        <a href="#" class="portal-quick-link">
+                            <i class="bi bi-capsule"></i>
+                            <span>Medications</span>
+                        </a>
+                    </div>
+                    <div class="col-4 col-md-2">
+                        <a href="#" class="portal-quick-link">
+                            <i class="bi bi-credit-card"></i>
+                            <span>Billing</span>
+                        </a>
+                    </div>
+                    <div class="col-4 col-md-2">
+                        <a href="#" class="portal-quick-link">
+                            <i class="bi bi-person"></i>
+                            <span>Profile</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ===== PAGE 2: MY DOCUMENTS (with files) ===== -->
+    <main class="portal-content" id="pageDocuments" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <h5 class="mb-0"><i class="bi bi-folder2-open me-2" style="color: var(--portal-primary);"></i>My Documents</h5>
+                <p class="text-muted small mb-0 mt-1"><i class="bi bi-cloud-arrow-up me-1"></i>Drag & drop files anywhere on this page, or use the Upload button</p>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <div class="btn-group view-switcher">
+                    <button class="btn btn-outline-secondary btn-sm active" onclick="switchView('list')" id="btnListView">
+                        <i class="bi bi-list-ul"></i>
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="switchView('grid')" id="btnGridView">
+                        <i class="bi bi-grid-3x3-gap"></i>
+                    </button>
+                </div>
+                <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                    <i class="bi bi-cloud-arrow-up me-1"></i>Upload
+                </button>
+                <input type="file" id="fileInput" multiple style="display: none;">
+            </div>
+        </div>
+
+        <!-- Upload Progress (shown during upload) -->
+        <div class="portal-card mb-3" id="uploadProgressCard" style="display: none;">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-cloud-arrow-up me-2"></i>Uploading...</h6>
+                <span class="text-muted small">2 of 3 files</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="upload-item">
+                    <div class="doc-file-icon pdf" style="width: 32px; height: 32px; font-size: 14px;">
+                        <i class="bi bi-file-earmark-pdf"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="doc-file-name" style="font-size: 12px;">Blood_Test_Results_2026.pdf</span>
+                            <span class="text-success small"><i class="bi bi-check-circle-fill"></i> Done</span>
+                        </div>
+                        <div class="upload-progress-bar">
+                            <div class="upload-progress-fill" style="width: 100%;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="upload-item">
+                    <div class="doc-file-icon image" style="width: 32px; height: 32px; font-size: 14px;">
+                        <i class="bi bi-file-earmark-image"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="doc-file-name" style="font-size: 12px;">Insurance_Card_Front.jpg</span>
+                            <span class="text-muted small">65%</span>
+                        </div>
+                        <div class="upload-progress-bar">
+                            <div class="upload-progress-fill" style="width: 65%;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="upload-item">
+                    <div class="doc-file-icon pdf" style="width: 32px; height: 32px; font-size: 14px;">
+                        <i class="bi bi-file-earmark-pdf"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="doc-file-name" style="font-size: 12px;">Referral_Letter_DrPatel.pdf</span>
+                            <span class="text-muted small">Waiting...</span>
+                        </div>
+                        <div class="upload-progress-bar">
+                            <div class="upload-progress-fill" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Document List View (Google Drive style) -->
+        <div class="portal-card" id="docListView">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-file-earmark-text me-2"></i>Your Documents
+                    <span class="badge rounded-pill" style="background: var(--portal-primary); font-size: 11px; vertical-align: middle;">3</span>
+                </h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="doc-list-header">
+                    <span>Name</span>
+                    <span>Uploaded</span>
+                    <span class="text-end">Actions</span>
+                </div>
+
+                <div class="doc-list-item">
+                    <div class="doc-file-info">
+                        <div class="doc-file-icon pdf">
+                            <i class="bi bi-file-earmark-pdf"></i>
+                        </div>
+                        <div>
+                            <div class="doc-file-name">Blood_Test_Results_March_2026.pdf</div>
+                            <div class="doc-file-category">245 KB</div>
+                        </div>
+                    </div>
+                    <div class="doc-meta hide-mobile">Apr 10, 2026</div>
+                    <div class="doc-actions text-end">
+                        <button class="btn btn-outline-primary btn-sm me-1" title="Download">
+                            <i class="bi bi-download"></i>
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" title="Delete">
+                            <i class="bi bi-trash3"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="doc-list-item">
+                    <div class="doc-file-info">
+                        <div class="doc-file-icon image">
+                            <i class="bi bi-file-earmark-image"></i>
+                        </div>
+                        <div>
+                            <div class="doc-file-name">Insurance_Card_Front.jpg</div>
+                            <div class="doc-file-category">1.2 MB</div>
+                        </div>
+                    </div>
+                    <div class="doc-meta hide-mobile">Apr 8, 2026</div>
+                    <div class="doc-actions text-end">
+                        <button class="btn btn-outline-primary btn-sm me-1" title="Download">
+                            <i class="bi bi-download"></i>
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" title="Delete">
+                            <i class="bi bi-trash3"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="doc-list-item">
+                    <div class="doc-file-info">
+                        <div class="doc-file-icon pdf">
+                            <i class="bi bi-file-earmark-pdf"></i>
+                        </div>
+                        <div>
+                            <div class="doc-file-name">Referral_Letter_Dr_Patel_Cardiology.pdf</div>
+                            <div class="doc-file-category">180 KB</div>
+                        </div>
+                    </div>
+                    <div class="doc-meta hide-mobile">Apr 5, 2026</div>
+                    <div class="doc-actions text-end">
+                        <button class="btn btn-outline-primary btn-sm me-1" title="Download">
+                            <i class="bi bi-download"></i>
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" title="Delete">
+                            <i class="bi bi-trash3"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Document Grid View (hidden by default) -->
+        <div class="portal-card" id="docGridView" style="display: none;">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-file-earmark-text me-2"></i>Your Documents
+                    <span class="badge rounded-pill" style="background: var(--portal-primary); font-size: 11px; vertical-align: middle;">3</span>
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="doc-grid">
+                    <div class="doc-grid-item">
+                        <div class="doc-grid-icon pdf">
+                            <i class="bi bi-file-earmark-pdf"></i>
+                        </div>
+                        <div class="doc-grid-name" title="Blood_Test_Results_March_2026.pdf">Blood_Test_Results_March_2026.pdf</div>
+                        <div class="doc-grid-meta">245 KB &middot; Apr 10</div>
+                    </div>
+                    <div class="doc-grid-item">
+                        <div class="doc-grid-icon image">
+                            <i class="bi bi-file-earmark-image"></i>
+                        </div>
+                        <div class="doc-grid-name" title="Insurance_Card_Front.jpg">Insurance_Card_Front.jpg</div>
+                        <div class="doc-grid-meta">1.2 MB &middot; Apr 8</div>
+                    </div>
+                    <div class="doc-grid-item">
+                        <div class="doc-grid-icon pdf">
+                            <i class="bi bi-file-earmark-pdf"></i>
+                        </div>
+                        <div class="doc-grid-name" title="Referral_Letter_Dr_Patel.pdf">Referral_Letter_Dr_Patel.pdf</div>
+                        <div class="doc-grid-meta">180 KB &middot; Apr 5</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ===== PAGE 3: EMPTY STATE ===== -->
+    <main class="portal-content" id="pageEmpty" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0"><i class="bi bi-folder2-open me-2" style="color: var(--portal-primary);"></i>My Documents</h5>
+            <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                <i class="bi bi-cloud-arrow-up me-1"></i>Upload
+            </button>
+        </div>
+
+        <div class="portal-card">
+            <div class="card-body">
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="bi bi-folder2"></i>
+                    </div>
+                    <h6 class="mb-1">No documents yet</h6>
+                    <p class="text-muted small mb-3">Upload your medical records, insurance cards, referral letters, or any other documents your provider may need.</p>
+                    <button class="btn btn-primary px-4">
+                        <i class="bi bi-cloud-arrow-up me-1"></i>Upload Your First Document
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Drag & Drop Overlay (Google Drive / OneDrive style - appears on drag) -->
+    <div class="drag-overlay" id="dragOverlay">
+        <div class="drag-overlay-inner">
+            <div class="upload-zone-icon">
+                <i class="bi bi-cloud-arrow-up"></i>
+            </div>
+            <div class="fw-semibold fs-5 mb-1">Drop files to upload</div>
+            <div class="text-muted small">PDF, Images, Documents up to 30MB each</div>
+        </div>
+    </div>
+
+    <!-- Page Switcher (mockup navigation only) -->
+    <div class="page-switcher">
+        <div class="btn-group shadow">
+            <button class="btn btn-outline-dark active-sw" id="switchDashboard" onclick="showPage('dashboard')">Dashboard</button>
+            <button class="btn btn-outline-dark" id="switchDocuments" onclick="showPage('documents')">Documents</button>
+            <button class="btn btn-outline-dark" id="switchEmpty" onclick="showPage('empty')">Empty State</button>
+            <button class="btn btn-outline-dark" id="switchUploading" onclick="toggleUploadProgress()">Uploading</button>
+        </div>
+    </div>
+
+    <script>
+        function showPage(page) {
+            document.getElementById('pageDashboard').style.display = 'none';
+            document.getElementById('pageDocuments').style.display = 'none';
+            document.getElementById('pageEmpty').style.display = 'none';
+
+            document.querySelectorAll('.page-switcher .btn').forEach(b => b.classList.remove('active-sw'));
+
+            if (page === 'dashboard') {
+                document.getElementById('pageDashboard').style.display = '';
+                document.getElementById('switchDashboard').classList.add('active-sw');
+                updateNavActive('dashboard');
+            } else if (page === 'documents') {
+                document.getElementById('pageDocuments').style.display = '';
+                document.getElementById('switchDocuments').classList.add('active-sw');
+                updateNavActive('documents');
+            } else if (page === 'empty') {
+                document.getElementById('pageEmpty').style.display = '';
+                document.getElementById('switchEmpty').classList.add('active-sw');
+                updateNavActive('documents');
+            }
+        }
+
+        function updateNavActive(page) {
+            document.querySelectorAll('.portal-nav-link').forEach(l => l.classList.remove('active'));
+            if (page === 'dashboard') {
+                document.querySelectorAll('.portal-nav-link')[0].classList.add('active');
+            } else if (page === 'documents') {
+                document.querySelectorAll('.portal-nav-link')[4].classList.add('active');
+            }
+        }
+
+        function switchView(view) {
+            if (view === 'list') {
+                document.getElementById('docListView').style.display = '';
+                document.getElementById('docGridView').style.display = 'none';
+                document.getElementById('btnListView').classList.add('active');
+                document.getElementById('btnGridView').classList.remove('active');
+            } else {
+                document.getElementById('docListView').style.display = 'none';
+                document.getElementById('docGridView').style.display = '';
+                document.getElementById('btnListView').classList.remove('active');
+                document.getElementById('btnGridView').classList.add('active');
+            }
+        }
+
+        function toggleUploadProgress() {
+            const card = document.getElementById('uploadProgressCard');
+            if (card.style.display === 'none') {
+                showPage('documents');
+                card.style.display = '';
+            } else {
+                card.style.display = 'none';
+            }
+        }
+
+        // Drag & drop overlay (Google Drive / OneDrive style)
+        const overlay = document.getElementById('dragOverlay');
+        let dragCounter = 0;
+
+        document.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            dragCounter++;
+            // Only show overlay on documents or empty page
+            const onDocsPage = document.getElementById('pageDocuments').style.display !== 'none'
+                || document.getElementById('pageEmpty').style.display !== 'none';
+            if (onDocsPage) {
+                overlay.classList.add('visible');
+            }
+        });
+
+        document.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dragCounter--;
+            if (dragCounter <= 0) {
+                dragCounter = 0;
+                overlay.classList.remove('visible');
+            }
+        });
+
+        document.addEventListener('dragover', (e) => {
+            e.preventDefault();
+        });
+
+        document.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dragCounter = 0;
+            overlay.classList.remove('visible');
+            // In real app: handle file upload here
+        });
+
+        // Also hide overlay on escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                dragCounter = 0;
+                overlay.classList.remove('visible');
+            }
+        });
+
+        updateNavActive('dashboard');
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

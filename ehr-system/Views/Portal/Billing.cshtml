@@ -1,0 +1,114 @@
+@{
+    Layout = "~/Views/Shared/_PatientPortalLayout.cshtml";
+    ViewData["Title"] = "Billing";
+    ViewData["PortalPage"] = "billing";
+}
+
+<!-- Balance Card -->
+<div class="portal-card mb-3" id="portalBalanceCard">
+    <div class="card-body text-center py-4">
+        <p class="text-muted small mb-1">Amount Due</p>
+        <h2 class="mb-2 fw-bold" id="portalBalanceAmount" style="color: var(--portal-primary);">$0.00</h2>
+        <div class="d-flex justify-content-center gap-2 mt-3" id="portalPayActions" style="display:none !important;">
+            <button class="btn btn-primary btn-sm px-4" id="portalPayNowBtn">
+                <i class="bi bi-credit-card me-1"></i>Pay Now
+            </button>
+            <button class="btn btn-outline-primary btn-sm px-4" id="portalPaymentPlanBtn">
+                <i class="bi bi-calendar3 me-1"></i>Payment Plan
+            </button>
+        </div>
+        <p class="text-muted small mt-2 mb-0" id="portalBalanceDetail"></p>
+    </div>
+</div>
+
+<!-- Active Installment Plan -->
+<div class="portal-card mb-3" id="portalActivePlan" style="display:none;">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-calendar-check me-1"></i>Payment Plan</span>
+        <span class="badge bg-success" id="portalPlanStatus">Active</span>
+    </div>
+    <div class="card-body">
+        <div class="d-flex justify-content-between mb-2">
+            <span class="text-muted small">Total Amount</span>
+            <span class="fw-semibold" id="portalPlanTotal">$0.00</span>
+        </div>
+        <div class="d-flex justify-content-between mb-2">
+            <span class="text-muted small">Paid So Far</span>
+            <span class="fw-semibold text-success" id="portalPlanPaid">$0.00</span>
+        </div>
+        <div class="d-flex justify-content-between mb-3">
+            <span class="text-muted small">Remaining</span>
+            <span class="fw-semibold text-danger" id="portalPlanRemaining">$0.00</span>
+        </div>
+        <div id="portalPlanDetails"></div>
+    </div>
+</div>
+
+<!-- Stripe Payment Form (hidden by default) -->
+<div class="portal-card mb-3" id="portalStripeFormCard" style="display:none;">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-credit-card me-1"></i>Pay Now</span>
+        <button class="btn btn-sm btn-outline-secondary" id="portalCancelPayment">Cancel</button>
+    </div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label small fw-semibold">Payment Amount</label>
+            <div class="input-group">
+                <span class="input-group-text">$</span>
+                <input type="number" class="form-control" id="portalPayAmount" step="0.01" min="0.01">
+            </div>
+        </div>
+        <div id="portalStripeElement" class="mb-3 p-3 border rounded"></div>
+        <button class="btn btn-primary w-100" id="portalConfirmPayment" disabled>
+            <i class="bi bi-lock me-1"></i>Pay Securely
+        </button>
+        <p class="text-center text-muted small mt-2 mb-0">
+            <i class="bi bi-shield-lock me-1"></i>Secured by Stripe
+        </p>
+    </div>
+</div>
+
+<!-- Installment Setup Form (hidden by default) -->
+<div class="portal-card mb-3" id="portalInstallmentSetupCard" style="display:none;">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-calendar3 me-1"></i>Set Up Payment Plan</span>
+        <button class="btn btn-sm btn-outline-secondary" id="portalCancelInstallment">Cancel</button>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">Split your balance into monthly payments</p>
+        <div class="mb-3">
+            <label class="form-label small fw-semibold">Total Balance</label>
+            <div class="fw-bold fs-5" id="portalInstallmentTotal" style="color: var(--portal-primary);">$0.00</div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label small fw-semibold">Number of Monthly Payments</label>
+            <div class="d-flex gap-2" id="portalInstallmentOptions">
+                <button class="btn btn-outline-primary flex-fill installment-option" data-months="3">3 months</button>
+                <button class="btn btn-outline-primary flex-fill installment-option" data-months="6">6 months</button>
+                <button class="btn btn-outline-primary flex-fill installment-option" data-months="12">12 months</button>
+            </div>
+        </div>
+        <div class="alert alert-light text-center mb-3" id="portalInstallmentPreview" style="display:none;">
+            <span class="fw-semibold" id="portalInstallmentMonthlyAmount">$0.00</span>
+            <span class="text-muted small">/month</span>
+        </div>
+        <div id="portalInstallmentStripeElement" class="mb-3 p-3 border rounded" style="display:none;"></div>
+        <button class="btn btn-primary w-100" id="portalStartPlan" style="display:none;" disabled>
+            <i class="bi bi-calendar-check me-1"></i>Start Plan &amp; Pay First Installment
+        </button>
+    </div>
+</div>
+
+<!-- Transaction History -->
+<div class="portal-card" id="portalTransactionsCard">
+    <div class="card-header">
+        <span class="fw-semibold"><i class="bi bi-clock-history me-1"></i>Your Payments</span>
+    </div>
+    <div class="card-body p-0">
+        <div id="portalTransactionsList"></div>
+        <div id="portalTransactionsEmpty" class="text-center text-muted py-4">
+            <i class="bi bi-inbox" style="font-size: 32px; opacity: 0.3;"></i>
+            <p class="small mt-1 mb-0">No payments yet</p>
+        </div>
+    </div>
+</div>

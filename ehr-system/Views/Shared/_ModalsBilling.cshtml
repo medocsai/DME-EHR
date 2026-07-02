@@ -1,0 +1,108 @@
+<!-- ═══ COLLECT PAYMENT MODAL ═══ -->
+<div class="modal fade" id="collectPaymentModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-cash-coin me-2"></i>Collect Payment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="collectPaymentPatientId">
+                <input type="hidden" id="collectPaymentAppointmentId">
+
+                <!-- Patient Search (shown when no patient pre-selected) -->
+                <div class="mb-3" id="collectPaymentSearchGroup">
+                    <label class="form-label fw-semibold">Patient <span class="text-danger">*</span></label>
+                    <div class="position-relative">
+                        <input type="text" class="form-control" id="collectPaymentPatientSearch" placeholder="Search patient name (min 3 chars)..." autocomplete="off">
+                        <div id="collectPaymentPatientDropdown" class="position-absolute w-100 bg-white border rounded-bottom shadow-sm" style="display:none; z-index:1060; max-height:200px; overflow-y:auto; top:100%;"></div>
+                    </div>
+                </div>
+
+                <!-- Patient Info (shown when patient is selected) -->
+                <div id="collectPaymentPatientInfo" class="alert alert-light mb-3" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold" id="collectPaymentPatientName"></span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="collectPaymentChangePatient">Change</button>
+                    </div>
+                    <div id="collectPaymentBalanceInfo" class="mt-2" style="display:none;">
+                        <small class="text-muted">Outstanding Balance:
+                            <strong id="collectPaymentBalanceAmount" class="text-danger">$0.00</strong>
+                        </small>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-semibold">Amount <span class="text-danger">*</span></label>
+                        <div class="input-group input-group-lg">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" id="collectPaymentAmount" step="0.01" min="0.01" placeholder="0.00">
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-semibold">Payment Date</label>
+                        <input type="date" class="form-control" id="collectPaymentDate">
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-semibold">Payment Type <span class="text-danger">*</span></label>
+                        <select class="form-select" id="collectPaymentType">
+                            <option value="0">Copay</option>
+                            <option value="1">Coinsurance</option>
+                            <option value="2">Deductible</option>
+                            <option value="3">Self Pay</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-semibold">Payment Method <span class="text-danger">*</span></label>
+                        <select class="form-select" id="collectPaymentMethod">
+                            <option value="0">Cash</option>
+                            <option value="1">Check</option>
+                            <option value="2">Credit Card</option>
+                            <option value="3">Debit Card</option>
+                            <option value="6">Other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Check Fields (shown when Method = Check) -->
+                <div class="row" id="collectPaymentCheckFields" style="display:none;">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-semibold">Check Number <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="collectPaymentCheckNumber" placeholder="Enter check number">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-semibold">Check Date</label>
+                        <input type="date" class="form-control" id="collectPaymentCheckDate">
+                    </div>
+                </div>
+
+                <!-- Card Fields (shown when Method = Credit Card or Debit Card) -->
+                <div class="row" id="collectPaymentCardFields" style="display:none;">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-semibold">Card Last 4 Digits</label>
+                        <input type="text" class="form-control" id="collectPaymentCardReference" placeholder="e.g. 4242" maxlength="4">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-semibold">Authorization / Reference #</label>
+                        <input type="text" class="form-control" id="collectPaymentReferenceNumber" placeholder="POS terminal reference">
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Notes</label>
+                    <textarea class="form-control" id="collectPaymentNotes" rows="2" placeholder="e.g., Copay for 03/25 visit"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-lg btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-lg btn-primary" id="collectPaymentSubmitBtn" onclick="window.submitCollectPayment()">
+                    <i class="bi bi-check-lg me-1"></i>Record Payment
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

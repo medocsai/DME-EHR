@@ -1,0 +1,445 @@
+@{
+    Layout = "~/Views/Shared/_PatientPortalLayout.cshtml";
+    ViewData["Title"] = "Register";
+    ViewData["PortalPage"] = "login";
+}
+
+<style>
+    .portal-login-card {
+        max-width: 680px !important;
+    }
+</style>
+
+<!-- Patient Self-Registration Page -->
+<div class="portal-login-wrapper">
+    <div class="portal-login-card">
+        <!-- Branding (loaded dynamically via JS from invitation token) -->
+        <div class="text-center mb-4" id="registerBranding">
+            <div class="d-flex justify-content-center align-items-center gap-3 mb-3">
+                <img src="/medocslogo.png" alt="MEDOCS" class="portal-login-logo" style="max-height: 40px;" onerror="this.style.display='none'">
+                <img id="registerTenantLogo" src="" alt="" class="portal-login-logo d-none" style="max-height: 40px;" onerror="this.style.display='none'">
+            </div>
+            <h5 class="mb-1" id="registerTenantName">Patient Portal</h5>
+            <p class="text-muted small mb-0" id="registerLocationName"></p>
+        </div>
+
+        <!-- Loading state (while validating token) -->
+        <div id="registerLoading" class="text-center py-4">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted">Validating invitation...</p>
+        </div>
+
+        <!-- Invalid/Expired Token -->
+        <div id="registerInvalid" class="d-none text-center py-4">
+            <i class="bi bi-x-circle" style="font-size: 3rem; color: var(--bs-danger);"></i>
+            <h5 class="mt-3">Invalid Invitation</h5>
+            <p class="text-muted" id="registerInvalidMessage">This invitation link is invalid or has expired.</p>
+            <p class="text-muted small">Please contact your clinic to request a new invitation.</p>
+        </div>
+
+        <!-- Already Registered -->
+        <div id="registerAlreadyDone" class="d-none text-center py-4">
+            <i class="bi bi-check-circle" style="font-size: 3rem; color: var(--bs-success);"></i>
+            <h5 class="mt-3">Already Registered</h5>
+            <p class="text-muted">This invitation has already been used to create an account.</p>
+            <a href="#" id="goToLoginLink" class="btn btn-primary mt-2">
+                <i class="bi bi-box-arrow-in-right me-2"></i>Go to Login
+            </a>
+        </div>
+
+        <!-- Registration Form -->
+        <div id="registerFormSection" class="d-none">
+            <div class="text-center mb-3">
+                <h5 class="mb-1">Complete Your Registration</h5>
+                <p class="text-muted small">Welcome, <strong id="registerPatientName"></strong>! Please fill in your details below.</p>
+            </div>
+
+            <form id="portalRegisterForm">
+                <div class="alert alert-danger d-none" id="registerError"></div>
+
+                <!-- Account Section -->
+                <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-shield-lock me-1"></i>Account</h6>
+
+                <div class="mb-3">
+                    <label class="form-label" for="registerEmail">Email Address</label>
+                    <input type="email" class="form-control" id="registerEmail" readonly>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label" for="registerPassword">Create Password <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="registerPassword" required
+                                   minlength="8" placeholder="Minimum 8 characters" autocomplete="new-password">
+                            <button class="btn btn-outline-secondary" type="button" onclick="toggleRegPwd('registerPassword', this)" tabindex="-1">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                        <div class="form-text" id="passwordStrength"></div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label" for="registerPasswordConfirm">Confirm Password <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="registerPasswordConfirm" required
+                                   minlength="8" placeholder="Re-enter password" autocomplete="new-password">
+                            <button class="btn btn-outline-secondary" type="button" onclick="toggleRegPwd('registerPasswordConfirm', this)" tabindex="-1">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Personal Information -->
+                <h6 class="border-bottom pb-2 mb-3 mt-2"><i class="bi bi-person me-1"></i>Personal Information</h6>
+
+                <!-- Profile Picture Upload -->
+                <div class="text-center mb-3">
+                    <div class="position-relative d-inline-block">
+                        <div id="profilePicPreview" style="width: 100px; height: 100px; border-radius: 50%; border: 2px dashed #ccc; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; background: #f8f9fa; margin: 0 auto;"
+                             onclick="document.getElementById('registerProfilePic').click()" title="Click to upload profile picture">
+                            <i class="bi bi-camera" style="font-size: 1.5rem; color: #aaa;" id="profilePicIcon"></i>
+                            <img id="profilePicImg" src="" alt="" class="d-none" style="width: 100%; height: 100%; object-fit: cover;">
+                        </div>
+                        <input type="file" id="registerProfilePic" accept=".jpg,.jpeg,.png,.webp" class="d-none">
+                    </div>
+                    <div class="form-text small mt-1">Profile Picture <span class="text-muted">(optional)</span></div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Date of Birth <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="registerDob" required>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Gender <span class="text-danger">*</span></label>
+                        <select class="form-select" id="registerGender" required>
+                            <option value="">Select...</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                            <option value="Prefer not to say">Prefer not to say</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Phone Number <span class="text-danger">*</span></label>
+                        <input type="tel" class="form-control" id="registerPhone" required placeholder="(555) 123-4567" maxlength="14" autocomplete="tel">
+                    </div>
+                </div>
+
+                <!-- Address -->
+                <h6 class="border-bottom pb-2 mb-3 mt-2"><i class="bi bi-house me-1"></i>Address</h6>
+
+                <div class="mb-3">
+                    <label class="form-label">Street Address</label>
+                    <input type="text" class="form-control" id="registerAddress" placeholder="123 Main St" autocomplete="street-address">
+                </div>
+                <div class="row">
+                    <div class="col-md-5 mb-3">
+                        <label class="form-label">City</label>
+                        <input type="text" class="form-control" id="registerCity" autocomplete="address-level2">
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">State</label>
+                        <input type="text" class="form-control" id="registerState" maxlength="2" placeholder="CA" autocomplete="address-level1">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">ZIP Code</label>
+                        <input type="text" class="form-control" id="registerZip" maxlength="10" placeholder="90210" autocomplete="postal-code">
+                    </div>
+                </div>
+
+                <!-- Emergency Contact -->
+                <h6 class="border-bottom pb-2 mb-3 mt-2"><i class="bi bi-telephone me-1"></i>Emergency Contact</h6>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Contact Name</label>
+                        <input type="text" class="form-control" id="registerEmergencyName" placeholder="Full name" autocomplete="off">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Contact Phone</label>
+                        <input type="tel" class="form-control" id="registerEmergencyPhone" placeholder="(555) 123-4567" maxlength="14" autocomplete="off">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Relationship</label>
+                        <select class="form-select" id="registerEmergencyRelation">
+                            <option value="">Select...</option>
+                            <option value="Spouse">Spouse</option>
+                            <option value="Parent">Parent</option>
+                            <option value="Child">Child</option>
+                            <option value="Sibling">Sibling</option>
+                            <option value="Friend">Friend</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-success w-100 mt-2" id="registerBtn">
+                    <i class="bi bi-person-check me-2"></i>Complete Registration
+                </button>
+            </form>
+        </div>
+
+        <!-- Registration Success -->
+        <div id="registerSuccess" class="d-none text-center py-4">
+            <i class="bi bi-check-circle" style="font-size: 3rem; color: var(--bs-success);"></i>
+            <h5 class="mt-3">Registration Complete!</h5>
+            <p class="text-muted">Your account has been created successfully.</p>
+            <a href="#" id="goToLoginAfterRegister" class="btn btn-primary mt-2">
+                <i class="bi bi-box-arrow-in-right me-2"></i>Sign In Now
+            </a>
+        </div>
+
+        <div class="text-center mt-4">
+            <small class="text-muted">
+                <i class="bi bi-shield-lock me-1"></i>HIPAA Compliant - Secure Access
+            </small>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Phone mask: (XXX) XXX-XXXX
+    function applyPhoneMask(input) {
+        if (!input) return;
+        input.addEventListener('input', function(e) {
+            const digits = e.target.value.replace(/\D/g, '').substring(0, 10);
+            let formatted = '';
+            if (digits.length > 0) formatted = '(' + digits.substring(0, 3);
+            if (digits.length > 3) formatted += ') ' + digits.substring(3, 6);
+            if (digits.length > 6) formatted += '-' + digits.substring(6, 10);
+            e.target.value = formatted;
+        });
+    }
+    applyPhoneMask(document.getElementById('registerPhone'));
+    applyPhoneMask(document.getElementById('registerEmergencyPhone'));
+
+    // Toggle password visibility helper
+    function toggleRegPwd(inputId, btn) {
+        const input = document.getElementById(inputId);
+        const icon = btn.querySelector('i');
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.className = 'bi bi-eye-slash';
+        } else {
+            input.type = 'password';
+            icon.className = 'bi bi-eye';
+        }
+    }
+
+    // Self-registration page initialization
+    (function() {
+        const token = new URLSearchParams(window.location.search).get('token');
+        const loadingEl = document.getElementById('registerLoading');
+        const invalidEl = document.getElementById('registerInvalid');
+        const alreadyEl = document.getElementById('registerAlreadyDone');
+        const formSection = document.getElementById('registerFormSection');
+        const successEl = document.getElementById('registerSuccess');
+
+        if (!token) {
+            loadingEl.classList.add('d-none');
+            invalidEl.classList.remove('d-none');
+            document.getElementById('registerInvalidMessage').textContent = 'No invitation token provided.';
+            return;
+        }
+
+        let invitationData = null;
+
+        // Validate token
+        fetch(`/api/portal/invitation/validate?token=${encodeURIComponent(token)}`)
+            .then(r => r.json())
+            .then(data => {
+                loadingEl.classList.add('d-none');
+
+                if (!data.Valid) {
+                    if (data.Message?.includes('already')) {
+                        alreadyEl.classList.remove('d-none');
+                        if (data.PortalCode) {
+                            document.getElementById('goToLoginLink').href = `/Portal/${data.PortalCode}`;
+                        }
+                    } else {
+                        invalidEl.classList.remove('d-none');
+                        if (data.Message) {
+                            document.getElementById('registerInvalidMessage').textContent = data.Message;
+                        }
+                    }
+                    return;
+                }
+
+                invitationData = data;
+
+                // Show branding
+                if (data.TenantName) document.getElementById('registerTenantName').textContent = data.TenantName;
+                if (data.LocationName) document.getElementById('registerLocationName').textContent = data.LocationName;
+                if (data.TenantLogoUrl) {
+                    const logo = document.getElementById('registerTenantLogo');
+                    logo.src = data.TenantLogoUrl;
+                    logo.alt = data.TenantName || '';
+                    logo.classList.remove('d-none');
+                }
+
+                // Fill form
+                document.getElementById('registerPatientName').textContent = data.PatientName || 'Patient';
+                document.getElementById('registerEmail').value = data.Email || '';
+
+                formSection.classList.remove('d-none');
+            })
+            .catch(() => {
+                loadingEl.classList.add('d-none');
+                invalidEl.classList.remove('d-none');
+            });
+
+        // Password strength indicator
+        document.getElementById('registerPassword')?.addEventListener('input', function() {
+            const pwd = this.value;
+            const el = document.getElementById('passwordStrength');
+            if (pwd.length < 8) {
+                el.textContent = 'Too short (min 8 characters)';
+                el.className = 'form-text text-danger';
+            } else if (!/[A-Z]/.test(pwd) || !/[0-9]/.test(pwd)) {
+                el.textContent = 'Moderate - add uppercase and numbers for stronger password';
+                el.className = 'form-text text-warning';
+            } else if (pwd.length >= 12 && /[!@@#$%^&*]/.test(pwd)) {
+                el.textContent = 'Strong password';
+                el.className = 'form-text text-success';
+            } else {
+                el.textContent = 'Good password';
+                el.className = 'form-text text-info';
+            }
+        });
+
+        // Profile picture preview
+        document.getElementById('registerProfilePic')?.addEventListener('change', function() {
+            const file = this.files[0];
+            if (!file) return;
+
+            // Validate
+            const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+            if (!allowed.includes(file.type)) {
+                alert('Please select a JPG, PNG, or WebP image.');
+                this.value = '';
+                return;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+                alert('Image must be under 5MB.');
+                this.value = '';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = document.getElementById('profilePicImg');
+                img.src = e.target.result;
+                img.classList.remove('d-none');
+                document.getElementById('profilePicIcon').classList.add('d-none');
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // Handle registration form
+        document.getElementById('portalRegisterForm')?.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const errorEl = document.getElementById('registerError');
+            errorEl.classList.add('d-none');
+
+            const password = document.getElementById('registerPassword').value;
+            const confirm = document.getElementById('registerPasswordConfirm').value;
+            const dob = document.getElementById('registerDob').value;
+            const gender = document.getElementById('registerGender').value;
+            const phone = document.getElementById('registerPhone').value?.trim();
+
+            if (password.length < 8) {
+                errorEl.textContent = 'Password must be at least 8 characters.';
+                errorEl.classList.remove('d-none');
+                return;
+            }
+
+            if (password !== confirm) {
+                errorEl.textContent = 'Passwords do not match.';
+                errorEl.classList.remove('d-none');
+                return;
+            }
+
+            if (!dob) {
+                errorEl.textContent = 'Date of birth is required.';
+                errorEl.classList.remove('d-none');
+                return;
+            }
+
+            if (!gender) {
+                errorEl.textContent = 'Gender is required.';
+                errorEl.classList.remove('d-none');
+                return;
+            }
+
+            if (!phone) {
+                errorEl.textContent = 'Phone number is required.';
+                errorEl.classList.remove('d-none');
+                return;
+            }
+
+            const btn = document.getElementById('registerBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Completing Registration...';
+
+            try {
+                const response = await fetch('/api/portal/invitation/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        Token: token,
+                        Password: password,
+                        DateOfBirth: dob,
+                        Gender: gender,
+                        Phone: phone,
+                        Address: document.getElementById('registerAddress').value?.trim() || null,
+                        City: document.getElementById('registerCity').value?.trim() || null,
+                        State: document.getElementById('registerState').value?.trim() || null,
+                        ZipCode: document.getElementById('registerZip').value?.trim() || null,
+                        EmergencyContactName: document.getElementById('registerEmergencyName').value?.trim() || null,
+                        EmergencyContactPhone: document.getElementById('registerEmergencyPhone').value?.trim() || null,
+                        EmergencyContactRelation: document.getElementById('registerEmergencyRelation').value || null
+                    })
+                });
+
+                const result = await response.json();
+                if (!result.Success) {
+                    errorEl.textContent = result.Message || 'Registration failed.';
+                    errorEl.classList.remove('d-none');
+                    return;
+                }
+
+                // Upload profile picture if selected
+                const picFile = document.getElementById('registerProfilePic')?.files[0];
+                if (picFile && result.PatientId) {
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', picFile);
+                        await fetch(`/api/portal/registration/profile-picture/${result.PatientId}`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                    } catch (picErr) {
+                        console.warn('[Portal] Profile picture upload failed:', picErr);
+                        // Don't block registration success for picture failure
+                    }
+                }
+
+                formSection.classList.add('d-none');
+                successEl.classList.remove('d-none');
+
+                if (result.PortalCode) {
+                    const actionParam = new URLSearchParams(window.location.search).get('action');
+                    const actionSuffix = actionParam ? `?action=${actionParam}` : '';
+                    document.getElementById('goToLoginAfterRegister').href = `/Portal/${result.PortalCode}${actionSuffix}`;
+                }
+            } catch (err) {
+                errorEl.textContent = 'An error occurred. Please try again.';
+                errorEl.classList.remove('d-none');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-person-check me-2"></i>Complete Registration';
+            }
+        });
+    })();
+</script>

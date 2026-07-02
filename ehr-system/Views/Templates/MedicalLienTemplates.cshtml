@@ -1,0 +1,81 @@
+@{
+    ViewData["Title"] = "Medical Lien Templates";
+    ViewData["ActivePage"] = "medicalLienTemplates";
+}
+
+<!-- Medical Lien Templates Page (Super Admin Only) -->
+<div class="page active" id="medicalLienTemplatesPage">
+    <div class="page-header d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="mb-1"><i class="bi bi-file-earmark-medical me-2"></i>Medical Lien Templates</h4>
+            <p class="text-muted mb-0 small">Manage Medical Lien Form templates for different clinics and locations</p>
+        </div>
+        <button class="btn btn-primary" onclick="medicalLienTemplateModule.openNew()">
+            <i class="bi bi-plus-lg me-1"></i>New Template
+        </button>
+    </div>
+
+    <!-- Info Alert -->
+    <div class="alert alert-info small mb-3">
+        <i class="bi bi-info-circle me-1"></i>
+        <strong>How it works:</strong> Each clinic and location needs its own Medical Lien template.
+        When users generate a Medical Lien Form from a patient profile, the system uses the template assigned to that patient's clinic and location.
+        If no template exists, an error message will be shown.
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-center">
+                <div class="col-md-4">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" id="medicalLienTemplateSearchInput"
+                               placeholder="Search by name, clinic, or location..." autocomplete="off">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select form-select-sm" id="medicalLienTemplateClinicFilter">
+                        <option value="">All Clinics</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-sm btn-outline-secondary w-100" onclick="medicalLienTemplateModule.clearFilters()">
+                        <i class="bi bi-x-circle me-1"></i>Clear
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Templates Table -->
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="medicalLienTemplatesTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Template Name</th>
+                            <th>Clinic</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                            <th>Last Updated</th>
+                            <th style="width: 120px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Modals {
+    <partial name="_ModalsAdmin" />
+}
+
+@section Scripts {
+    <script src="~/js/modules/templates/MedicalLienTemplateModule.js?v=1"></script>
+}

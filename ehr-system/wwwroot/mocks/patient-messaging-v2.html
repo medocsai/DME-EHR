@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Messages v2 — WhatsApp Style Mockup</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            font-size: 14px;
+            background: #f0f2f5;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .mock-modal {
+            width: 480px;
+            height: 80vh;
+            max-height: 700px;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .mock-header {
+            background: #1976d2;
+            color: #fff;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .mock-header h6 { margin: 0; font-size: 15px; font-weight: 600; }
+
+        /* Search */
+        .msg-search {
+            padding: 8px 12px;
+            border-bottom: 1px solid #e5e7eb;
+            background: #f9fafb;
+            flex-shrink: 0;
+        }
+
+        .msg-search input {
+            width: 100%;
+            border: 1px solid #d1d5db;
+            border-radius: 20px;
+            padding: 7px 12px 7px 34px;
+            font-size: 13px;
+            outline: none;
+            background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='%239CA3AF' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z'/%3E%3C/svg%3E") no-repeat 12px center;
+        }
+
+        .msg-search input:focus { border-color: #1976d2; box-shadow: 0 0 0 2px rgba(25,118,210,0.12); }
+
+        /* Patient List */
+        .msg-list { flex: 1; overflow-y: auto; }
+
+        .msg-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 14px;
+            border-bottom: 1px solid #f3f4f6;
+            cursor: pointer;
+            transition: background 80ms;
+        }
+
+        .msg-item:hover { background: #f9fafb; }
+        .msg-item.unread { background: #EFF6FF; }
+        .msg-item.unread:hover { background: #DBEAFE; }
+
+        .msg-avatar {
+            width: 42px; height: 42px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 600; flex-shrink: 0; margin-right: 12px;
+        }
+
+        .msg-avatar.blue { background: #DBEAFE; color: #1D4ED8; }
+        .msg-avatar.teal { background: #CCFBF1; color: #0D9488; }
+        .msg-avatar.purple { background: #F3E8FF; color: #7C3AED; }
+        .msg-avatar.orange { background: #FEF3C7; color: #D97706; }
+        .msg-avatar.green { background: #DCFCE7; color: #16A34A; }
+        .msg-avatar.red { background: #FEE2E2; color: #DC2626; }
+        .msg-avatar.gray { background: #F3F4F6; color: #6B7280; }
+
+        .msg-content { flex: 1; min-width: 0; }
+
+        .msg-row { display: flex; align-items: center; justify-content: space-between; }
+
+        .msg-name { font-size: 13px; font-weight: 600; color: #1F2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .msg-preview {
+            font-size: 12px; color: #6B7280; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis; margin-top: 1px;
+        }
+
+        .msg-preview.doc-preview { color: #1D4ED8; }
+
+        .msg-time { font-size: 11px; color: #9CA3AF; flex-shrink: 0; white-space: nowrap; }
+        .msg-time.unread-time { color: #1976d2; font-weight: 600; }
+
+        .msg-badge {
+            display: inline-flex; align-items: center; justify-content: center;
+            background: #1976d2; color: #fff; font-size: 10px; font-weight: 700;
+            min-width: 18px; height: 18px; padding: 0 5px;
+            border-radius: 10px;
+        }
+
+        .msg-meta { font-size: 11px; color: #9CA3AF; }
+
+        /* Unread dot for no-conversation patients */
+        .doc-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #0D9488; flex-shrink: 0;
+        }
+
+        /* Section divider */
+        .msg-divider {
+            padding: 4px 14px;
+            font-size: 10px; font-weight: 700;
+            color: #9CA3AF; text-transform: uppercase;
+            letter-spacing: 0.8px;
+            background: #f9fafb;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        /* Load more */
+        .load-more { text-align: center; padding: 12px; }
+
+        /* ===== CHAT VIEW ===== */
+        .chat-header {
+            padding: 10px 14px;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #fff;
+            flex-shrink: 0;
+        }
+
+        .chat-messages { flex: 1; overflow-y: auto; padding: 14px; background: #f8f9fa; }
+
+        .chat-bubble {
+            max-width: 80%; padding: 8px 12px;
+            border-radius: 10px; margin-bottom: 6px; word-wrap: break-word;
+        }
+
+        .chat-bubble.sent { background: #1976d2; color: #fff; margin-left: auto; }
+        .chat-bubble.received { background: #fff; border: 1px solid #e5e7eb; }
+
+        .chat-bubble.system-doc {
+            background: #FEF3C7; border: 1px solid #FDE68A;
+            margin: 10px auto; text-align: center;
+            max-width: 90%; padding: 10px 16px;
+            border-radius: 10px;
+        }
+
+        .bubble-time { font-size: 10px; text-align: right; margin-top: 3px; opacity: 0.65; }
+
+        .doc-link {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: #fff; border: 1px solid #E5E7EB;
+            border-radius: 8px; padding: 6px 12px; margin-top: 6px;
+            text-decoration: none; color: #1D4ED8; font-weight: 500;
+            font-size: 12px; transition: background 100ms;
+        }
+
+        .doc-link:hover { background: #EFF6FF; }
+
+        .doc-link .doc-icon {
+            width: 28px; height: 28px; border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; flex-shrink: 0;
+        }
+
+        .doc-link .doc-icon.pdf { background: #FEE2E2; color: #DC2626; }
+        .doc-link .doc-icon.img { background: #DBEAFE; color: #2563EB; }
+
+        .chat-input {
+            padding: 8px 14px; border-top: 1px solid #e5e7eb;
+            display: flex; align-items: center; gap: 8px; background: #fff; flex-shrink: 0;
+        }
+
+        .chat-input textarea {
+            flex: 1; border: 1px solid #d1d5db; border-radius: 20px;
+            padding: 8px 14px; font-size: 13px; resize: none; max-height: 80px; outline: none;
+        }
+
+        .chat-input textarea:focus { border-color: #1976d2; }
+
+        /* Page switcher */
+        .page-switcher {
+            position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 999;
+        }
+        .page-switcher .btn { padding: 8px 14px; font-weight: 600; font-size: 12px; }
+        .page-switcher .btn.active-sw { background: #1976d2 !important; border-color: #1976d2 !important; color: #fff !important; }
+
+        /* Flow diagram */
+        .flow-box {
+            position: fixed; top: 16px; left: 16px; width: 300px;
+            background: #fff; border-radius: 10px; padding: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1); font-size: 12px; line-height: 1.6;
+        }
+        .flow-box h6 { font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #1976d2; }
+        .flow-step { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+        .flow-num {
+            width: 20px; height: 20px; border-radius: 50%;
+            background: #1976d2; color: #fff; font-size: 10px; font-weight: 700;
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Flow Diagram -->
+<div class="flow-box" id="flowBox">
+    <h6><i class="bi bi-diagram-3 me-1"></i>Document Upload Flow</h6>
+    <div class="flow-step">
+        <div class="flow-num">1</div>
+        <div>Patient uploads document in portal</div>
+    </div>
+    <div class="flow-step">
+        <div class="flow-num">2</div>
+        <div>Document saved with <code>IsPatientUploaded = true</code></div>
+    </div>
+    <div class="flow-step">
+        <div class="flow-num">3</div>
+        <div>System creates a <strong>message</strong> in the patient's conversation with <strong>clickable file link</strong></div>
+    </div>
+    <div class="flow-step">
+        <div class="flow-num">4</div>
+        <div>Conversation moves to <strong>top</strong> of all clinic staff's message list with <strong>unread badge</strong></div>
+    </div>
+    <div class="flow-step">
+        <div class="flow-num">5</div>
+        <div>Staff clicks → sees notification → clicks link to <strong>view/download</strong> the file</div>
+    </div>
+    <hr style="margin: 8px 0;">
+    <div style="color: #6B7280; font-size: 11px;">
+        <i class="bi bi-info-circle me-1"></i>No separate notification system. The message IS the notification. Same read/unread tracking per user.
+    </div>
+</div>
+
+<!-- ===== VIEW 1: PATIENT LIST (WhatsApp Style) ===== -->
+<div class="mock-modal" id="viewList">
+    <div class="mock-header">
+        <h6><i class="bi bi-chat-dots me-2"></i>Patient Messages</h6>
+        <button class="btn btn-sm btn-link text-white p-0" style="font-size: 20px; text-decoration: none; line-height: 1;">&times;</button>
+    </div>
+
+    <!-- Search -->
+    <div class="msg-search">
+        <input type="text" placeholder="Search patients...">
+    </div>
+
+    <!-- Single list: all patients, active conversations on top -->
+    <div class="msg-list">
+
+        <!-- Active conversations (recent messages, sorted by time) -->
+        <div class="msg-divider">Recent Messages</div>
+
+        <!-- Patient with document upload notification (UNREAD) -->
+        <div class="msg-item unread" onclick="showView('chat-doc')">
+            <div class="msg-avatar teal">MK</div>
+            <div class="msg-content">
+                <div class="msg-row">
+                    <span class="msg-name">Maano Khan</span>
+                    <span class="msg-time unread-time">2m ago</span>
+                </div>
+                <div class="msg-row">
+                    <span class="msg-preview doc-preview">
+                        <i class="bi bi-file-earmark-arrow-up"></i> Uploaded: Blood_Test_Results.pdf
+                    </span>
+                    <span class="msg-badge">2</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Patient with regular message (UNREAD) -->
+        <div class="msg-item unread" onclick="showView('chat-regular')">
+            <div class="msg-avatar blue">JD</div>
+            <div class="msg-content">
+                <div class="msg-row">
+                    <span class="msg-name">Jane Doe</span>
+                    <span class="msg-time unread-time">15m ago</span>
+                </div>
+                <div class="msg-row">
+                    <span class="msg-preview">Can I reschedule my appointment to Friday?</span>
+                    <span class="msg-badge">1</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Read conversations -->
+        <div class="msg-item" onclick="showView('chat-regular')">
+            <div class="msg-avatar purple">FA</div>
+            <div class="msg-content">
+                <div class="msg-row">
+                    <span class="msg-name">Furqan Ahmed</span>
+                    <span class="msg-time">Apr 12</span>
+                </div>
+                <span class="msg-preview">Thank you doctor!</span>
+            </div>
+        </div>
+
+        <div class="msg-item" onclick="showView('chat-regular')">
+            <div class="msg-avatar green">RW</div>
+            <div class="msg-content">
+                <div class="msg-row">
+                    <span class="msg-name">Robert Williams</span>
+                    <span class="msg-time">Apr 10</span>
+                </div>
+                <span class="msg-preview">I'll bring the referral letter</span>
+            </div>
+        </div>
+
+        <!-- All other patients (no conversations yet) -->
+        <div class="msg-divider">All Patients</div>
+
+        <div class="msg-item" onclick="showView('chat-new')">
+            <div class="msg-avatar orange">WK</div>
+            <div class="msg-content">
+                <div class="msg-row">
+                    <span class="msg-name">Waqar Khan</span>
+                </div>
+                <span class="msg-meta">MRN: IM-001619 &middot; DOB: 2/1/1995</span>
+            </div>
+        </div>
+
+        <div class="msg-item" onclick="showView('chat-new')">
+            <div class="msg-avatar red">OA</div>
+            <div class="msg-content">
+                <div class="msg-row">
+                    <span class="msg-name">Osama Ahmed</span>
+                </div>
+                <span class="msg-meta">MRN: IM-001617 &middot; DOB: 5/15/1988</span>
+            </div>
+        </div>
+
+        <div class="msg-item" onclick="showView('chat-new')">
+            <div class="msg-avatar gray">AH</div>
+            <div class="msg-content">
+                <div class="msg-row">
+                    <span class="msg-name">Ahmed Hayat</span>
+                </div>
+                <span class="msg-meta">MRN: IM-000616 &middot; DOB: 1/1/1970</span>
+            </div>
+        </div>
+
+        <div class="msg-item" onclick="showView('chat-new')">
+            <div class="msg-avatar blue">AB</div>
+            <div class="msg-content">
+                <div class="msg-row">
+                    <span class="msg-name">AA BBB</span>
+                </div>
+                <span class="msg-meta">MRN: IM-000414 &middot; DOB: 1/1/1990</span>
+            </div>
+        </div>
+
+        <div class="load-more">
+            <div class="spinner-border spinner-border-sm text-muted me-2" style="width: 14px; height: 14px;"></div>
+            <span style="font-size: 12px; color: #9CA3AF;">Scroll for more patients...</span>
+        </div>
+    </div>
+</div>
+
+<!-- ===== VIEW 2: CHAT WITH DOCUMENT NOTIFICATION ===== -->
+<div class="mock-modal d-none" id="viewChatDoc">
+    <div class="mock-header">
+        <h6><i class="bi bi-chat-dots me-2"></i>Patient Messages</h6>
+        <button class="btn btn-sm btn-link text-white p-0" style="font-size: 20px; text-decoration: none; line-height: 1;">&times;</button>
+    </div>
+
+    <div class="chat-header">
+        <button class="btn btn-sm btn-outline-secondary" onclick="showView('list')" style="border-radius: 50%; width: 32px; height: 32px; padding: 0;">
+            <i class="bi bi-arrow-left"></i>
+        </button>
+        <div class="msg-avatar teal" style="width: 34px; height: 34px; font-size: 12px; margin-right: 0;">MK</div>
+        <div>
+            <div style="font-size: 14px; font-weight: 600;">Maano Khan</div>
+            <div class="msg-meta">MRN: IM-001618</div>
+        </div>
+    </div>
+
+    <div class="chat-messages">
+        <!-- Document upload system message #1 -->
+        <div class="chat-bubble system-doc">
+            <div style="font-size: 11px; color: #92400E; margin-bottom: 6px;">
+                <i class="bi bi-cloud-arrow-up me-1"></i>Patient uploaded a document
+            </div>
+            <a href="#" class="doc-link" onclick="event.preventDefault()">
+                <div class="doc-icon pdf"><i class="bi bi-file-earmark-pdf"></i></div>
+                <div style="text-align: left;">
+                    <div style="font-size: 12px; font-weight: 600;">Blood_Test_Results_March_2026.pdf</div>
+                    <div style="font-size: 10px; color: #6B7280; font-weight: 400;">245 KB &middot; Click to view</div>
+                </div>
+            </a>
+            <div class="bubble-time" style="color: #92400E;">Today, 8:05 AM</div>
+        </div>
+
+        <!-- Document upload system message #2 -->
+        <div class="chat-bubble system-doc">
+            <div style="font-size: 11px; color: #92400E; margin-bottom: 6px;">
+                <i class="bi bi-cloud-arrow-up me-1"></i>Patient uploaded a document
+            </div>
+            <a href="#" class="doc-link" onclick="event.preventDefault()">
+                <div class="doc-icon img"><i class="bi bi-file-earmark-image"></i></div>
+                <div style="text-align: left;">
+                    <div style="font-size: 12px; font-weight: 600;">Insurance_Card_Front.jpg</div>
+                    <div style="font-size: 10px; color: #6B7280; font-weight: 400;">1.2 MB &middot; Click to view</div>
+                </div>
+            </a>
+            <div class="bubble-time" style="color: #92400E;">Today, 8:06 AM</div>
+        </div>
+
+        <!-- Patient's regular message -->
+        <div class="d-flex justify-content-start mb-2">
+            <div class="chat-bubble received">
+                <div style="font-size: 13px;">Hi, I uploaded my test results and insurance card for the visit.</div>
+                <div class="bubble-time text-muted">8:07 AM</div>
+            </div>
+        </div>
+
+        <!-- Staff reply -->
+        <div class="d-flex justify-content-end mb-2">
+            <div class="chat-bubble sent">
+                <div style="font-size: 13px;">Thank you Maano! I'll review them before your appointment.</div>
+                <div class="bubble-time" style="color: rgba(255,255,255,0.6);">8:15 AM</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="chat-input">
+        <textarea rows="1" placeholder="Type a message..."></textarea>
+        <button class="btn btn-primary" style="border-radius: 50%; width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center;">
+            <i class="bi bi-send"></i>
+        </button>
+    </div>
+</div>
+
+<!-- ===== VIEW 3: REGULAR CHAT ===== -->
+<div class="mock-modal d-none" id="viewChatRegular">
+    <div class="mock-header">
+        <h6><i class="bi bi-chat-dots me-2"></i>Patient Messages</h6>
+        <button class="btn btn-sm btn-link text-white p-0" style="font-size: 20px; text-decoration: none; line-height: 1;">&times;</button>
+    </div>
+
+    <div class="chat-header">
+        <button class="btn btn-sm btn-outline-secondary" onclick="showView('list')" style="border-radius: 50%; width: 32px; height: 32px; padding: 0;">
+            <i class="bi bi-arrow-left"></i>
+        </button>
+        <div class="msg-avatar blue" style="width: 34px; height: 34px; font-size: 12px; margin-right: 0;">JD</div>
+        <div>
+            <div style="font-size: 14px; font-weight: 600;">Jane Doe</div>
+            <div class="msg-meta">MRN: IM-000612</div>
+        </div>
+    </div>
+
+    <div class="chat-messages">
+        <div class="d-flex justify-content-start mb-2">
+            <div class="chat-bubble received">
+                <div style="font-size: 13px;">Can I reschedule my appointment from Thursday to Friday?</div>
+                <div class="bubble-time text-muted">7:45 AM</div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-end mb-2">
+            <div class="chat-bubble sent">
+                <div style="font-size: 13px;">Sure Jane! I've moved your appointment to Friday at 2 PM. See you then.</div>
+                <div class="bubble-time" style="color: rgba(255,255,255,0.6);">7:52 AM</div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-start mb-2">
+            <div class="chat-bubble received">
+                <div style="font-size: 13px;">Perfect, thank you so much!</div>
+                <div class="bubble-time text-muted">7:53 AM</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="chat-input">
+        <textarea rows="1" placeholder="Type a message..."></textarea>
+        <button class="btn btn-primary" style="border-radius: 50%; width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center;">
+            <i class="bi bi-send"></i>
+        </button>
+    </div>
+</div>
+
+<!-- ===== VIEW 4: NEW CHAT (from All Patients) ===== -->
+<div class="mock-modal d-none" id="viewChatNew">
+    <div class="mock-header">
+        <h6><i class="bi bi-chat-dots me-2"></i>Patient Messages</h6>
+        <button class="btn btn-sm btn-link text-white p-0" style="font-size: 20px; text-decoration: none; line-height: 1;">&times;</button>
+    </div>
+
+    <div class="chat-header">
+        <button class="btn btn-sm btn-outline-secondary" onclick="showView('list')" style="border-radius: 50%; width: 32px; height: 32px; padding: 0;">
+            <i class="bi bi-arrow-left"></i>
+        </button>
+        <div class="msg-avatar orange" style="width: 34px; height: 34px; font-size: 12px; margin-right: 0;">WK</div>
+        <div>
+            <div style="font-size: 14px; font-weight: 600;">Waqar Khan</div>
+            <div class="msg-meta">MRN: IM-001619</div>
+        </div>
+    </div>
+
+    <div class="chat-messages" style="display: flex; align-items: center; justify-content: center;">
+        <div class="text-center text-muted">
+            <i class="bi bi-chat-dots" style="font-size: 2.5rem; opacity: 0.25;"></i>
+            <p class="mt-2 mb-1" style="font-size: 13px; font-weight: 500;">No messages yet</p>
+            <p style="font-size: 12px; color: #9CA3AF;">Type a message to start the conversation</p>
+        </div>
+    </div>
+
+    <div class="chat-input">
+        <textarea rows="1" placeholder="Type a message..."></textarea>
+        <button class="btn btn-primary" style="border-radius: 50%; width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center;">
+            <i class="bi bi-send"></i>
+        </button>
+    </div>
+</div>
+
+<!-- Page Switcher -->
+<div class="page-switcher">
+    <div class="btn-group shadow-sm">
+        <button class="btn btn-outline-dark active-sw" onclick="showView('list')">Patient List</button>
+        <button class="btn btn-outline-dark" onclick="showView('chat-doc')">Chat + Doc Upload</button>
+        <button class="btn btn-outline-dark" onclick="showView('chat-regular')">Regular Chat</button>
+        <button class="btn btn-outline-dark" onclick="showView('chat-new')">New Chat</button>
+    </div>
+</div>
+
+<script>
+    function showView(view) {
+        document.getElementById('viewList').classList.add('d-none');
+        document.getElementById('viewChatDoc').classList.add('d-none');
+        document.getElementById('viewChatRegular').classList.add('d-none');
+        document.getElementById('viewChatNew').classList.add('d-none');
+        document.querySelectorAll('.page-switcher .btn').forEach(b => b.classList.remove('active-sw'));
+
+        const map = {
+            'list': ['viewList', 0],
+            'chat-doc': ['viewChatDoc', 1],
+            'chat-regular': ['viewChatRegular', 2],
+            'chat-new': ['viewChatNew', 3]
+        };
+
+        const [id, idx] = map[view] || map['list'];
+        document.getElementById(id).classList.remove('d-none');
+        document.querySelectorAll('.page-switcher .btn')[idx].classList.add('active-sw');
+
+        // Show/hide flow diagram
+        document.getElementById('flowBox').style.display = (view === 'list' || view === 'chat-doc') ? 'block' : 'none';
+    }
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+@{
+    ViewData["Title"] = "MEDOCS";
+    ViewData["ActivePage"] = "dashboard";
+}
+
+@*
+    This view is no longer used - HomeController.Index() redirects to Dashboard.
+    Individual pages are now served from their own View folders:
+    - /Views/Dashboard/Index.cshtml
+    - /Views/Patients/Index.cshtml
+    - /Views/Providers/Index.cshtml
+    - etc.
+*@
+
+<div class="text-center py-5">
+    <p>Redirecting to Dashboard...</p>
+    <script>window.location.href = '/Home/Dashboard';</script>
+</div>

@@ -1,0 +1,163 @@
+@{
+    Layout = "~/Views/Shared/_PatientPortalLayout.cshtml";
+    ViewData["Title"] = "Dashboard";
+    ViewData["PortalPage"] = "dashboard";
+}
+
+<!-- Welcome — avatar populated by PatientPortalModule.loadDashboard().
+     Falls back to colored initials when no photo uploaded. -->
+<div class="d-flex align-items-center gap-3 mb-3">
+    <div id="dashboardWelcomeAvatar"></div>
+    <div>
+        <h5 class="mb-1" id="dashboardWelcome">Welcome</h5>
+        <p class="text-muted small mb-0">Here's a summary of your health information</p>
+    </div>
+</div>
+
+<!-- Consent forms nudge — only shown when there's at least one appointment
+     awaiting signature. PatientPortalModule.loadDashboard populates this. -->
+<div class="alert alert-warning d-none align-items-center gap-2 mb-3" id="dashboardConsentNudge" role="alert">
+    <i class="bi bi-pencil-square"></i>
+    <div class="flex-grow-1">
+        <strong id="dashboardConsentNudgeText">Consent forms are awaiting your signature.</strong>
+        <span class="small d-block text-muted">Sign at home so you can skip the forms at the clinic.</span>
+    </div>
+    <a href="/Portal/Consent" class="btn btn-warning btn-sm flex-shrink-0">
+        <i class="bi bi-arrow-right me-1"></i>Sign Now
+    </a>
+</div>
+
+<!-- Summary Cards -->
+<div class="row g-2 mb-3" id="dashboardCards">
+    <div class="col-6 col-md-3">
+        <div class="portal-stat-card" onclick="window.location='/Portal/Appointments'">
+            <div class="portal-stat-icon bg-primary-subtle text-primary">
+                <i class="bi bi-calendar-check"></i>
+            </div>
+            <div class="portal-stat-value" id="statUpcomingAppts">-</div>
+            <div class="portal-stat-label">Upcoming Appointments</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="portal-stat-card" onclick="window.location='/Portal/Notes'">
+            <div class="portal-stat-icon bg-success-subtle text-success">
+                <i class="bi bi-journal-medical"></i>
+            </div>
+            <div class="portal-stat-value" id="statNotes">-</div>
+            <div class="portal-stat-label">Clinical Notes</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="portal-stat-card" onclick="window.location='/Portal/Medications'">
+            <div class="portal-stat-icon bg-warning-subtle text-warning">
+                <i class="bi bi-capsule"></i>
+            </div>
+            <div class="portal-stat-value" id="statMedications">-</div>
+            <div class="portal-stat-label">Active Medications</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="portal-stat-card" onclick="window.location='/Portal/Allergies'">
+            <div class="portal-stat-icon bg-danger-subtle text-danger">
+                <i class="bi bi-exclamation-triangle"></i>
+            </div>
+            <div class="portal-stat-value" id="statAllergies">-</div>
+            <div class="portal-stat-label">Allergies</div>
+        </div>
+    </div>
+</div>
+
+<!-- Next Appointment -->
+<div class="card portal-card mb-3">
+    <div class="card-header">
+        <h6 class="mb-0"><i class="bi bi-calendar-event me-2"></i>Next Appointment</h6>
+    </div>
+    <div class="card-body" id="nextAppointmentContent">
+        <div class="text-center text-muted py-3">
+            <div class="spinner-border spinner-border-sm"></div> Loading...
+        </div>
+    </div>
+</div>
+
+<!-- Action Banners (Intake → Book → Upload) -->
+<div class="row g-2 mb-3">
+    <!-- Intake card (first, rendered by PortalIntakeDashboardCard.js) -->
+    <div class="col-12 col-md-4" id="portalIntakeCardCol">
+        <div id="portalIntakeCardRoot" class="h-100"></div>
+    </div>
+    <div class="col-12 col-md-4">
+        <div class="card portal-card h-100" style="cursor: pointer; border-color: #16A34A; border-width: 1.5px;" onclick="window.location='/Portal/Booking'">
+            <div class="card-body d-flex align-items-center gap-3 py-3">
+                <div style="width: 44px; height: 44px; border-radius: 10px; background: #DCFCE7; color: #16A34A; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;">
+                    <i class="bi bi-calendar-plus"></i>
+                </div>
+                <div class="flex-grow-1">
+                    <div class="fw-semibold">Book an Appointment</div>
+                    <div class="text-muted small">Schedule a visit with your provider</div>
+                </div>
+                <i class="bi bi-chevron-right text-muted"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-4">
+        <div class="card portal-card h-100" style="cursor: pointer; border-color: var(--portal-primary); border-width: 1.5px;" onclick="window.location='/Portal/Documents'">
+            <div class="card-body d-flex align-items-center gap-3 py-3">
+                <div style="width: 44px; height: 44px; border-radius: 10px; background: #DBEAFE; color: #1B72BE; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;">
+                    <i class="bi bi-cloud-arrow-up"></i>
+                </div>
+                <div class="flex-grow-1">
+                    <div class="fw-semibold">Upload Documents</div>
+                    <div class="text-muted small">Share reports, lab results, or records</div>
+                </div>
+                <i class="bi bi-chevron-right text-muted"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Links -->
+<div class="card portal-card">
+    <div class="card-header">
+        <h6 class="mb-0"><i class="bi bi-grid me-2"></i>Quick Links</h6>
+    </div>
+    <div class="card-body p-2">
+        <div class="row g-2">
+            <div class="col-6 col-md-4">
+                <a href="/Portal/Appointments" class="portal-quick-link">
+                    <i class="bi bi-calendar-check"></i>
+                    <span>My Appointments</span>
+                </a>
+            </div>
+            <div class="col-6 col-md-4">
+                <a href="/Portal/Notes" class="portal-quick-link">
+                    <i class="bi bi-journal-medical"></i>
+                    <span>Clinical Notes</span>
+                </a>
+            </div>
+            <div class="col-6 col-md-4">
+                <a href="/Portal/Medications" class="portal-quick-link">
+                    <i class="bi bi-capsule"></i>
+                    <span>Medications</span>
+                </a>
+            </div>
+            <div class="col-6 col-md-4">
+                <a href="/Portal/Allergies" class="portal-quick-link">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <span>Allergies</span>
+                </a>
+            </div>
+            <div class="col-6 col-md-4">
+                <a href="/Portal/Vitals" class="portal-quick-link">
+                    <i class="bi bi-activity"></i>
+                    <span>Vitals History</span>
+                </a>
+            </div>
+            <div class="col-6 col-md-4">
+                <a href="/Portal/Documents" class="portal-quick-link">
+                    <i class="bi bi-folder2-open"></i>
+                    <span>My Documents</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>

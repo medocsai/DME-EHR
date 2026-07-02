@@ -1,0 +1,32 @@
+@{
+    ViewData["Title"] = "Clinics";
+    ViewData["ActivePage"] = "tenants";
+}
+
+<!-- Tenants Page -->
+<div class="page active" id="tenantsPage">
+    <div class="page-header">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#tenantModal">
+            <i class="bi bi-plus-lg me-1"></i>Add Clinic
+        </button>
+    </div>
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="tenantsTable">
+                    <thead>
+                        <tr><th>Clinic Name</th><th>Email</th><th>Phone</th><th>Plan</th><th>Users</th><th>Patients</th><th>Status</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Modals {
+    <partial name="_ModalsAdmin" />
+}
+
+@section Scripts {
+}

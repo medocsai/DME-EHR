@@ -1,0 +1,50 @@
+@model List<Dictionary<string, object?>>
+@using EHR.Helpers
+@{ ViewData["ActivePage"] = "billing"; var filter = (string)(ViewBag.Filter ?? ""); }
+
+<div class="dme-wrap">
+    <div class="dme-head"><div><h1>Billing</h1><div class="dme-sub">DME claims · CMS-1500</div></div></div>
+
+    <div class="dme-banner"><i class="bi bi-info-circle"></i> Electronic submission (837) and remittance posting (835/ERA) are <b class="ms-1">&nbsp;simulated</b>&nbsp; in this demo. The screens show the real biller workflow.</div>
+
+    <div class="dme-kpis" style="grid-template-columns:repeat(3,1fr)">
+        <a class="dme-kpi" href="/Dme/Billing" style="text-decoration:none;color:inherit;@(filter == "" ? "border:1.5px solid #2f6bdf" : "")"><div class="k-label">All claims</div><div class="k-value">@Model.Count</div></a>
+        <a class="dme-kpi" href="/Dme/Billing?status=ready" style="text-decoration:none;color:inherit;@(filter == "ready" ? "border:1.5px solid #2f6bdf" : "")"><div class="k-label">Ready to bill</div><div class="k-value">@F.Money(ViewBag.ReadyTotal)</div></a>
+        <a class="dme-kpi" href="/Dme/Billing?status=submitted" style="text-decoration:none;color:inherit;@(filter == "submitted" ? "border:1.5px solid #2f6bdf" : "")"><div class="k-label">Submitted</div><div class="k-value">@F.Money(ViewBag.SubmittedTotal)</div></a>
+    </div>
+
+    <div class="dme-card">
+        <div class="dme-card-head"><h2>Claims</h2></div>
+        <table class="dme-table">
+            <thead><tr><th>Claim</th><th>Customer</th><th>Payer</th><th>Service date</th><th>Total</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var c in Model)
+                {
+                    <tr>
+                        <td class="dme-mono"><strong>@F.S(c["ClaimNumber"])</strong></td>
+                        <td>@F.S(c["CustomerName"])</td>
+                        <td>@F.S(c["PayerName"])</td>
+                        <td>@F.Date(c["ServiceDate"])</td>
+                        <td class="dme-mono">@F.Money(c["Total"])</td>
+                        <td>@Html.Raw(F.StatusChip(c["Status"]))</td>
+                        <td style="text-align:right; white-space:nowrap">
+                            <a href="/Dme/Cms/@F.I(c["ClaimId"])" class="dme-btn dme-btn-light dme-btn-sm">CMS-1500</a>
+                            @if (F.S(c["Status"]) == "ready")
+                            {
+                                <form method="post" action="/Dme/Submit" style="display:inline">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@F.I(c["ClaimId"])" />
+                                    <button class="dme-btn dme-btn-primary dme-btn-sm" type="submit">Submit</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+                @if (Model.Count == 0)
+                {
+                    <tr><td colspan="7" class="dme-empty">No claims.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

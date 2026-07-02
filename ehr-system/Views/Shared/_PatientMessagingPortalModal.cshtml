@@ -1,0 +1,56 @@
+<!-- Patient Messaging Modal (Portal Side) -->
+<div class="modal fade" id="patientMessagingModal" tabindex="-1" aria-labelledby="patientMessagingModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content" style="height: 80vh;">
+            <div class="modal-header py-2" style="background-color: #1976d2;">
+                <h6 class="modal-title" id="patientMessagingModalLabel" style="color: #fff;">
+                    <i class="bi bi-chat-dots me-1"></i> Messages
+                </h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0 d-flex flex-column" style="overflow: hidden;">
+
+                <!-- Conversations + Providers List View -->
+                <div id="pmConversationsView" class="d-flex flex-column h-100">
+                    <div id="pmConversationsList" class="flex-grow-1 overflow-auto">
+                        <div class="text-center text-muted py-4" id="pmConversationsLoading">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                            <p class="mt-2 mb-0">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat View (hidden by default) -->
+                <div id="pmChatView" class="d-none d-flex flex-column h-100">
+                    <!-- Chat Header -->
+                    <div class="p-2 border-bottom d-flex align-items-center">
+                        <button class="btn btn-sm btn-outline-secondary me-2" id="pmBackFromChat">
+                            <i class="bi bi-arrow-left"></i>
+                        </button>
+                        <div>
+                            <strong id="pmChatProviderName"></strong>
+                            <small class="d-block text-muted" id="pmChatProviderSpecialty"></small>
+                        </div>
+                    </div>
+                    <!-- Messages Area -->
+                    <div id="pmChatMessages" class="flex-grow-1 overflow-auto p-3" style="background-color: #f8f9fa;">
+                    </div>
+                    <!-- Typing indicator -->
+                    <div id="pmTypingIndicator" class="d-none px-3 py-1">
+                        <small class="text-muted"><em>typing...</em></small>
+                    </div>
+                    <!-- Message Input -->
+                    <div class="p-2 border-top">
+                        <div class="input-group">
+                            <textarea class="form-control" id="pmMessageInput" rows="1" placeholder="Type a message..." style="resize: none; max-height: 100px;"></textarea>
+                            <button class="btn btn-primary" id="pmSendBtn" disabled>
+                                <i class="bi bi-send"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

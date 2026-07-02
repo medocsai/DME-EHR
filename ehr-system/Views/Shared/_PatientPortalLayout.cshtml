@@ -1,0 +1,255 @@
+@{
+    var pageTitle = ViewData["Title"]?.ToString() ?? "Patient Portal";
+    var isLoginPage = ViewData["PortalPage"]?.ToString() == "login";
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>@pageTitle - Patient Portal</title>
+
+    <!-- Bootstrap 5.3.2 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+
+    <!-- Patient Portal Styles -->
+    <link href="~/css/patient-portal.css?v=1778587367" rel="stylesheet">
+    <link href="~/css/portal-booking.css?v=1777667549" rel="stylesheet">
+</head>
+<body>
+
+    <!-- Loading Screen -->
+    <div id="portalLoading" class="portal-loading">
+        <div class="text-center">
+            <img src="/medocslogo.png" alt="MEDOCS" class="portal-logo-loading" onerror="this.style.display='none'">
+            <div class="spinner-border text-primary mt-3" role="status"></div>
+            <p class="mt-2 text-muted">Loading...</p>
+        </div>
+    </div>
+
+    @if (isLoginPage)
+    {
+        <!-- Login Section (shown when not authenticated) -->
+        <div id="portalLogin" class="d-none">
+            @RenderBody()
+        </div>
+
+        <!-- Empty app shell for login page (JS toggles visibility) -->
+        <div id="portalApp" class="d-none"></div>
+    }
+    else
+    {
+        <!-- Empty login section for authenticated pages -->
+        <div id="portalLogin" class="d-none"></div>
+
+        <!-- Authenticated Portal (shown after login) -->
+        <div id="portalApp" class="d-none">
+            <!-- Top Navbar -->
+            <nav class="portal-navbar">
+                <div class="container-fluid d-flex align-items-center">
+                    <a href="/Portal/Dashboard" class="portal-brand">
+                        <img src="/medocslogo.png" alt="MEDOCS" class="portal-nav-logo" onerror="this.style.display='none'">
+                        <span class="portal-brand-text d-none d-sm-inline">Patient Portal</span>
+                    </a>
+
+                    <!-- Desktop Nav -->
+                    <div class="portal-nav-links d-none d-md-flex">
+                        <a href="/Portal/Dashboard" class="portal-nav-link" data-page="dashboard">
+                            <i class="bi bi-house-door"></i> Dashboard
+                        </a>
+                        <a href="/Portal/Appointments" class="portal-nav-link" data-page="appointments">
+                            <i class="bi bi-calendar-check"></i> Appointments
+                        </a>
+                        <a href="/Portal/Visits" class="portal-nav-link" data-page="visits">
+                            <i class="bi bi-clipboard2-pulse"></i> Visits
+                        </a>
+                        <a href="/Portal/Medications" class="portal-nav-link" data-page="medications">
+                            <i class="bi bi-capsule"></i> Medications
+                        </a>
+                        @* COMING SOON: remove this comment block to restore Prescriptions in desktop nav
+                        <a href="/Portal/Prescriptions" class="portal-nav-link" data-page="prescriptions">
+                            <i class="bi bi-prescription2"></i> Prescriptions
+                        </a>
+                        *@
+                        <a href="/Portal/Orders" class="portal-nav-link" data-page="orders">
+                            <i class="bi bi-clipboard2-pulse"></i> Orders
+                        </a>
+                        <a href="/Portal/Allergies" class="portal-nav-link" data-page="allergies">
+                            <i class="bi bi-exclamation-triangle"></i> Allergies
+                        </a>
+                        <a href="/Portal/Vitals" class="portal-nav-link" data-page="vitals">
+                            <i class="bi bi-activity"></i> Vitals
+                        </a>
+                        <a href="/Portal/Documents" class="portal-nav-link" data-page="documents">
+                            <i class="bi bi-folder2-open"></i> Documents
+                        </a>
+                        <a href="/Portal/Consent" class="portal-nav-link position-relative" data-page="consent">
+                            <i class="bi bi-file-earmark-check"></i> Consent
+                            <span class="badge bg-warning text-dark rounded-pill ms-1 d-none" id="portalConsentBadge" style="font-size: 0.65rem;">0</span>
+                        </a>
+                        <a href="/Portal/Billing" class="portal-nav-link" data-page="billing">
+                            <i class="bi bi-credit-card"></i> Billing
+                        </a>
+                        <a href="/Portal/Profile" class="portal-nav-link" data-page="profile">
+                            <i class="bi bi-person"></i> Profile
+                        </a>
+                    </div>
+
+                    <!-- User info + Logout -->
+                    <div class="ms-auto d-flex align-items-center gap-2">
+                        <!-- Patient Messages -->
+                        <button class="btn btn-outline-light btn-sm position-relative" id="portalMessagesBtn" title="Messages">
+                            <i class="bi bi-chat-dots"></i>
+                            <span class="d-none d-sm-inline ms-1">Messages</span>
+                            <span class="badge bg-danger rounded-pill position-absolute top-0 start-100 translate-middle d-none" id="portalMessagesBadge" style="font-size: 0.65rem;">0</span>
+                        </button>
+                        <!-- Patient avatar — populated by PatientPortalModule on login.
+                             Shows photo if uploaded, initials fallback otherwise. -->
+                        <span id="portalUserAvatar" class="d-none d-sm-inline-flex align-items-center"></span>
+                        <span class="portal-user-name d-none d-sm-inline" id="portalUserName"></span>
+                        <button class="btn btn-outline-light btn-sm" id="portalLogoutBtn" title="Logout">
+                            <i class="bi bi-box-arrow-right"></i>
+                            <span class="d-none d-sm-inline ms-1">Logout</span>
+                        </button>
+                        <!-- Mobile hamburger -->
+                        <button class="btn btn-outline-light btn-sm d-md-none" id="portalMenuToggle">
+                            <i class="bi bi-list"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Mobile Nav (collapsed) -->
+                <div id="portalMobileNav" class="portal-mobile-nav d-none">
+                    <a href="javascript:void(0)" class="portal-mobile-link" id="portalMessagesMobileBtn">
+                        <i class="bi bi-chat-dots me-2"></i> Messages
+                        <span class="badge bg-danger rounded-pill ms-1 d-none" id="portalMessagesBadgeMobile">0</span>
+                    </a>
+                    <a href="/Portal/Dashboard" class="portal-mobile-link" data-page="dashboard">
+                        <i class="bi bi-house-door me-2"></i> Dashboard
+                    </a>
+                    <a href="/Portal/Appointments" class="portal-mobile-link" data-page="appointments">
+                        <i class="bi bi-calendar-check me-2"></i> Appointments
+                    </a>
+                    <a href="/Portal/Visits" class="portal-mobile-link" data-page="visits">
+                        <i class="bi bi-clipboard2-pulse me-2"></i> Visits
+                    </a>
+                    <a href="/Portal/Medications" class="portal-mobile-link" data-page="medications">
+                        <i class="bi bi-capsule me-2"></i> Medications
+                    </a>
+                    @* COMING SOON: remove this comment block to restore Prescriptions in mobile nav
+                    <a href="/Portal/Prescriptions" class="portal-mobile-link" data-page="prescriptions">
+                        <i class="bi bi-prescription2 me-2"></i> Prescriptions
+                    </a>
+                    *@
+                    <a href="/Portal/Orders" class="portal-mobile-link" data-page="orders">
+                        <i class="bi bi-clipboard2-pulse me-2"></i> Orders
+                    </a>
+                    <a href="/Portal/Allergies" class="portal-mobile-link" data-page="allergies">
+                        <i class="bi bi-exclamation-triangle me-2"></i> Allergies
+                    </a>
+                    <a href="/Portal/Vitals" class="portal-mobile-link" data-page="vitals">
+                        <i class="bi bi-activity me-2"></i> Vitals
+                    </a>
+                    <a href="/Portal/Documents" class="portal-mobile-link" data-page="documents">
+                        <i class="bi bi-folder2-open me-2"></i> Documents
+                    </a>
+                    <a href="/Portal/Billing" class="portal-mobile-link" data-page="billing">
+                        <i class="bi bi-credit-card me-2"></i> Billing
+                    </a>
+                    <a href="/Portal/Profile" class="portal-mobile-link" data-page="profile">
+                        <i class="bi bi-person me-2"></i> Profile
+                    </a>
+                </div>
+            </nav>
+
+            <!-- Page Content -->
+            <main class="portal-content">
+                <div class="container-fluid py-3 px-3 px-md-4">
+                    @RenderBody()
+                </div>
+            </main>
+        </div>
+    }
+
+    <!-- Toast Notification -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1090;">
+        <div id="portalToast" class="toast" role="alert">
+            <div class="toast-header">
+                <strong class="me-auto" id="portalToastTitle">Notification</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+            </div>
+            <div class="toast-body" id="portalToastMessage"></div>
+        </div>
+    </div>
+
+    <!-- Patient Messaging Modal -->
+    <partial name="_PatientMessagingPortalModal" />
+
+    <!-- File Viewer Modal (fullscreen) -->
+    <div class="modal fade" id="fileViewerModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content fv-modal-content">
+                <div class="modal-header fv-modal-header">
+                    <h6 class="modal-title fv-modal-title">File Viewer</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body fv-modal-body p-0"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Stripe.js (for billing page) -->
+    <script src="https://js.stripe.com/v3/"></script>
+
+    <!-- SignalR (for patient messaging) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+
+    <!-- File Viewer -->
+    <script src="~/js/shared/ui/FileViewerModal.js?v=1776285000"></script>
+
+    <!-- Shared utilities required by PatientPortalModule for avatar rendering.
+         AvatarUtils depends on StringUtils.escape; load StringUtils first.
+         (These were previously only loaded on the clinic-side _Layout.cshtml,
+         which caused every portal avatar to silently fall back to the "?"
+         placeholder even after a successful photo upload.) -->
+    <script src="~/js/shared/utils/StringUtils.js?v=1778587367"></script>
+    <script src="~/js/shared/utils/AvatarUtils.js?v=1778587367"></script>
+
+    <!-- Patient Portal Module -->
+    <script src="~/js/modules/portal/PatientPortalModule.js?v=1778675111"></script>
+
+    <!-- Portal Consent (patient signs consent at home, before arrival). -->
+    <script src="~/js/modules/portal/PortalConsentModule.js?v=1778675111"></script>
+
+    <!-- Portal Booking Wizard (Contractor + Hired Guys) — load order matters: state, api, summary, steps, then the contractor -->
+    <script src="~/js/modules/portal/booking/BookingState.js?v=1777667549"></script>
+    <script src="~/js/modules/portal/booking/BookingApiClient.js?v=1777667549"></script>
+    <script src="~/js/modules/portal/booking/BookingSummaryRenderer.js?v=1777667549"></script>
+    <script src="~/js/modules/portal/booking/steps/BookingVisitTypeStep.js?v=1777667549"></script>
+    <script src="~/js/modules/portal/booking/steps/BookingProviderStep.js?v=1777667549"></script>
+    <script src="~/js/modules/portal/booking/steps/BookingDateTimeStep.js?v=1777667549"></script>
+    <script src="~/js/modules/portal/booking/steps/BookingReasonStep.js?v=1777667549"></script>
+    <script src="~/js/modules/portal/booking/PortalBookingWizard.js?v=1777667549"></script>
+
+    <!-- Patient Messaging Module -->
+    <script src="~/js/modules/portal/PatientMessagingModule.js?v=1776285000"></script>
+
+    <!-- Patient Intake (Phase 2) - Contractor first, then Employees, then hosts -->
+    <script src="~/js/modules/intake/IntakeFormRenderer.js?v=1777290055"></script>
+    <script src="~/js/modules/intake/sections/IntakeDemographicsRenderer.js?v=1777290055"></script>
+    <script src="~/js/modules/intake/sections/IntakeHealthConcernsRenderer.js?v=1777290055"></script>
+    <script src="~/js/modules/intake/sections/IntakeMedicalHistoryRenderer.js?v=1777290055"></script>
+    <script src="~/js/modules/intake/sections/IntakeLifestyleRenderer.js?v=1777290055"></script>
+    <script src="~/js/modules/intake/sections/IntakeMedicationsRenderer.js?v=1777290055"></script>
+    <script src="~/js/modules/intake/sections/IntakeGenderHealthRenderer.js?v=1777290055"></script>
+    <script src="~/js/modules/intake/sections/IntakeLongevityRenderer.js?v=1778510406"></script>
+    <script src="~/js/modules/intake/sections/IntakeReviewRenderer.js?v=1776981665"></script>
+    <script src="~/js/modules/intake/PortalIntakeWizardModule.js?v=1777290055"></script>
+    <script src="~/js/modules/intake/PortalIntakeDashboardCard.js?v=1777290055"></script>
+
+</body>
+</html>

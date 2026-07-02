@@ -1,0 +1,69 @@
+/* DME design system — scoped component classes used by the /Dme/* screens.
+   Renders inside the converted app's _Layout (Bootstrap 5 + styles.css). */
+.dme-wrap { --brand:#2f6bdf; --brand-dark:#1f4fb0; --brand-soft:#eaf1fd; --teal:#0c7d72;
+  --ink:#1f2733; --ink-soft:#5b6776; --line:#e6e9ef; --ok:#0f6e56; --warn:#854f0b;
+  padding: 20px 24px; color: var(--ink); }
+
+.dme-wrap h1 { font-size: 22px; font-weight: 700; margin: 0; }
+.dme-sub { color: var(--ink-soft); font-size: 13px; margin-top: 2px; }
+.dme-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; gap: 12px; flex-wrap: wrap; }
+
+.dme-card { background:#fff; border:1px solid var(--line); border-radius:14px; box-shadow:0 1px 2px rgba(20,30,50,.05),0 8px 24px rgba(20,30,50,.05); margin-bottom:16px; overflow:hidden; }
+.dme-card-head { padding:14px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; }
+.dme-card-head h2 { font-size:15px; font-weight:700; margin:0; }
+.dme-card-body { padding:18px; }
+
+.dme-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px; }
+.dme-kpi { background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px 18px; box-shadow:0 1px 2px rgba(20,30,50,.05); }
+.dme-kpi .k-label { font-size:12px; color:var(--ink-soft); font-weight:600; }
+.dme-kpi .k-value { font-size:26px; font-weight:800; margin-top:6px; }
+.dme-kpi .k-foot { font-size:11.5px; color:var(--ink-soft); margin-top:2px; }
+
+.dme-grid2 { display:grid; grid-template-columns:1.4fr 1fr; gap:16px; }
+
+table.dme-table { width:100%; margin:0; border-collapse:collapse; font-size:13.5px; }
+table.dme-table thead th { font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--ink-soft); font-weight:700; border-bottom:1px solid var(--line); padding:11px 14px; text-align:left; }
+table.dme-table tbody td { padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:middle; }
+table.dme-table tbody tr:last-child td { border-bottom:none; }
+table.dme-table tbody tr.clickable { cursor:pointer; }
+table.dme-table tbody tr.clickable:hover { background:#f7f9fc; }
+
+.dme-chip { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; padding:3px 10px; border-radius:999px; }
+.dme-chip.gray{background:#eef1f5;color:#5b6776;} .dme-chip.blue{background:var(--brand-soft);color:var(--brand-dark);}
+.dme-chip.green{background:#e1f5ee;color:#0f6e56;} .dme-chip.amber{background:#faeeda;color:#854f0b;}
+.dme-chip.red{background:#fceceb;color:#a32d2d;} .dme-chip.teal{background:#e1f5f3;color:#0c7d72;}
+
+.dme-avatar { width:30px;height:30px;border-radius:50%;background:var(--brand-soft);color:var(--brand-dark);display:inline-grid;place-items:center;font-weight:700;font-size:11px; }
+.dme-mono { font-variant-numeric:tabular-nums; }
+.dme-muted { color:var(--ink-soft); }
+.dme-btn { display:inline-flex;align-items:center;gap:6px;border:none;border-radius:9px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none; }
+.dme-btn-primary { background:var(--brand);color:#fff; } .dme-btn-primary:hover{background:var(--brand-dark);color:#fff;}
+.dme-btn-light { background:#eef1f5;color:var(--ink); }
+.dme-btn-sm { padding:5px 10px; font-size:12px; }
+.dme-empty { text-align:center; padding:40px 20px; color:var(--ink-soft); }
+
+.dme-banner { background:var(--brand-soft); color:var(--brand-dark); border-radius:10px; padding:10px 14px; font-size:12.5px; display:flex; gap:8px; align-items:center; margin-bottom:14px; }
+
+/* pipeline / wizard steps */
+.dme-steps { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.dme-step { display:flex; align-items:center; gap:8px; color:var(--ink-soft); font-weight:600; font-size:12.5px; }
+.dme-step .num { width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:#eef1f5;color:var(--ink-soft);font-size:12px;font-weight:700; }
+.dme-step.active .num{background:var(--brand);color:#fff;} .dme-step.active{color:var(--ink);}
+.dme-step.done .num{background:#0f6e56;color:#fff;}
+.dme-sep { flex:1; height:2px; background:var(--line); border-radius:2px; min-width:18px; max-width:80px; }
+
+.dme-line { border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:10px; background:#fff; }
+.sig-pad { border:1.5px dashed var(--line); border-radius:10px; width:100%; height:150px; touch-action:none; background:#fff; }
+
+/* CMS-1500 facsimile */
+.cms1500 { border:2px solid var(--ink); border-radius:6px; font-size:11px; }
+.cms1500 .cms-row { display:flex; border-bottom:1px solid var(--ink); }
+.cms1500 .cms-cell { padding:5px 8px; border-right:1px solid var(--ink); flex:1; }
+.cms1500 .cms-cell:last-child { border-right:none; }
+.cms1500 .cms-lbl { font-size:8.5px; color:#666; text-transform:uppercase; letter-spacing:.3px; }
+
+/* Hide clinical leftovers that aren't part of the DME product */
+#patientMessagesBtn { display: none !important; }
+
+@media (max-width:1100px){ .dme-kpis{grid-template-columns:repeat(2,1fr);} .dme-grid2{grid-template-columns:1fr;} }
+@media print { .dme-no-print{display:none!important;} }

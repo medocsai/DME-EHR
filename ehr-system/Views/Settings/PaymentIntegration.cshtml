@@ -1,0 +1,103 @@
+@{
+    ViewData["Title"] = "Payment Integration";
+    ViewData["ActivePage"] = "settings";
+}
+
+<div class="page active" id="paymentIntegrationPage">
+    <div class="page-header">
+        <h2 class="mb-0"><i class="bi bi-credit-card-2-front me-2"></i>Payment Integration</h2>
+    </div>
+
+    <!-- Fee transparency banner -->
+    <div class="card mb-4 border-info">
+        <div class="card-body">
+            <h6 class="card-title text-info"><i class="bi bi-info-circle me-1"></i>Payment Processing Fees</h6>
+            <p class="mb-1">
+                MEDOCS uses Stripe to process payments. For each patient transaction, a combined fee
+                of <strong>3.9% + $0.50</strong> is deducted before funds are deposited into your bank account.
+            </p>
+            <p class="mb-0 small text-muted">
+                This includes Stripe's standard processing fee (2.9% + $0.30) and our platform fee (1% + $0.20).
+                Both will appear as separate line items on your Stripe dashboard.
+            </p>
+        </div>
+    </div>
+
+    <!-- Connected accounts list -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0 text-primary"><i class="bi bi-bank text-primary me-2"></i>Connected Stripe Accounts</h5>
+        </div>
+        <div class="card-body">
+            <div id="paymentIntegrationAccountsList">
+                <div class="text-center text-muted py-4">
+                    <div class="spinner-border" role="status"></div>
+                    <p class="mt-2">Loading accounts...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Locations and their connection status -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0 text-secondary"><i class="bi bi-geo-alt text-secondary me-2"></i>Locations</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">Each location must be linked to a Stripe account before it can accept patient payments.</p>
+            <div id="paymentIntegrationLocationsList">
+                <div class="text-center text-muted py-4">
+                    <div class="spinner-border" role="status"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Connect Stripe (new or existing) -->
+<div class="modal fade" id="connectStripeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Connect Stripe Account</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="connectStripeLocationId" />
+                <p>You're connecting a Stripe account for: <strong id="connectStripeLocationName"></strong></p>
+
+                <div id="connectStripeOptionsExisting" class="mb-3" style="display:none;">
+                    <label class="form-label">Use an existing connected account:</label>
+                    <select id="connectStripeExistingDropdown" class="form-select">
+                        <option value="">— Choose existing account —</option>
+                    </select>
+                    <button type="button" class="btn btn-outline-primary mt-2" onclick="window._paymentIntegrationModule.linkExisting()">
+                        <i class="bi bi-link me-1"></i>Link to selected account
+                    </button>
+                </div>
+
+                <hr id="connectStripeDivider" style="display:none;" />
+
+                <div class="mb-3">
+                    <label class="form-label">Or create a new Stripe account for this location:</label>
+                    <input type="email" id="connectStripeBusinessEmail" class="form-control" placeholder="business@clinic.com" />
+                    <small class="text-muted">This will be the primary contact email for the Stripe account. Stripe will guide your clinic through the onboarding process.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="window._paymentIntegrationModule.startOnboarding()">
+                    <i class="bi bi-arrow-right me-1"></i>Start Stripe Onboarding
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Modals {
+    <partial name="_Modals" />
+}
+
+@section Scripts {
+    <script type="module" src="/js/modules/settings/PaymentIntegrationModule.js?v=@DateTime.Now.Ticks"></script>
+}

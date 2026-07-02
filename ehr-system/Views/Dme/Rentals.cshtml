@@ -1,0 +1,54 @@
+@model List<Dictionary<string, object?>>
+@using EHR.Helpers
+@{ ViewData["ActivePage"] = "rentals"; }
+
+<div class="dme-wrap">
+    <div class="dme-head"><div><h1>Rentals</h1><div class="dme-sub">Recurring next-bill-date cycle</div></div></div>
+
+    <div class="dme-kpis" style="grid-template-columns:repeat(3,1fr)">
+        <div class="dme-kpi"><div class="k-label">Active rentals</div><div class="k-value">@ViewBag.Active</div><div class="k-foot">serialized + bulk</div></div>
+        <div class="dme-kpi"><div class="k-label">Monthly recurring</div><div class="k-value">@F.Money(ViewBag.Mrr)</div><div class="k-foot">MRR across rentals</div></div>
+        <div class="dme-kpi"><div class="k-label">Due this week</div><div class="k-value">@ViewBag.DueSoon</div><div class="k-foot">need a rental claim</div></div>
+    </div>
+
+    <div class="dme-card">
+        <div class="dme-card-head"><h2>Rental cycles</h2><span class="dme-muted" style="font-size:12px">Bill-now creates a claim and advances the next bill date</span></div>
+        <table class="dme-table">
+            <thead><tr><th>Customer / Equipment</th><th>Rate</th><th>Months</th><th>Next bill</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var r in Model)
+                {
+                    var d = F.DaysUntil(r["NextBillDate"]);
+                    var capped = r["CapMonths"] != null && F.I(r["MonthsBilled"]) >= F.I(r["CapMonths"]);
+                    var active = F.S(r["Status"]) == "active";
+                    <tr>
+                        <td><strong>@F.S(r["CustomerName"])</strong><div class="dme-muted" style="font-size:12px">@F.S(r["ItemName"]) · @F.S(r["Serial"]) <span class="dme-mono">@F.S(r["Hcpcs"])</span></div></td>
+                        <td class="dme-mono">@F.Money(r["MonthlyRate"])/mo</td>
+                        <td class="dme-mono">@F.I(r["MonthsBilled"])@(r["CapMonths"] == null ? "" : " / " + F.I(r["CapMonths"]))</td>
+                        <td>
+                            @if (!active) { @Html.Raw(F.StatusChip(r["Status"])) }
+                            else if (capped) { <span class="dme-chip teal">Capped</span> }
+                            else { <span class="dme-chip @((d ?? 9) <= 2 ? "amber" : "gray")">@F.Date(r["NextBillDate"])</span> }
+                            @if (F.B(r["AbnOnFile"])) { <span class="dme-chip gray" title="ABN on file">ABN</span> }
+                        </td>
+                        <td style="text-align:right">
+                            @if (active && !capped)
+                            {
+                                <form method="post" action="/Dme/BillNow" style="display:inline">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@F.I(r["RentalId"])" />
+                                    <button class="dme-btn dme-btn-primary dme-btn-sm" type="submit">Bill now</button>
+                                </form>
+                            }
+                            else if (capped) { <span class="dme-muted" style="font-size:12px">Cap reached</span> }
+                        </td>
+                    </tr>
+                }
+                @if (Model.Count == 0)
+                {
+                    <tr><td colspan="5" class="dme-empty">No rentals.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

@@ -1,0 +1,61 @@
+<!-- Patient-Provider Messaging Modal (Provider Side) -->
+<div class="modal fade" id="providerPatientMsgModal" tabindex="-1" aria-labelledby="providerPatientMsgModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content" style="height: 80vh;">
+            <div class="modal-header py-2" style="background-color: #1976d2;">
+                <h6 class="modal-title" id="providerPatientMsgModalLabel" style="color: #fff;">
+                    <i class="bi bi-chat-dots me-1"></i> Patient Inbox
+                </h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0 d-flex flex-column" style="overflow: hidden;">
+
+                <!-- Conversations List View -->
+                <div id="ppConversationsView" class="d-flex flex-column h-100">
+                    <!-- Search Bar -->
+                    <div style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; background: #f9fafb; flex-shrink: 0;">
+                        <input type="text" id="ppPatientSearch" class="form-control form-control-sm" placeholder="Search patients..." autocomplete="off"
+                            style="border-radius: 20px; padding-left: 34px; background-image: url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2214%22 height=%2214%22 fill=%22%239CA3AF%22 viewBox=%220 0 16 16%22%3E%3Cpath d=%22M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z%22/%3E%3C/svg%3E'); background-repeat: no-repeat; background-position: 12px center;">
+                    </div>
+                    <div id="ppConversationsList" class="flex-grow-1 overflow-auto">
+                        <div class="text-center text-muted py-4" id="ppConversationsEmpty">
+                            <i class="bi bi-chat-dots" style="font-size: 2rem;"></i>
+                            <p class="mt-2 mb-0">No patients found</p>
+                            <small>Add patients to your clinic to start messaging</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat View (hidden by default) -->
+                <div id="ppChatView" class="d-none d-flex flex-column h-100">
+                    <!-- Chat Header -->
+                    <div class="p-2 border-bottom d-flex align-items-center">
+                        <button class="btn btn-sm btn-outline-secondary me-2" id="ppBackFromChat">
+                            <i class="bi bi-arrow-left"></i>
+                        </button>
+                        <div>
+                            <strong id="ppChatPatientName"></strong>
+                        </div>
+                    </div>
+                    <!-- Messages Area -->
+                    <div id="ppChatMessages" class="flex-grow-1 overflow-auto p-3" style="background-color: #f8f9fa;">
+                    </div>
+                    <!-- Typing indicator -->
+                    <div id="ppTypingIndicator" class="d-none px-3 py-1">
+                        <small class="text-muted"><em>typing...</em></small>
+                    </div>
+                    <!-- Message Input -->
+                    <div class="p-2 border-top">
+                        <div class="input-group">
+                            <textarea class="form-control" id="ppMessageInput" rows="1" placeholder="Type a message..." style="resize: none; max-height: 100px;"></textarea>
+                            <button class="btn btn-primary" id="ppSendBtn" disabled>
+                                <i class="bi bi-send"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

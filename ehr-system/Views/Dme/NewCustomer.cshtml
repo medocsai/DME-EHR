@@ -1,0 +1,137 @@
+@using EHR.Helpers
+@{
+    ViewData["ActivePage"] = "customers";
+    var payers = (List<Dictionary<string, object?>>)ViewBag.Payers;
+    var icd = ((string code, string desc)[])ViewBag.Icd;
+}
+
+<div class="dme-wrap">
+    <a href="/Dme/Customers" class="dme-muted" style="font-size:13px;text-decoration:none"><i class="bi bi-arrow-left"></i> Customers</a>
+    <div class="dme-head" style="margin-top:6px"><div><h1>New Customer</h1><div class="dme-sub">DME customer record</div></div></div>
+
+    <form method="post" action="/Dme/CreateCustomer">
+        @Html.AntiForgeryToken()
+        <div class="dme-grid2">
+            <div>
+                <div class="dme-card">
+                    <div class="dme-card-head"><h2>Basic Info</h2></div>
+                    <div class="dme-card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6"><label class="form-label">First Name <span style="color:#d6453f">*</span></label><input name="firstName" class="form-control" required /></div>
+                            <div class="col-md-6"><label class="form-label">Last Name <span style="color:#d6453f">*</span></label><input name="lastName" class="form-control" required /></div>
+                            <div class="col-md-5"><label class="form-label">Date of Birth</label><input type="date" name="dob" class="form-control" /></div>
+                            <div class="col-md-4"><label class="form-label">Gender</label><select name="gender" class="form-select"><option value=""></option><option>Male</option><option>Female</option><option>Other</option></select></div>
+                            <div class="col-md-3"><label class="form-label">SSN <span class="dme-muted" style="font-size:11px">(optional)</span></label><input name="ssnLast4" class="form-control" placeholder="last 4" maxlength="4" /></div>
+                            <div class="col-md-3"><label class="form-label">Height (in)</label><input type="number" name="heightInches" class="form-control" /></div>
+                            <div class="col-md-3"><label class="form-label">Weight (lb)</label><input type="number" name="weightLbs" class="form-control" /></div>
+                            <div class="col-md-6"><label class="form-label">Phone</label><input name="phone" class="form-control" /></div>
+                            <div class="col-12"><label class="form-label">Email</label><input type="email" name="email" class="form-control" /></div>
+                            <div class="col-md-6"><label class="form-label">Address</label><input name="addressLine1" class="form-control" /></div>
+                            <div class="col-md-3"><label class="form-label">City</label><input name="city" class="form-control" /></div>
+                            <div class="col-md-1"><label class="form-label">State</label><input name="state" class="form-control" maxlength="2" /></div>
+                            <div class="col-md-2"><label class="form-label">ZIP</label><input name="zip" class="form-control" maxlength="10" /></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="dme-card">
+                    <div class="dme-card-head"><h2>Emergency Contact</h2></div>
+                    <div class="dme-card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6"><label class="form-label">Contact Name</label><input name="emergencyName" class="form-control" /></div>
+                            <div class="col-md-6"><label class="form-label">Relationship</label><input name="emergencyRel" class="form-control" /></div>
+                            <div class="col-md-6"><label class="form-label">Phone</label><input name="emergencyPhone" class="form-control" /></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <div class="dme-card">
+                    <div class="dme-card-head"><h2>Insurance</h2></div>
+                    <div class="dme-card-body">
+                        <div class="dme-banner"><i class="bi bi-shield-check"></i> Primary insurance is required to bill 3rd-party for DME.</div>
+                        <div class="row g-3">
+                            <div class="col-12"><label class="form-label">Payer</label>
+                                <select name="insPayer" class="form-select"><option value="">Select payer…</option>
+                                    @foreach (var p in payers) { <option value="@F.S(p["Name"])">@F.S(p["Name"]) (@F.S(p["PayerCode"]))</option> }
+                                </select>
+                            </div>
+                            <div class="col-md-6"><label class="form-label">Member ID</label><input name="insMemberId" class="form-control" /></div>
+                            <div class="col-md-6"><label class="form-label">Group #</label><input name="insGroup" class="form-control" /></div>
+                            <div class="col-md-4"><label class="form-label">Copay ($)</label><input type="number" step="0.01" name="insCopay" class="form-control" value="0" /></div>
+                            <div class="col-md-4"><label class="form-label">Coinsurance (%)</label><input type="number" name="insCoins" class="form-control" value="0" /></div>
+                            <div class="col-md-4"><label class="form-label">Deductible ($)</label><input type="number" step="0.01" name="insDeductible" class="form-control" value="0" /></div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 mt-3">
+                            <button type="button" class="dme-btn dme-btn-light dme-btn-sm" id="validateBtn" style="background:#e1f5ee;color:#0f6e56"><i class="bi bi-shield-check"></i> Validate Insurance</button>
+                            <span id="eligResult" class="dme-muted" style="font-size:12.5px"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="dme-card">
+                    <div class="dme-card-head"><h2>Diagnosis (ICD-10)</h2></div>
+                    <div class="dme-card-body">
+                        <div class="dme-banner"><i class="bi bi-clipboard2-pulse"></i> ICD-10 diagnosis is required for DME insurance billing.</div>
+                        <label class="form-label">Primary diagnosis</label>
+                        <select name="dxCode" class="form-select">
+                            <option value="">Select…</option>
+                            @foreach (var d in icd) { <option value="@d.code">@d.code — @d.desc</option> }
+                        </select>
+                    </div>
+                </div>
+                <div class="dme-card">
+                    <div class="dme-card-head"><h2>Attachments</h2></div>
+                    <div class="dme-card-body">
+                        <div class="dme-banner"><i class="bi bi-paperclip"></i> Attach scanned CMN/RX, insurance cards, ID, referrals.</div>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-5"><label class="form-label">Category</label>
+                                <select class="form-select" id="docCat">
+                                    <option>CMN</option><option>RX</option><option>Insurance Card</option><option>ID</option><option>Referral</option><option>Proof of Delivery</option><option>Other</option>
+                                </select>
+                            </div>
+                            <div class="col-md-5"><label class="form-label">File</label><input type="file" class="form-control" id="docFile" /></div>
+                            <div class="col-md-2"><button type="button" class="dme-btn dme-btn-light w-100" id="docAdd">Attach</button></div>
+                        </div>
+                        <div id="docList" class="mt-2"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-2">
+            <a href="/Dme/Customers" class="dme-btn dme-btn-light">Cancel</a>
+            <button type="submit" class="dme-btn dme-btn-primary"><i class="bi bi-check-lg"></i> Save Customer</button>
+        </div>
+    </form>
+</div>
+
+<script>
+    document.getElementById('validateBtn').addEventListener('click', function () {
+        var r = document.getElementById('eligResult');
+        r.innerHTML = '<span class="spinner-border spinner-border-sm text-success"></span> Checking eligibility…';
+        setTimeout(function () {
+            r.innerHTML = '<span class="dme-chip green"><i class="bi bi-check-circle"></i> Active · DME covered · Deductible met · 20% coinsurance</span>';
+        }, 1100);
+    });
+
+    // Attachments — demo UI only (not persisted)
+    (function () {
+        var list = [], docList = document.getElementById('docList');
+        document.getElementById('docAdd').addEventListener('click', function () {
+            var f = document.getElementById('docFile');
+            var name = (f.files && f.files.length) ? f.files[0].name : 'scanned-document.pdf';
+            list.push({ name: name, cat: document.getElementById('docCat').value });
+            f.value = '';
+            render();
+        });
+        function render() {
+            docList.innerHTML = list.map(function (d, i) {
+                return '<div class="dme-line" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px">' +
+                    '<span><i class="bi bi-file-earmark-text dme-muted"></i> ' + d.name + ' <span class="dme-chip gray">' + d.cat + '</span></span>' +
+                    '<button type="button" class="dme-btn dme-btn-light dme-btn-sm" data-rm="' + i + '">remove</button></div>';
+            }).join('');
+            docList.querySelectorAll('[data-rm]').forEach(function (b) {
+                b.onclick = function () { list.splice(+b.getAttribute('data-rm'), 1); render(); };
+            });
+        }
+    })();
+</script>

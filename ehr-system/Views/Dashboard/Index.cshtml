@@ -1,0 +1,221 @@
+@{
+    ViewData["Title"] = "Dashboard";
+    ViewData["ActivePage"] = "dashboard";
+}
+
+<!-- Dashboard Page -->
+<div class="page active" id="dashboardPage">
+    <div class="d-flex justify-content-end mb-3">
+        <small class="text-muted" id="dashboardDate"></small>
+    </div>
+
+    <!-- Active Encounters Resume Banner -->
+    <div id="activeEncountersBanner" class="mb-3"></div>
+
+    <div class="row g-2 mb-3">
+        <div class="col-6 col-md-4 col-lg-2">
+            <div class="stat-card dashboard-widget clickable compact" onclick="scrollToSection('appointmentsSection')">
+                <div class="stat-icon-sm bg-primary"><i class="bi bi-calendar-check"></i></div>
+                <div class="stat-content">
+                    <span class="stat-value" id="statTodayAppts">0</span>
+                    <span class="stat-label">Today</span>
+                </div>
+            </div>
+        </div>
+        @* TODO: Missing Notes and Need Signature cards removed — will re-evaluate later
+        <div class="col-6 col-md-4 col-lg-2">
+            <div class="stat-card dashboard-widget clickable compact" onclick="openMissingNotesModal()">
+                <div class="stat-icon-sm bg-orange"><i class="bi bi-file-earmark-x"></i></div>
+                <div class="stat-content">
+                    <span class="stat-value" id="missingNotesCount">0</span>
+                    <span class="stat-label">Missing Notes</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+            <div class="stat-card dashboard-widget clickable compact" onclick="openMissingSignatureModal()">
+                <div class="stat-icon-sm bg-purple"><i class="bi bi-pen"></i></div>
+                <div class="stat-content">
+                    <span class="stat-value" id="missingSignatureCount">0</span>
+                    <span class="stat-label">Need Signature</span>
+                </div>
+            </div>
+        </div>
+        *@
+        <!-- Hidden for now — may re-enable later -->
+        <div class="col-6 col-md-4 col-lg-2 hide-from-biller" style="display: none !important;">
+            <div class="stat-card dashboard-widget clickable compact" onclick="openRequireScheduleModal()">
+                <div class="stat-icon-sm bg-info"><i class="bi bi-calendar-plus"></i></div>
+                <div class="stat-content">
+                    <span class="stat-value" id="requireScheduleCount">0</span>
+                    <span class="stat-label">Overdue Follow-ups</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2 hide-from-therapist hide-from-biller hide-from-ma-nurse">
+            <div class="stat-card dashboard-widget clickable compact" onclick="openNoShowModal()">
+                <div class="stat-icon-sm bg-warning"><i class="bi bi-person-x"></i></div>
+                <div class="stat-content">
+                    <span class="stat-value" id="noShowCount">0</span>
+                    <span class="stat-label">No Show</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2 hide-from-therapist hide-from-biller hide-from-ma-nurse">
+            <div class="stat-card dashboard-widget clickable compact" onclick="openMissedAppointmentsModal()">
+                <div class="stat-icon-sm bg-danger"><i class="bi bi-calendar-x"></i></div>
+                <div class="stat-content">
+                    <span class="stat-value" id="missedAppointmentsCount">0</span>
+                    <span class="stat-label">Missed</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2 hide-from-biller">
+            <div class="stat-card dashboard-widget clickable compact" onclick="window.location.href='/Orders'">
+                <div class="stat-icon-sm" style="background-color:#6f42c1"><i class="bi bi-clipboard2-pulse"></i></div>
+                <div class="stat-content">
+                    <span class="stat-value" id="pendingOrdersCount">0</span>
+                    <span class="stat-label">Pending Orders</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="card dashboard-section grid-appointments" id="appointmentsSection">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-calendar-check me-2"></i>Today Appointments</h6>
+                <a href="#" class="btn btn-sm btn-outline-primary" onclick="navigateTo('schedule'); return false;">View Calendar</a>
+            </div>
+            <div class="card-body p-0">
+                <!-- 2026-05: Today Appointments switched from a table to a
+                     row-card layout (`.ew-today-list`). Cards have a left-edge
+                     color stripe per visit type, patient + provider avatars,
+                     and a clean info hierarchy. Renderer lives in
+                     DashboardModule._renderTodayAppointments(). -->
+                <div id="todayScheduleList" class="ew-today-list"></div>
+            </div>
+        </div>
+
+        <div class="grid-sidebar hide-from-therapist hide-from-biller hide-from-ma-nurse">
+            <div class="card dashboard-section dashboard-card-compact" id="noShowSection">
+                <div class="card-header py-2 bg-warning text-dark d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-person-x me-2"></i>No Show</h6>
+                    <span class="badge bg-dark" id="noShowBadge">0</span>
+                </div>
+                <div class="card-body p-2" id="noShowWidget">
+                    <div class="text-center text-muted py-2 small">Loading...</div>
+                </div>
+            </div>
+            <div class="card dashboard-section dashboard-card-compact" id="missedAppointmentsSection">
+                <div class="card-header py-2 bg-danger text-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-calendar-x me-2"></i>Missed Appointments</h6>
+                    <span class="badge bg-light text-danger" id="missedAppointmentsBadge">0</span>
+                </div>
+                <div class="card-body p-2" id="missedVisitsWidget">
+                    <div class="text-center text-muted py-2 small">Loading...</div>
+                </div>
+            </div>
+            <!-- Hidden for now — may re-enable later -->
+            <div class="card dashboard-section dashboard-card-compact" id="requireScheduleSection" style="display: none !important;">
+                <div class="card-header py-2 bg-info text-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-clock-history me-2"></i>Overdue Follow-ups</h6>
+                    <span class="badge bg-light text-info" id="requireScheduleBadge">0</span>
+                </div>
+                <div class="card-body p-2" id="requireScheduleWidget">
+                    <div class="text-center text-muted py-2 small">Loading...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden for now — may re-enable later -->
+        <div class="grid-sidebar show-only-therapist" style="display: none !important;">
+            <div class="card dashboard-section dashboard-card-compact">
+                <div class="card-header py-2 bg-orange-light d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 text-orange"><i class="bi bi-file-earmark-x me-2"></i>Missing Notes</h6>
+                    <span class="badge bg-orange" id="missingNotesBadgeTherapist">0</span>
+                </div>
+                <div class="card-body p-2" id="missingNotesWidgetTherapist">
+                    <div class="text-center text-muted py-2 small">Loading...</div>
+                </div>
+            </div>
+            <div class="card dashboard-section dashboard-card-compact">
+                <div class="card-header py-2 bg-purple-light d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 text-purple"><i class="bi bi-pen me-2"></i>Missing Signature</h6>
+                    <span class="badge bg-purple" id="missingSignatureBadgeTherapist">0</span>
+                </div>
+                <div class="card-body p-2" id="missingSignatureWidgetTherapist">
+                    <div class="text-center text-muted py-2 small">Loading...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden for now — may re-enable later -->
+        <div class="card dashboard-section dashboard-card-compact hide-from-therapist hide-from-biller hide-from-ma-nurse" id="missingNotesSection" style="display: none !important;">
+            <div class="card-header py-2 bg-orange-light d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 text-orange"><i class="bi bi-file-earmark-x me-2"></i>Missing Notes</h6>
+                <span class="badge bg-orange" id="missingNotesBadge">0</span>
+            </div>
+            <div class="card-body p-2" id="missingNotesWidget">
+                <div class="text-center text-muted py-2 small">Loading...</div>
+            </div>
+        </div>
+
+        <!-- Hidden for now — may re-enable later -->
+        <div class="card dashboard-section dashboard-card-compact hide-from-therapist hide-from-biller hide-from-ma-nurse" id="missingSignatureSection" style="display: none !important;">
+            <div class="card-header py-2 bg-purple-light d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 text-purple"><i class="bi bi-pen me-2"></i>Missing Signature</h6>
+                <span class="badge bg-purple" id="missingSignatureBadge">0</span>
+            </div>
+            <div class="card-body p-2" id="missingSignatureWidget">
+                <div class="text-center text-muted py-2 small">Loading...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Modals {
+    <partial name="_ModalsDashboard" />
+    <partial name="_Modals" />
+
+    <!-- Resume Encounter Popup -->
+    <div class="modal fade" id="resumeEncounterPopup" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-success text-white py-3">
+                    <h5 class="modal-title">
+                        <i class="bi bi-clipboard2-pulse me-2"></i>Active Visit in Progress
+                    </h5>
+                </div>
+                <div class="modal-body text-center py-4">
+                    <div class="mb-3">
+                        <i class="bi bi-person-circle text-success" style="font-size: 3rem;"></i>
+                    </div>
+                    <p class="fs-5 mb-1">You have an active visit with</p>
+                    <h4 class="text-primary mb-2" id="resumePopupPatientName"></h4>
+                    <p class="text-muted small mb-0" id="resumePopupDetails"></p>
+                </div>
+                <div class="modal-footer flex-column border-0 pt-0">
+                    <div class="d-flex gap-2 w-100 mb-2">
+                        <button type="button" class="btn btn-outline-secondary flex-fill" id="btnStayDashboard">
+                            Stay on Dashboard
+                        </button>
+                        <button type="button" class="btn btn-success flex-fill" id="btnResumeFromPopup">
+                            <i class="bi bi-arrow-right-circle me-1"></i>Resume Visit
+                        </button>
+                    </div>
+                    <div class="form-check small text-muted mt-1">
+                        <input class="form-check-input" type="checkbox" id="chkDontShowAgain">
+                        <label class="form-check-label" for="chkDontShowAgain">
+                            Do not show again
+                            <span class="text-muted fst-italic">You can re-enable this from Preferences</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@section Scripts {
+}

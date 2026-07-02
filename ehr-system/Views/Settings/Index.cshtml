@@ -1,0 +1,65 @@
+@{
+    ViewData["Title"] = "Settings";
+    ViewData["ActivePage"] = "settings";
+}
+
+<!-- Settings Page -->
+<div class="page active" id="settingsPage">
+    <div class="page-header">
+        <button class="btn btn-primary" onclick="initializeDefaultSettings()">
+            <i class="bi bi-arrow-repeat me-1"></i>Initialize Defaults
+        </button>
+    </div>
+
+    <!-- Quick links -->
+    <div class="card mb-4 hide-from-ma-nurse">
+        <div class="card-header">
+            <h5 class="mb-0 text-info"><i class="bi bi-grid-3x3-gap text-info me-2"></i>Settings Sections</h5>
+        </div>
+        <div class="card-body">
+            <a href="/Settings/PaymentIntegration" class="btn btn-outline-primary me-2 mb-2">
+                <i class="bi bi-credit-card-2-front me-1"></i>Payment Integration (Stripe)
+            </a>
+        </div>
+    </div>
+
+    <!-- Longevity Feature per-location toggles (quick view) -->
+    <div class="card mb-4 hide-from-ma-nurse">
+        <div class="card-header">
+            <h5 class="mb-0 text-primary"><i class="bi bi-stars text-primary me-2"></i>Longevity Feature (Per Location)</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-3">
+                Enable the Longevity &amp; Functional Medicine section for patients filling intake at a given location.
+                When enabled, the longevity step appears in the intake wizard and longevity data surfaces in the Patient Profile and Encounter intake panel.
+            </p>
+            <div id="longevityLocationToggles">
+                <div class="text-center text-muted py-3">
+                    <div class="spinner-border spinner-border-sm"></div> Loading locations...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="bi bi-clipboard2-pulse me-2"></i>Care Episode Settings</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-4">Configure thresholds and settings for the Care Episode Management System.</p>
+            <div id="settingsContainer">
+                <div class="text-center text-muted py-4">
+                    <div class="spinner-border" role="status"></div>
+                    <p class="mt-2">Loading settings...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Modals {
+    <partial name="_Modals" />
+}
+
+@section Scripts {
+}

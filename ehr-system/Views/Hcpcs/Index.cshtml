@@ -1,0 +1,76 @@
+@model List<EHR.Controllers.HcpcsRow>
+@{
+    ViewData["ActivePage"] = "hcpcs";
+}
+
+<div style="padding:22px 26px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">
+        <div>
+            <h1 style="font-size:22px;font-weight:700;margin:0;">HCPCS Catalog</h1>
+            <div style="color:#6b7280;font-size:13px;margin-top:2px;">
+                @Model.Count items · HCPCS Level II · purchase / rental pricing
+            </div>
+        </div>
+        <span style="background:#eaf1fd;color:#1f4fb0;font-weight:700;font-size:12px;padding:5px 12px;border-radius:999px;">DME</span>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e6e9ef;border-radius:14px;box-shadow:0 1px 2px rgba(20,30,50,.05),0 8px 24px rgba(20,30,50,.05);overflow:hidden;">
+        <table class="table" style="margin:0;font-size:13.5px;">
+            <thead>
+                <tr style="background:#f6f8fb;">
+                    <th style="padding:12px 14px;">HCPCS</th>
+                    <th style="padding:12px 14px;">Item</th>
+                    <th style="padding:12px 14px;">Category</th>
+                    <th style="padding:12px 14px;">Type</th>
+                    <th style="padding:12px 14px;">Pricing</th>
+                    <th style="padding:12px 14px;">Cap</th>
+                    <th style="padding:12px 14px;">On hand</th>
+                    <th style="padding:12px 14px;">Mods</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var i in Model)
+                {
+                    <tr>
+                        <td style="padding:11px 14px;font-weight:600;font-variant-numeric:tabular-nums;">@i.Hcpcs</td>
+                        <td style="padding:11px 14px;">@i.Name</td>
+                        <td style="padding:11px 14px;"><span style="background:#eef1f5;color:#5b6776;font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:999px;">@i.Category</span></td>
+                        <td style="padding:11px 14px;">
+                            @if (i.IsSerialized)
+                            {
+                                <span style="background:#eaf1fd;color:#1f4fb0;font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:999px;">Serialized</span>
+                            }
+                            else
+                            {
+                                <span style="color:#9aa3af;">Bulk</span>
+                            }
+                        </td>
+                        <td style="padding:11px 14px;font-variant-numeric:tabular-nums;">
+                            @if (i.Purchasable)
+                            {
+                                <span>Buy $@i.PurchasePrice.ToString("N2")</span>
+                            }
+                            @if (i.Rentable)
+                            {
+                                <span style="color:#0c7d72;">@(i.Purchasable ? " · " : "")Rent $@i.MonthlyRate.ToString("N2")/mo</span>
+                            }
+                        </td>
+                        <td style="padding:11px 14px;color:#6b7280;">@(i.CappedRentalMonths > 0 ? i.CappedRentalMonths + " mo" : "—")</td>
+                        <td style="padding:11px 14px;font-variant-numeric:tabular-nums;">
+                            @i.OnHand
+                            @if (i.OnHand <= 5)
+                            {
+                                <span style="background:#faeeda;color:#854f0b;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:4px;">reorder</span>
+                            }
+                        </td>
+                        <td style="padding:11px 14px;color:#6b7280;font-size:12px;">@i.Modifiers</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div style="color:#9aa3af;font-size:12px;margin-top:10px;">
+        <i class="bi bi-info-circle"></i> Backed by the <code>HcpcsCodes</code> table in the DME database. Phase 1 adds payer fee schedules and ties items into orders &amp; inventory.
+    </div>
+</div>

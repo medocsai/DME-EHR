@@ -1,0 +1,33 @@
+@model List<Dictionary<string, object?>>
+@using EHR.Helpers
+@{ ViewData["ActivePage"] = "orders"; }
+
+<div class="dme-wrap">
+    <div class="dme-head">
+        <div><h1>Orders / Delivery Tickets</h1><div class="dme-sub">@Model.Count orders</div></div>
+        <a href="/Dme/NewOrder" class="dme-btn dme-btn-primary"><i class="bi bi-plus-lg"></i> New Order</a>
+    </div>
+
+    <div class="dme-card">
+        <table class="dme-table">
+            <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Stage</th><th>Status</th></tr></thead>
+            <tbody>
+                @foreach (var o in Model)
+                {
+                    <tr class="clickable" onclick="location.href='/Dme/Order/@F.I(o["OrderId"])'">
+                        <td class="dme-mono"><strong>@F.S(o["OrderNumber"])</strong></td>
+                        <td>@F.S(o["CustomerName"])</td>
+                        <td>@F.I(o["LineCount"])</td>
+                        <td class="dme-mono">@F.Money(o["Total"])</td>
+                        <td class="dme-muted" style="font-size:12px">@F.S(o["Stage"])</td>
+                        <td>@Html.Raw(F.StatusChip(o["Status"]))</td>
+                    </tr>
+                }
+                @if (Model.Count == 0)
+                {
+                    <tr><td colspan="6" class="dme-empty">No orders yet.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

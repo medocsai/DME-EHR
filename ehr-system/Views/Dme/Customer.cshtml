@@ -1,0 +1,86 @@
+@using EHR.Helpers
+@{
+    ViewData["ActivePage"] = "customers";
+    var c = (Dictionary<string, object?>)ViewBag.Customer;
+    var insurances = (List<Dictionary<string, object?>>)ViewBag.Insurances;
+    var diagnoses = (List<Dictionary<string, object?>>)ViewBag.Diagnoses;
+    var equipment = (List<Dictionary<string, object?>>)ViewBag.Equipment;
+    var orders = (List<Dictionary<string, object?>>)ViewBag.Orders;
+    int ht = F.I(c["HeightInches"]);
+}
+
+<div class="dme-wrap">
+    <a href="/Dme/Customers" class="dme-muted" style="font-size:13px;text-decoration:none"><i class="bi bi-arrow-left"></i> All customers</a>
+
+    <div class="dme-card" style="margin-top:10px">
+        <div class="dme-card-body" style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:14px">
+                <span class="dme-avatar" style="width:52px;height:52px;font-size:18px">@F.Initials(c["FirstName"], c["LastName"])</span>
+                <div>
+                    <div style="font-size:19px;font-weight:700">@F.S(c["FirstName"]) @F.S(c["LastName"])</div>
+                    <div class="dme-muted" style="font-size:13px">@F.S(c["AccountNo"]) · @F.Age(c["Dob"]) yrs · @F.S(c["Gender"]) · @F.S(c["Phone"])</div>
+                    <div class="dme-muted" style="font-size:12.5px">Ht @(ht > 0 ? (ht / 12) + "' " + (ht % 12) + "\"" : "—") · Wt @(F.I(c["WeightLbs"]) > 0 ? F.I(c["WeightLbs"]) + " lb" : "—") · @F.S(c["AddressLine1"]), @F.S(c["City"]) @F.S(c["State"]) @F.S(c["Zip"])</div>
+                </div>
+            </div>
+            <a href="/Dme/NewOrder?customerId=@F.I(c["CustomerId"])" class="dme-btn dme-btn-primary"><i class="bi bi-box-seam"></i> New Order</a>
+        </div>
+    </div>
+
+    <div class="dme-grid2">
+        <div>
+            <div class="dme-card">
+                <div class="dme-card-head"><h2>Insurance</h2></div>
+                <div class="dme-card-body">
+                    @foreach (var i in insurances)
+                    {
+                        <div class="dme-line">
+                            <div style="display:flex;justify-content:space-between">
+                                <strong>@(F.S(i["Kind"]) == "primary" ? "Primary" : "Secondary") · @F.S(i["PayerName"])</strong>
+                                <span class="dme-chip green"><i class="bi bi-check-circle"></i> Eligible</span>
+                            </div>
+                            <div class="dme-muted" style="font-size:12.5px;margin-top:4px">Member @F.S(i["MemberId"])@(string.IsNullOrEmpty(F.S(i["GroupNumber"])) ? "" : " · Group " + F.S(i["GroupNumber"])) · Copay @F.Money(i["Copay"]) · Coins @F.I(i["Coinsurance"])% · Deductible @F.Money(i["Deductible"])</div>
+                        </div>
+                    }
+                    @if (insurances.Count == 0) { <div class="dme-muted">No insurance on file.</div> }
+                </div>
+            </div>
+            <div class="dme-card">
+                <div class="dme-card-head"><h2>Equipment on file</h2></div>
+                <table class="dme-table">
+                    <thead><tr><th>Item</th><th>Serial</th><th>Status</th><th>In service</th></tr></thead>
+                    <tbody>
+                        @foreach (var e in equipment)
+                        {
+                            <tr><td>@F.S(e["ItemName"]) <span class="dme-muted dme-mono">@F.S(e["Hcpcs"])</span></td><td class="dme-mono">@F.S(e["SerialNumber"])</td><td>@Html.Raw(F.StatusChip(e["Status"]))</td><td>@F.Date(e["InServiceDate"])</td></tr>
+                        }
+                        @if (equipment.Count == 0) { <tr><td colspan="4" class="dme-empty">No equipment dispensed yet.</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div>
+            <div class="dme-card">
+                <div class="dme-card-head"><h2>Diagnoses (ICD-10)</h2></div>
+                <div class="dme-card-body">
+                    @foreach (var d in diagnoses)
+                    {
+                        <div style="padding:5px 0"><span class="dme-chip blue dme-mono">@F.S(d["IcdCode"])</span> @F.S(d["Description"]) @(F.B(d["IsPrimary"]) ? "(primary)" : "")</div>
+                    }
+                    @if (diagnoses.Count == 0) { <div class="dme-muted">No diagnoses recorded.</div> }
+                </div>
+            </div>
+            <div class="dme-card">
+                <div class="dme-card-head"><h2>Orders</h2></div>
+                <table class="dme-table">
+                    <tbody>
+                        @foreach (var o in orders)
+                        {
+                            <tr class="clickable" onclick="location.href='/Dme/Order/@F.I(o["OrderId"])'"><td class="dme-mono"><strong>@F.S(o["OrderNumber"])</strong></td><td>@Html.Raw(F.StatusChip(o["Status"]))</td></tr>
+                        }
+                        @if (orders.Count == 0) { <tr><td class="dme-empty">No orders.</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

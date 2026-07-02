@@ -1,0 +1,33 @@
+## Build outputs
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+## Publish
+DME Publish/
+
+## Runtime / user secrets
+appsettings.Development.json
+appsettings.Local.json
+ehr-system/appsettings.Development.json
+ehr-system/appsettings.Local.json
+*.pfx
+*.p12
+secrets.json
+
+## Credentials — never commit
+ehr-system/App_Data/Credentials/
+gcs-service-account.json
+
+## Logs
+logs/
+*.log
+
+## Node (if any)
+node_modules/
+
+## Temp
+.DS_Store
+Thumbs.db

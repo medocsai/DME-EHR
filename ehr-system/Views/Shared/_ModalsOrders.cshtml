@@ -1,0 +1,290 @@
+<!-- ===== NEW / EDIT ORDER MODAL ===== -->
+<div class="modal fade" id="orderModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="orderModalTitle">New Order</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="orderEditId">
+
+                <!-- Order Type Selector -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Order Type</label>
+                    <div class="btn-group w-100" role="group" id="orderTypeSelector">
+                        <input type="radio" class="btn-check" name="orderType" id="orderTypeLab" value="0" checked>
+                        <label class="btn btn-outline-primary" for="orderTypeLab">
+                            <i class="bi bi-droplet-half me-1"></i>Lab
+                        </label>
+                        <input type="radio" class="btn-check" name="orderType" id="orderTypeImaging" value="1">
+                        <label class="btn btn-outline-info" for="orderTypeImaging">
+                            <i class="bi bi-image me-1"></i>Imaging
+                        </label>
+                        <input type="radio" class="btn-check" name="orderType" id="orderTypeReferral" value="2">
+                        <label class="btn btn-outline-success" for="orderTypeReferral">
+                            <i class="bi bi-arrow-right-circle me-1"></i>Referral
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Common Fields -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Patient <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="orderPatientSearch" placeholder="Search patient by name or MRN..." autocomplete="off">
+                        <input type="hidden" id="orderPatientId">
+                        <div id="orderPatientResults" class="list-group position-absolute w-100" style="z-index:1060; max-height:200px; overflow-y:auto; display:none;"></div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Provider <span class="text-danger">*</span></label>
+                        <select class="form-select" id="orderProviderId"></select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Priority</label>
+                        <select class="form-select" id="orderPriority">
+                            <option value="0">Routine</option>
+                            <option value="1">Urgent</option>
+                            <option value="2">STAT</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-4 position-relative">
+                        <label class="form-label">Diagnosis Code (ICD-10)</label>
+                        <input type="text" class="form-control" id="orderDiagnosisCode" placeholder="e.g., E11.9" autocomplete="off">
+                        <div id="orderDiagnosisSuggestions" class="list-group position-absolute w-100" style="z-index:1060; max-height:350px; overflow-y:auto; display:none;"></div>
+                    </div>
+                    <div class="col-md-8 d-flex align-items-end">
+                        <button class="btn btn-sm btn-outline-info" type="button" id="btnSuggestDiagnosis">
+                            <i class="bi bi-stars me-1"></i>Suggest Diagnosis from CC & HPI
+                        </button>
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label">Clinical Indication</label>
+                        <input type="text" class="form-control" id="orderClinicalIndication" placeholder="Reason for order..." autocomplete="off">
+                    </div>
+                </div>
+
+                <!-- LAB SECTION -->
+                <div id="orderLabSection">
+                    <hr>
+                    <h6 class="text-primary"><i class="bi bi-droplet-half me-1"></i>Lab Order Details</h6>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Lab Panel <span class="text-danger">*</span></label>
+                            <select class="form-select" id="orderLabPanel">
+                                <option value="">Select Panel...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Specimen Type</label>
+                            <input type="text" class="form-control" id="orderSpecimenType" value="Blood" autocomplete="off">
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" type="checkbox" id="orderFastingRequired">
+                                <label class="form-check-label" for="orderFastingRequired">Fasting Required</label>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Lab Tests Preview -->
+                    <div id="orderLabTestsPreview" class="mb-3" style="display:none;">
+                        <label class="form-label text-muted">Tests in Panel:</label>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Test Name</th>
+                                        <th>Code</th>
+                                        <th>Unit</th>
+                                        <th>Reference Range</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="orderLabTestsBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- IMAGING SECTION -->
+                <div id="orderImagingSection" style="display:none;">
+                    <hr>
+                    <h6 class="text-info"><i class="bi bi-image me-1"></i>Imaging Order Details</h6>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Modality <span class="text-danger">*</span></label>
+                            <select class="form-select" id="orderModality">
+                                <option value="">Select Modality...</option>
+                                <option value="0">X-Ray</option>
+                                <option value="1">CT Scan</option>
+                                <option value="2">MRI</option>
+                                <option value="3">Ultrasound</option>
+                                <option value="4">Mammogram</option>
+                                <option value="5">DEXA Scan</option>
+                                <option value="6">Fluoroscopy</option>
+                                <option value="7">PET Scan</option>
+                                <option value="8">Nuclear Medicine</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Body Part <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="orderBodyPart" placeholder="e.g., Chest, Lumbar Spine" autocomplete="off">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Imaging Facility</label>
+                            <input type="text" class="form-control" id="orderImagingFacility" placeholder="Facility name" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="orderContrastRequired">
+                        <label class="form-check-label" for="orderContrastRequired">Contrast Required</label>
+                    </div>
+                </div>
+
+                <!-- REFERRAL SECTION -->
+                <div id="orderReferralSection" style="display:none;">
+                    <hr>
+                    <h6 class="text-success"><i class="bi bi-arrow-right-circle me-1"></i>Referral Details</h6>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Specialty <span class="text-danger">*</span></label>
+                            <select class="form-select" id="orderReferralSpecialty">
+                                <option value="">Select Specialty...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Referred To (Provider)</label>
+                            <input type="text" class="form-control" id="orderReferredToProvider" placeholder="Provider name" autocomplete="off">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Urgency</label>
+                            <select class="form-select" id="orderReferralUrgency">
+                                <option value="0">Routine</option>
+                                <option value="1">Urgent</option>
+                                <option value="2">Emergent</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Facility</label>
+                            <input type="text" class="form-control" id="orderReferredToFacility" placeholder="Facility name" autocomplete="off">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Phone</label>
+                            <input type="text" class="form-control" id="orderReferredToPhone" placeholder="(XXX) XXX-XXXX" autocomplete="off">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Fax</label>
+                            <input type="text" class="form-control" id="orderReferredToFax" placeholder="(XXX) XXX-XXXX" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Reason for Referral</label>
+                        <textarea class="form-control" id="orderReferralReason" rows="2" placeholder="Reason for referral..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Notes -->
+                <div class="mb-3">
+                    <label class="form-label">Notes</label>
+                    <textarea class="form-control" id="orderNotes" rows="2" placeholder="Additional notes..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-outline-primary" id="btnSaveOrderDraft">
+                    <i class="bi bi-save me-1"></i>Save Draft
+                </button>
+                <button type="button" class="btn btn-primary" id="btnSubmitOrder">
+                    <i class="bi bi-send me-1"></i>Submit Order
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== VIEW ORDER DETAIL MODAL ===== -->
+<div class="modal fade" id="orderDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Order Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="orderDetailBody">
+                <!-- Populated by JS -->
+            </div>
+            <div class="modal-footer" id="orderDetailFooter">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== ADD RESULTS MODAL ===== -->
+<div class="modal fade" id="orderResultsModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="orderResultsTitle">Add Results</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="resultsOrderId">
+                <input type="hidden" id="resultsOrderType">
+
+                <!-- Lab Results Table -->
+                <div id="labResultsSection">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered" id="labResultsTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Test Name</th>
+                                    <th>Result</th>
+                                    <th>Unit</th>
+                                    <th>Reference Range</th>
+                                    <th>Abnormal</th>
+                                </tr>
+                            </thead>
+                            <tbody id="labResultsBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Imaging / Referral Findings -->
+                <div id="findingsSection" style="display:none;">
+                    <label class="form-label fw-bold" id="findingsLabel">Findings</label>
+                    <textarea class="form-control" id="findingsText" rows="6" placeholder="Enter findings or consultation notes..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="btnSaveResults">
+                    <i class="bi bi-check-circle me-1"></i>Save Results
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== CONFIRM ACTION MODAL ===== -->
+<div class="modal fade" id="orderConfirmModal" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="orderConfirmTitle">Confirm</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="orderConfirmMessage">Are you sure?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="btnOrderConfirmAction">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>

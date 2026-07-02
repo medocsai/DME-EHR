@@ -1,0 +1,71 @@
+@{
+    Layout = "~/Views/Shared/_PatientPortalLayout.cshtml";
+    ViewData["Title"] = "Consent Forms";
+    ViewData["PortalPage"] = "consent";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0"><i class="bi bi-file-earmark-check me-2"></i>Consent Forms</h5>
+</div>
+
+<p class="text-muted small mb-3">
+    Sign your consent forms here before your visit. When you arrive at the clinic, you'll just confirm your presence and proceed to your appointment.
+</p>
+
+<!-- List of appointments awaiting consent. PortalConsentModule populates this. -->
+<div id="consentAwaitingContainer">
+    <div class="text-center text-muted py-4" id="consentAwaitingLoading">
+        <div class="spinner-border spinner-border-sm"></div> Loading...
+    </div>
+</div>
+
+<!-- Form-signing screen — hidden until patient picks an appointment. -->
+<div id="consentFormScreen" class="d-none">
+    <button type="button" class="btn btn-link text-decoration-none mb-3 ps-0" id="consentBackBtn">
+        <i class="bi bi-arrow-left me-1"></i>Back to list
+    </button>
+
+    <div class="card portal-card mb-3" id="consentFormHeaderCard">
+        <div class="card-body">
+            <h6 class="mb-1 text-primary"><i class="bi bi-calendar-event me-1"></i><span id="consentFormApptHeader">Appointment</span></h6>
+            <p class="mb-0 small text-muted" id="consentFormApptMeta">-</p>
+        </div>
+    </div>
+
+    <!-- Each template renders here as its own card with embedded signature pads. -->
+    <div id="consentTemplatesContainer"></div>
+
+    <div class="card portal-card mt-3">
+        <div class="card-body">
+            <div class="form-check mb-3">
+                <input type="checkbox" class="form-check-input" id="consentConfirmCheck">
+                <label class="form-check-label" for="consentConfirmCheck">
+                    I confirm I am <strong id="consentPatientName"></strong>, I have read and understand all of the consent forms above, and I agree to the terms described.
+                </label>
+            </div>
+            <div class="alert alert-danger d-none" id="consentSubmitError"></div>
+            <div class="d-grid gap-2 d-sm-flex justify-content-sm-end">
+                <button type="button" class="btn btn-outline-secondary" id="consentCancelBtn">Cancel</button>
+                <button type="button" class="btn btn-primary" id="consentSubmitBtn" disabled>
+                    <i class="bi bi-check-circle me-1"></i>Submit Signed Forms
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Success screen -->
+<div id="consentSuccessScreen" class="d-none text-center py-5">
+    <div class="mb-3"><i class="bi bi-check-circle-fill text-success" style="font-size: 4rem;"></i></div>
+    <h4 class="mb-2">All set!</h4>
+    <p class="text-muted mb-4">
+        Your consent forms have been submitted for <strong id="consentSuccessApptDate">your appointment</strong>.<br>
+        When you arrive at the clinic, just confirm your presence at the check-in screen.
+    </p>
+    <a href="/Portal/Dashboard" class="btn btn-primary">
+        <i class="bi bi-house-door me-1"></i>Back to Dashboard
+    </a>
+</div>
+
+<!-- Signature pad library — same one the kiosk uses. -->
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@@4.1.7/dist/signature_pad.umd.min.js"></script>

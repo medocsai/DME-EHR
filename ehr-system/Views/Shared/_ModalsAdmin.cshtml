@@ -1,0 +1,1001 @@
+@*
+    Admin-related Modals (Tenant, Template, User, Password, Billing, Consent)
+*@
+
+<!-- Tenant Modal (Add/Edit Clinic) -->
+<div class="modal fade" id="tenantModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Clinic</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="tenantForm">
+                <div class="modal-body">
+                    <input type="hidden" name="TenantId" id="tenantId">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <h6 class="text-primary mb-3">Clinic Information</h6>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Clinic Name *</label>
+                            <input type="text" class="form-control" name="Name" required autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Phone</label>
+                            <input type="tel" class="form-control" name="Phone" placeholder="(555) 555-5555" data-mask="phone" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" name="Email" placeholder="clinic@@example.com" autocomplete="off">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Address</label>
+                            <input type="text" class="form-control" name="Address" placeholder="Street address" autocomplete="off">
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">City</label>
+                            <input type="text" class="form-control" name="City" autocomplete="off">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">State</label>
+                            <input type="text" class="form-control" name="State" maxlength="2" autocomplete="off">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">ZIP</label>
+                            <input type="text" class="form-control" name="ZipCode" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Tax ID</label>
+                            <input type="text" class="form-control" name="TaxId" placeholder="XX-XXXXXXX" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">NPI</label>
+                            <input type="text" class="form-control" name="NPI" maxlength="10" placeholder="10-digit NPI" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Plan</label>
+                            <select class="form-select" name="Plan">
+                                <option value="0">Trial</option>
+                                <option value="1">Basic</option>
+                                <option value="2" selected>Professional</option>
+                                <option value="3">Enterprise</option>
+                            </select>
+                        </div>
+                        <!-- Logo Upload (Edit Mode Only) -->
+                        <div class="col-12 edit-clinic-only d-none">
+                            <hr>
+                            <h6 class="text-primary mb-3"><i class="bi bi-image me-1"></i>Clinic Logo</h6>
+                        </div>
+                        <div class="col-12 edit-clinic-only d-none">
+                            <div class="d-flex align-items-start gap-3">
+                                <div id="tenantLogoPreview" class="border rounded d-flex align-items-center justify-content-center bg-light" style="width: 120px; height: 120px; min-width: 120px; overflow: hidden;">
+                                    <span class="text-muted small" id="tenantLogoPlaceholder">No Logo</span>
+                                    <img id="tenantLogoImg" src="" alt="Clinic Logo" class="d-none" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+                                </div>
+                                <div class="flex-grow-1">
+                                    <input type="file" class="form-control form-control-sm mb-2" id="tenantLogoFile" accept=".jpg,.jpeg,.png,.webp,.svg">
+                                    <small class="text-muted d-block mb-2">Accepted: JPG, PNG, WebP, SVG. Max 2MB.</small>
+                                    <div class="d-flex gap-2">
+                                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnUploadTenantLogo" disabled>
+                                            <i class="bi bi-upload me-1"></i>Upload
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger d-none" id="btnDeleteTenantLogo">
+                                            <i class="bi bi-trash me-1"></i>Remove
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-12 new-clinic-admin">
+                            <hr>
+                            <h6 class="text-primary mb-3"><i class="bi bi-geo-alt me-2"></i>Initial Location</h6>
+                        </div>
+                        <div class="col-md-6 new-clinic-admin">
+                            <label class="form-label">Location Name *</label>
+                            <input type="text" class="form-control" name="InitialLocationName" placeholder="e.g., Downtown Clinic, Main Office" required autocomplete="off">
+                        </div>
+                        <div class="col-md-6 new-clinic-admin">
+                            <label class="form-label">Time Zone *</label>
+                            <select class="form-select" name="InitialLocationTimeZoneId" id="tenantFormTimezone" required>
+                                <option value="">Select timezone...</option>
+                            </select>
+                        </div>
+                        <div class="col-12 new-clinic-admin" id="tenantTimezoneInfo" style="display: none;">
+                            <div class="alert alert-info py-2 mb-0">
+                                <i class="bi bi-clock me-2"></i>
+                                <span id="tenantTimezoneDisplay"></span>
+                            </div>
+                        </div>
+                        <div class="col-12 new-clinic-admin">
+                            <small class="text-muted">This will be the default location for this clinic. You can add more locations later.</small>
+                        </div>
+                        <div class="col-12 new-clinic-admin">
+                            <hr>
+                            <h6 class="text-primary mb-3">Clinic Administrator</h6>
+                        </div>
+                        <div class="col-md-6 new-clinic-admin">
+                            <label class="form-label">Admin First Name *</label>
+                            <input type="text" class="form-control" name="AdminFirstName" required autocomplete="off">
+                        </div>
+                        <div class="col-md-6 new-clinic-admin">
+                            <label class="form-label">Admin Last Name *</label>
+                            <input type="text" class="form-control" name="AdminLastName" required autocomplete="off">
+                        </div>
+                        <div class="col-md-6 new-clinic-admin">
+                            <label class="form-label">Admin Email *</label>
+                            <input type="email" class="form-control" name="AdminEmail" required autocomplete="off">
+                        </div>
+                        <div class="col-md-6 new-clinic-admin">
+                            <label class="form-label">Admin Password *</label>
+                            <input type="password" class="form-control" name="AdminPassword" required minlength="8" autocomplete="off">
+                            <small class="text-muted">Minimum 8 characters</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Clinic</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Template Modal (Add/Edit Note Template) -->
+<div class="modal fade" id="templateModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">New Note Template</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="templateForm">
+                <div class="modal-body">
+                    <input type="hidden" name="TemplateId" id="templateId">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Template Name *</label>
+                            <input type="text" class="form-control" name="Name" required>
+                        </div>
+                        <div class="col-md-6 requires-super-admin">
+                            <label class="form-label">Assign to Clinic</label>
+                            <select class="form-select" name="TenantId" id="templateTenantSelect">
+                                <option value="">System Template (All Clinics)</option>
+                            </select>
+                            <small class="text-muted">Leave blank for system-wide template</small>
+                        </div>
+                        <div class="col-md-6 requires-super-admin" id="templateLocationContainer">
+                            <label class="form-label">Assign to Location</label>
+                            <select class="form-select" name="LocationId" id="templateLocationSelect" disabled>
+                                <option value="">All Locations (Select Clinic First)</option>
+                            </select>
+                            <small class="text-muted">Leave blank for all locations in the clinic</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Sort Order</label>
+                            <input type="number" class="form-control" name="SortOrder" value="0" min="0" autocomplete="off">
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" type="checkbox" name="IsActive" id="templateIsActive" checked>
+                                <label class="form-check-label" for="templateIsActive">Active</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Template Content *</label>
+                            <textarea class="form-control" name="HtmlContent" id="templateHtmlContent" rows="15" required></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Template</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Change Password Modal -->
+<div class="modal fade" id="changePasswordModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-key me-2"></i>Change Password</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="changePasswordForm" autocomplete="off" onsubmit="return false;">
+                <div class="modal-body">
+                    <div class="alert alert-info small">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Password will be updated across all clinics you belong to.
+                    </div>
+                    <div id="changePasswordError" class="alert alert-danger small d-none"></div>
+                    <div class="mb-3">
+                        <label class="form-label">Current Password *</label>
+                        <input type="password" class="form-control" name="CurrentPassword" required autocomplete="current-password">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">New Password *</label>
+                        <input type="password" class="form-control" name="NewPassword" required minlength="8" autocomplete="new-password">
+                        <small class="text-muted">Minimum 8 characters</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Confirm New Password *</label>
+                        <input type="password" class="form-control" name="ConfirmPassword" required minlength="8" autocomplete="new-password">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Change Password</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- User Modal (Add/Edit User) -->
+<div class="modal fade" id="userModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="userForm">
+                <div class="modal-body">
+                    <input type="hidden" name="UserId" id="userId">
+                    <div class="row g-3">
+                        <div class="col-12 requires-super-admin">
+                            <label class="form-label">Assign to Clinic *</label>
+                            <select class="form-select" name="TenantId" id="userTenantSelect">
+                                <option value="">Select a clinic...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">First Name *</label>
+                            <input type="text" class="form-control" name="FirstName" required autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Last Name *</label>
+                            <input type="text" class="form-control" name="LastName" required autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email *</label>
+                            <input type="email" class="form-control" name="Email" required autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Phone</label>
+                            <input type="tel" class="form-control" name="Phone" placeholder="(555) 555-5555" data-mask="phone" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Role *</label>
+                            <select class="form-select" name="Role" required id="userRoleSelect">
+                                <option value="1">Clinic Admin</option>
+                                <option value="2">Clinician</option>
+                                <option value="3">Front Desk</option>
+                                <option value="4">Biller</option>
+                                <option value="5">Read Only</option>
+                                <option value="6">Medical Assistant</option>
+                                <option value="7">Nurse</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 new-user-password">
+                            <label class="form-label">Password *</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" name="Password" id="newUserPassword" minlength="8" autocomplete="off">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('newUserPassword', this)">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted">Minimum 8 characters</small>
+                        </div>
+                        <div class="col-12">
+                            <hr class="my-2">
+                            <div class="card bg-light border-0 shadow-sm">
+                                <div class="card-header bg-info bg-opacity-10 border-0 py-2">
+                                    <h6 class="mb-0 small"><i class="bi bi-link-45deg me-2"></i>Provider Association</h6>
+                                </div>
+                                <div class="card-body py-2">
+                                    <div class="row align-items-center">
+                                        <div class="col-md-8">
+                                            <label class="form-label mb-1 small">Link to Provider</label>
+                                            <select class="form-select form-select-sm" name="ProviderId" id="userProviderSelect">
+                                                <option value="">-- No Provider (Non-Clinician Account) --</option>
+                                            </select>
+                                            <small class="text-muted">Select a provider if this user is a clinician account</small>
+                                        </div>
+                                        <div class="col-md-4 text-end">
+                                            <span class="badge bg-secondary" id="userProviderBadge">No Provider</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" name="IsActive" id="userIsActive" checked>
+                                <label class="form-check-label" for="userIsActive">Active</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Admin Reset Password Modal -->
+<div class="modal fade" id="adminResetPasswordModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-key me-2"></i>Reset User Password</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="adminResetPasswordForm">
+                <div class="modal-body">
+                    <input type="hidden" name="UserId" id="resetPasswordUserId">
+                    <p>Reset password for: <strong id="resetPasswordUserName"></strong></p>
+                    <div class="mb-3">
+                        <label class="form-label">New Password *</label>
+                        <input type="password" class="form-control" name="NewPassword" required minlength="8" autocomplete="off">
+                        <small class="text-muted">Minimum 8 characters</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Confirm New Password *</label>
+                        <input type="password" class="form-control" name="ConfirmPassword" required minlength="8" autocomplete="off">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Reset Password</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Admin Change Email Modal -->
+<div class="modal fade" id="adminChangeEmailModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-envelope me-2"></i>Change User Email</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="adminChangeEmailForm">
+                <div class="modal-body">
+                    <input type="hidden" name="UserId" id="changeEmailUserId">
+                    <p>Change email for: <strong id="changeEmailUserName"></strong></p>
+                    <div class="mb-3">
+                        <label class="form-label">Current Email</label>
+                        <input type="email" class="form-control" id="currentUserEmail" readonly disabled>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">New Email *</label>
+                        <input type="email" class="form-control" name="NewEmail" required autocomplete="off">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Change Email</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- New Claim Modal -->
+<div class="modal fade" id="newClaimModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-file-earmark-medical me-2"></i>Create New Claim</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="newClaimForm">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Patient *</label>
+                            <div class="patient-autocomplete-container">
+                                <input type="text" class="form-control" id="claimPatientSearch" placeholder="Search by name, MRN..." autocomplete="off">
+                                <div class="patient-search-results d-none" id="claimPatientSearchResults"></div>
+                                <input type="hidden" id="claimPatientId" name="PatientId" required>
+                            </div>
+                            <div class="selected-patient-display d-none mt-2" id="claimSelectedPatient"></div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Insurance *</label>
+                            <select class="form-select" id="claimInsuranceSelect" name="InsuranceId" required>
+                                <option value="">Select insurance...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Service Date From *</label>
+                            <input type="date" class="form-control" name="ServiceDateFrom" required autocomplete="off">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Select Charges to Include</label>
+                            <div class="border rounded p-3" id="claimChargesList" style="max-height: 300px; overflow-y: auto;">
+                                <p class="text-muted mb-0">Select a patient to see unbilled charges</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg me-1"></i>Create Claim
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Claim Detail / CMS-1500 Edit Modal -->
+<div class="modal fade" id="claimDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content">
+            <div class="modal-header bg-light border-bottom">
+                <h5 class="modal-title" id="claimDetailTitle"><i class="bi bi-file-medical me-2"></i>Claim Detail</h5>
+                <div class="d-flex align-items-center gap-2 ms-auto me-3">
+                    <!-- Amendment-window countdown — visible only when the linked
+                         encounter's 24h amendment window is still open. Driven by
+                         ClaimFormModule from the claim DTO's AmendmentWindowEndsAt. -->
+                    <span class="amendment-countdown" id="cf_submitLockBadge" style="display:none;"
+                          data-window-end="" title="Submission locks until this time">
+                        <i class="bi bi-clock-history"></i>
+                        <span class="countdown-text">--</span>
+                    </span>
+                    <button class="btn btn-primary" id="cf_saveBtn"><i class="bi bi-save me-1"></i>Save</button>
+                    <!-- Submit — visible when claim is Draft/Ready. Sends the
+                         claim to the clearing house (Office Ally today, but the
+                         label says just "Submit" so it reads the same regardless
+                         of which clearing house is wired up).
+                         Disabled with tooltip while amendment window is open. -->
+                    <span id="cf_submitBtnWrap" style="display:none;">
+                        <button class="btn btn-primary" id="cf_submitBtn">
+                            <i class="bi bi-send me-1"></i>Submit
+                        </button>
+                    </span>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="claimDetailBody">
+                <div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Loading claim...</p></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Consent Template Modal -->
+<div class="modal fade" id="consentTemplateModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="consentTemplateModalTitle">
+                    <i class="bi bi-file-earmark-text me-2"></i>New Consent Template
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="consentTemplateForm" onsubmit="saveConsentTemplate(event)">
+                <div class="modal-body">
+                    <input type="hidden" id="consentTemplateId">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Template Name *</label>
+                            <input type="text" class="form-control" id="consentTemplateName" required placeholder="e.g., General Consent for Treatment" autocomplete="off">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Form Type *</label>
+                            <select class="form-select" id="consentTemplateFormType" required>
+                                <option value="0">Initial Consent</option>
+                                <option value="1">Ongoing Consent</option>
+                            </select>
+                        </div>
+                        <input type="hidden" id="consentTemplateLocation">
+                        <div class="col-12">
+                            <label class="form-label">Description</label>
+                            <input type="text" class="form-control" id="consentTemplateDescription" placeholder="Brief description of this consent form" autocomplete="off">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Form Content (HTML) *</label>
+                            <div class="alert alert-info small mb-2" style="display: block;">
+                                <strong>Available Placeholders:</strong>
+                                <code>{{PATIENT_FULL_NAME}}</code>, <code>{{PATIENT_DOB}}</code>, <code>{{TODAY_DATE}}</code>, <code>{{CLINIC_NAME}}</code>, <code>{{LOCATION_NAME}}</code>, <code>{{PROVIDER_NAME}}</code>, <code>{{EMERGENCY_CONTACT_NAME}}</code>, <code>{{EMERGENCY_CONTACT_PHONE}}</code>, <code>{{EMERGENCY_CONTACT_RELATION}}</code>
+                                <div>
+                                    <strong>Signature Field:</strong>
+                                    <code>{{SIGNATURE:field_id:width:height:Label:required}}</code> (e.g., <code>{{SIGNATURE:patient_sig:400:150:Patient Signature:true}}</code>)
+                                </div>
+                            </div>
+                            <textarea id="consentTemplateContent" class="form-control"></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Display Order</label>
+                            <input type="number" class="form-control" id="consentTemplateOrder" value="0" min="0" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check mt-4">
+                                <input type="checkbox" class="form-check-input" id="consentTemplateActive" checked>
+                                <label class="form-check-label" for="consentTemplateActive">Active</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" onclick="previewConsentTemplate()">
+                        <i class="bi bi-eye me-1"></i>Preview
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg me-1"></i>Save Template
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Consent Template Preview Modal -->
+<div class="modal fade" id="consentPreviewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-eye me-2"></i><span id="consentPreviewTitle">Template Preview</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="consentPreviewContent" class="border p-3" style="max-height: 60vh; overflow-y: auto;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Consent Template Confirmation Modal -->
+<div class="modal fade" id="deleteConsentTemplateModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Delete Template</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the template <strong id="deleteTemplateName"></strong>?</p>
+                <p class="text-danger mb-0"><i class="bi bi-exclamation-circle me-1"></i>This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteTemplateBtn">
+                    <i class="bi bi-trash me-1"></i>Delete Template
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Kiosk Settings Modal -->
+<div class="modal fade" id="kioskSettingsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title"><i class="bi bi-tablet me-2"></i>Kiosk Settings</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="kioskSettingsForm" onsubmit="saveKioskSettings(event)">
+                <div class="modal-body">
+                    <input type="hidden" id="kioskSettingsLocationId">
+                    <h6 id="kioskSettingsLocationName" class="mb-3"></h6>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input type="checkbox" class="form-check-input" id="kioskEnabled">
+                            <label class="form-check-label" for="kioskEnabled">Enable Kiosk for this Location</label>
+                        </div>
+                    </div>
+                    <div id="kioskSettingsDetails">
+                        <div class="mb-3">
+                            <label class="form-label">Session Timeout (minutes)</label>
+                            <input type="number" class="form-control" id="kioskSessionTimeout" value="10" min="1" max="60" autocomplete="off">
+                            <small class="text-muted">How long before an inactive kiosk session expires</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Kiosk URL</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="kioskUrl" readonly>
+                                <button class="btn btn-outline-secondary" type="button" onclick="copyKioskUrl()">
+                                    <i class="bi bi-clipboard"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted">Share this URL with the kiosk tablet</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">QR Code</label>
+                            <div id="kioskQrCode" class="text-center p-3 bg-white border rounded">
+                                <small class="text-muted">QR code will appear here</small>
+                            </div>
+                            <small class="text-muted">Scan this QR code with the kiosk tablet</small>
+                        </div>
+                        <div class="mb-3">
+                            <button type="button" class="btn btn-outline-warning btn-sm" onclick="regenerateKioskToken()">
+                                <i class="bi bi-arrow-repeat me-1"></i>Regenerate Token
+                            </button>
+                            <small class="text-muted d-block mt-1">This will invalidate the current kiosk URL</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg me-1"></i>Save Settings
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Generic Confirmation Modal -->
+<div class="modal fade" id="genericConfirmModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header" id="genericConfirmHeader">
+                <h5 class="modal-title" id="genericConfirmTitle">Confirm Action</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="genericConfirmBody">
+                <p id="genericConfirmMessage">Are you sure you want to proceed?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="genericConfirmBtn">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Manual Consent Upload Modal -->
+<div class="modal fade" id="manualConsentUploadModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-upload me-2"></i>Upload Consent Form
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="manualConsentUploadForm" enctype="multipart/form-data">
+                <div class="modal-body">
+                    <input type="hidden" id="manualConsentPatientId">
+                    <input type="hidden" id="manualConsentCareEpisodeId">
+
+                    <!-- Patient Info Display -->
+                    <div class="alert alert-info mb-3">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-person-circle fs-4 me-2"></i>
+                            <div>
+                                <strong>Patient:</strong>
+                                <span id="manualConsentPatientName">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Care Episode Status Info -->
+                    <div id="manualConsentCareEpisodeInfo" class="alert alert-secondary mb-3 d-none">
+                        <i class="bi bi-folder2 me-2"></i>
+                        <span id="manualConsentCareEpisodeText">-</span>
+                    </div>
+
+                    <!-- Hidden fields for auto-detected values -->
+                    <input type="hidden" id="manualConsentType" value="0">
+                    <input type="hidden" id="manualConsentSignedAt" value="">
+                    <input type="hidden" id="manualConsentNotes" value="">
+
+                    <!-- PDF File Upload -->
+                    <div class="mb-3">
+                        <label class="form-label">Consent Form PDF *</label>
+                        <div class="dropzone-container border rounded p-4 text-center" id="consentUploadDropzone">
+                            <i class="bi bi-file-earmark-pdf display-4 text-danger"></i>
+                            <p class="mb-2">Drag and drop PDF file here or click to browse</p>
+                            <input type="file" class="d-none" id="manualConsentFile" accept=".pdf,application/pdf" required>
+                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('manualConsentFile').click()">
+                                <i class="bi bi-folder2-open me-1"></i> Browse Files
+                            </button>
+                            <p class="small text-muted mt-2 mb-0">PDF files only (Max 10MB)</p>
+                        </div>
+                        <div id="consentFileSelected" class="d-none mt-2">
+                            <div class="alert alert-success d-flex align-items-center py-2">
+                                <i class="bi bi-file-earmark-pdf-fill text-danger fs-4 me-2"></i>
+                                <div class="flex-grow-1">
+                                    <strong id="consentFileName">-</strong>
+                                    <div class="small text-muted" id="consentFileSize">-</div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearConsentFile()">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Upload Progress -->
+                    <div id="consentUploadProgress" class="d-none">
+                        <div class="progress mb-2">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <small class="text-muted">Uploading...</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="submitManualConsentBtn">
+                        <i class="bi bi-upload me-1"></i>Upload Consent
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Medical Lien Template Modal (Add/Edit) - Super Admin Only -->
+<div class="modal fade" id="medicalLienTemplateModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-file-earmark-medical me-2"></i>Medical Lien Form Template</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="medicalLienTemplateForm">
+                <div class="modal-body">
+                    <input type="hidden" name="TemplateId" id="medicalLienTemplateId">
+
+                    <!-- Info Alert -->
+                    <div class="alert alert-info small mb-3">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Create HTML templates with placeholders that will be replaced with actual patient and clinic data when generating the PDF.
+                    </div>
+
+                    <div class="row g-3">
+                        <!-- Template Name -->
+                        <div class="col-md-6">
+                            <label class="form-label">Template Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="Name" id="medicalLienTemplateName" required
+                                   placeholder="e.g., Standard Medical Lien Form" autocomplete="off">
+                        </div>
+
+                        <!-- Active Status -->
+                        <div class="col-md-6">
+                            <label class="form-label">Status</label>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" name="IsActive" id="medicalLienTemplateIsActive" checked>
+                                <label class="form-check-label" for="medicalLienTemplateIsActive">
+                                    Active (available for use)
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Description -->
+                        <div class="col-12">
+                            <label class="form-label">Description</label>
+                            <input type="text" class="form-control" name="Description" id="medicalLienTemplateDescription"
+                                   placeholder="Brief description of this template" autocomplete="off">
+                        </div>
+
+                        <!-- Clinic Selection -->
+                        <div class="col-md-6">
+                            <label class="form-label">Clinic <span class="text-danger">*</span></label>
+                            <select class="form-select" name="TenantId" id="medicalLienTemplateTenantSelect" required>
+                                <option value="">Select a clinic...</option>
+                            </select>
+                            <small class="text-muted">Template will be available only for this clinic</small>
+                        </div>
+
+                        <!-- Location Selection -->
+                        <div class="col-md-6">
+                            <label class="form-label">Location <span class="text-danger">*</span></label>
+                            <select class="form-select" name="LocationId" id="medicalLienTemplateLocationSelect" required disabled>
+                                <option value="">Select clinic first...</option>
+                            </select>
+                            <small class="text-muted">Template will be used for this specific location</small>
+                        </div>
+
+                        <!-- Placeholders Reference -->
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header py-2">
+                                    <a class="text-decoration-none d-flex justify-content-between align-items-center"
+                                       data-bs-toggle="collapse" href="#placeholdersCollapse">
+                                        <span><i class="bi bi-code-square me-2"></i>Available Placeholders</span>
+                                        <i class="bi bi-chevron-down"></i>
+                                    </a>
+                                </div>
+                                <div class="collapse" id="placeholdersCollapse">
+                                    <div class="card-body small">
+                                        <div class="row">
+                                            <div class="col-md-4">
+                                                <h6 class="text-primary">Patient Information</h6>
+                                                <ul class="list-unstyled mb-3">
+                                                    <li><code>{{PatientName}}</code> - Full name</li>
+                                                    <li><code>{{PatientAddress}}</code> - Full address</li>
+                                                    <li><code>{{DateOfInjury}}</code> - Date of injury</li>
+                                                </ul>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <h6 class="text-primary">Attorney Information</h6>
+                                                <ul class="list-unstyled mb-3">
+                                                    <li><code>{{AttorneyName}}</code> - Name</li>
+                                                    <li><code>{{AttorneyAddress}}</code> - Address</li>
+                                                    <li><code>{{AttorneyPhone}}</code> - Phone</li>
+                                                    <li><code>{{AttorneyEmail}}</code> - Email</li>
+                                                </ul>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <h6 class="text-primary">Provider Information</h6>
+                                                <ul class="list-unstyled mb-3">
+                                                    <li><code>{{ProviderName}}</code> - Name</li>
+                                                    <li><code>{{ProviderSignature}}</code> - Signature image</li>
+                                                </ul>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <h6 class="text-primary">Clinic Information</h6>
+                                                <ul class="list-unstyled">
+                                                    <li><code>{{ClinicName}}</code> - Clinic name</li>
+                                                    <li><code>{{ClinicAddress}}</code> - Full address</li>
+                                                    <li><code>{{ClinicPhone}}</code> - Phone number</li>
+                                                    <li><code>{{ClinicEmail}}</code> - Email address</li>
+                                                </ul>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <h6 class="text-primary">Other</h6>
+                                                <ul class="list-unstyled">
+                                                    <li><code>{{TodayDate}}</code> - Current date</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Template Content -->
+                        <div class="col-12">
+                            <label class="form-label">Template Content (HTML) <span class="text-danger">*</span></label>
+                            <textarea class="form-control" name="HtmlContent" id="medicalLienTemplateHtmlContent"
+                                      rows="20" required placeholder="Enter HTML template with placeholders..."></textarea>
+                            <small class="text-muted">Use the placeholders above to insert dynamic content</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg me-1"></i>Save Template
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    document.addEventListener('DOMContentLoaded', function () {
+        var form = document.getElementById('changePasswordForm');
+        var modalEl = document.getElementById('changePasswordModal');
+        if (!form || form.dataset.bound === '1') return;
+        form.dataset.bound = '1';
+
+        var errorBox = document.getElementById('changePasswordError');
+        var submitBtn = form.querySelector('button[type="submit"]');
+
+        function showError(msg) {
+            if (!errorBox) return;
+            errorBox.textContent = msg;
+            errorBox.classList.remove('d-none');
+        }
+        function clearError() {
+            if (!errorBox) return;
+            errorBox.textContent = '';
+            errorBox.classList.add('d-none');
+        }
+
+        if (modalEl) {
+            modalEl.addEventListener('hidden.bs.modal', function () {
+                form.reset();
+                clearError();
+            });
+        }
+
+        form.addEventListener('submit', async function (e) {
+            e.preventDefault();
+            clearError();
+
+            var fd = new FormData(form);
+            var currentPassword = fd.get('CurrentPassword') || '';
+            var newPassword = fd.get('NewPassword') || '';
+            var confirmPassword = fd.get('ConfirmPassword') || '';
+
+            if (newPassword.length < 8) {
+                showError('New password must be at least 8 characters.');
+                return;
+            }
+            if (newPassword !== confirmPassword) {
+                showError('New password and confirmation do not match.');
+                return;
+            }
+            if (newPassword === currentPassword) {
+                showError('New password must be different from current password.');
+                return;
+            }
+
+            if (submitBtn) { submitBtn.disabled = true; }
+            try {
+                var payload = { CurrentPassword: currentPassword, NewPassword: newPassword };
+                var data;
+                if (window.App && window.App.api && typeof window.App.api.post === 'function') {
+                    // App.api auto-attaches Bearer token (JWT from localStorage.authToken)
+                    data = await window.App.api.post('/auth/change-password', payload, { showErrors: false });
+                } else {
+                    var token = localStorage.getItem('authToken') || '';
+                    var res = await fetch('/api/auth/change-password', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'Authorization': token ? ('Bearer ' + token) : ''
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                    data = await res.json().catch(function () { return {}; });
+                    if (!res.ok) {
+                        showError(data.message || (res.status === 401 ? 'Your session has expired. Please log in again.' : 'Failed to change password.'));
+                        return;
+                    }
+                }
+                if (window.Toast && typeof Toast.success === 'function') {
+                    Toast.success('Success', (data && data.message) || 'Password changed successfully');
+                }
+                if (modalEl && window.bootstrap) {
+                    bootstrap.Modal.getInstance(modalEl)?.hide();
+                }
+                form.reset();
+            } catch (err) {
+                console.error('[ChangePassword] error', err);
+                var status = err && (err.status || err.statusCode);
+                var serverMsg = err && (err.message || (err.data && err.data.message));
+                var msg;
+                if (status === 400 || /current password is incorrect/i.test(String(serverMsg))) {
+                    msg = 'Current password is incorrect.';
+                } else if (status === 401) {
+                    msg = 'Your session has expired. Please log in again.';
+                } else {
+                    msg = serverMsg || 'Failed to change password.';
+                }
+                showError(msg);
+            } finally {
+                if (submitBtn) { submitBtn.disabled = false; }
+            }
+        });
+    });
+})();
+</script>
+
+<!-- Toast Container -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="toast" class="toast" role="alert">
+        <div class="toast-header">
+            <strong class="me-auto" id="toastTitle">Notification</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body" id="toastMessage"></div>
+    </div>
+</div>

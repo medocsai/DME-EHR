@@ -1,0 +1,17 @@
+@{
+    Layout = "~/Views/Shared/_PatientPortalLayout.cshtml";
+    ViewData["Title"] = "Book Appointment";
+    ViewData["PortalPage"] = "booking";
+}
+
+@*
+    The booking flow is mounted by PortalBookingWizard (see
+    wwwroot/js/modules/portal/booking/PortalBookingWizard.js).
+    It paints the page header, step indicator, sidebar, and mobile bottom strip
+    inside this single root element.
+*@
+<div id="portalBookingWizardRoot">
+    <div class="text-center text-muted py-4">
+        <div class="spinner-border spinner-border-sm"></div> Loading...
+    </div>
+</div>

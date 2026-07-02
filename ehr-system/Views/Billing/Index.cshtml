@@ -1,0 +1,463 @@
+@{
+    ViewData["Title"] = "Billing";
+    ViewData["ActivePage"] = "billing";
+}
+
+<!-- Billing Page -->
+<div class="page active" id="billingPage">
+    <div class="page-header">
+        <!-- New Claim button hidden for now -->
+    </div>
+    <ul class="nav nav-tabs mb-4">
+        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#claimsTab">Claims</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#chargesTab">Charges</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#paymentsTab">Payments</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#copayBalancesTab">Copay Balances</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#arAgingTab">A/R Aging</a></li>
+    </ul>
+    <div class="tab-content">
+        <!-- ═══ CLAIMS TAB ═══ -->
+        <div class="tab-pane fade show active" id="claimsTab">
+            <!-- Summary Cards -->
+            <div class="billing-summary-cards" id="claimsSummaryCards">
+                <div class="billing-summary-card billing-card-blue">
+                    <div class="billing-card-icon"><i class="bi bi-file-earmark-medical"></i></div>
+                    <div class="billing-card-content">
+                        <div class="billing-card-value" id="claimsTotalCount">0</div>
+                        <div class="billing-card-label">Total Claims</div>
+                    </div>
+                </div>
+                <div class="billing-summary-card billing-card-green">
+                    <div class="billing-card-icon"><i class="bi bi-currency-dollar"></i></div>
+                    <div class="billing-card-content">
+                        <div class="billing-card-value" id="claimsTotalBilled">$0.00</div>
+                        <div class="billing-card-label">Total Billed</div>
+                    </div>
+                </div>
+                <div class="billing-summary-card billing-card-teal">
+                    <div class="billing-card-icon"><i class="bi bi-check-circle"></i></div>
+                    <div class="billing-card-content">
+                        <div class="billing-card-value" id="claimsTotalPaid">$0.00</div>
+                        <div class="billing-card-label">Total Paid</div>
+                    </div>
+                </div>
+                <div class="billing-summary-card billing-card-orange">
+                    <div class="billing-card-icon"><i class="bi bi-exclamation-triangle"></i></div>
+                    <div class="billing-card-content">
+                        <div class="billing-card-value" id="claimsTotalBalance">$0.00</div>
+                        <div class="billing-card-label">Outstanding</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter Bar -->
+            <div class="card mb-3 schedule-filters-card" id="claimsFiltersCard">
+                <div class="card-body py-3">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-funnel text-primary"></i>
+                            <h6 class="mb-0 fw-semibold text-secondary">Filters</h6>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span id="claimsFilterCount" class="badge bg-primary-subtle text-primary" style="display: none;">0</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary schedule-filter-clear-btn" id="clearClaimsFilters" style="display: none;" title="Clear all filters">
+                                <i class="bi bi-x-lg me-1"></i>Clear
+                            </button>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <!-- Patient Filter -->
+                        <div class="dropdown schedule-filter-dropdown">
+                            <button class="btn schedule-filter-btn dropdown-toggle" type="button" id="claimsPatientFilterBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                                <i class="bi bi-person me-1"></i>Patient
+                            </button>
+                            <div class="dropdown-menu schedule-filter-menu p-3" style="min-width: 280px;">
+                                <input type="text" class="form-control form-control-sm schedule-filter-search mb-2" id="claimsPatientFilterSearch" placeholder="Search patients (min 3 chars)...">
+                                <div id="claimsPatientFilterList" class="schedule-filter-list" style="max-height: 200px; overflow-y: auto;"></div>
+                                <button type="button" class="btn btn-sm btn-link text-danger mt-1 p-0" id="clearClaimsPatientFilter" style="display: none;"><i class="bi bi-x me-1"></i>Clear</button>
+                            </div>
+                        </div>
+                        <!-- Provider Filter -->
+                        <div class="dropdown schedule-filter-dropdown">
+                            <button class="btn schedule-filter-btn dropdown-toggle" type="button" id="claimsProviderFilterBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                                <i class="bi bi-person-badge me-1"></i>Provider
+                            </button>
+                            <div class="dropdown-menu schedule-filter-menu p-3" style="min-width: 280px;">
+                                <input type="text" class="form-control form-control-sm schedule-filter-search mb-2" id="claimsProviderFilterSearch" placeholder="Search providers...">
+                                <div id="claimsProviderFilterList" class="schedule-filter-list" style="max-height: 200px; overflow-y: auto;"></div>
+                                <button type="button" class="btn btn-sm btn-link text-danger mt-1 p-0" id="clearClaimsProviderFilter" style="display: none;"><i class="bi bi-x me-1"></i>Clear</button>
+                            </div>
+                        </div>
+                        <!-- Payer Filter -->
+                        <div class="dropdown schedule-filter-dropdown">
+                            <button class="btn schedule-filter-btn dropdown-toggle" type="button" id="claimsPayerFilterBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                                <i class="bi bi-shield me-1"></i>Payer
+                            </button>
+                            <div class="dropdown-menu schedule-filter-menu p-3" style="min-width: 260px;">
+                                <label class="form-label small text-muted">Search by payer name</label>
+                                <input type="text" class="form-control form-control-sm schedule-filter-search mb-2" id="claimsPayerFilterSearch" placeholder="e.g. Blue Cross...">
+                                <button type="button" class="btn btn-sm btn-primary w-100" id="applyClaimsPayerFilter">Apply</button>
+                                <button type="button" class="btn btn-sm btn-link text-danger mt-1 p-0" id="clearClaimsPayerFilter" style="display: none;"><i class="bi bi-x me-1"></i>Clear</button>
+                            </div>
+                        </div>
+                        <!-- Status Filter -->
+                        <div class="dropdown schedule-filter-dropdown">
+                            <button class="btn schedule-filter-btn dropdown-toggle" type="button" id="claimsStatusFilterBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                                <i class="bi bi-tag me-1"></i>Status
+                                <span class="badge bg-primary rounded-pill ms-1 d-none" id="claimsStatusFilterCount">0</span>
+                            </button>
+                            <div class="dropdown-menu schedule-filter-menu p-3" style="min-width: 200px;">
+                                <div class="form-check schedule-filter-option"><input class="form-check-input claims-status-filter" type="checkbox" value="0" id="claimStatus0"><label class="form-check-label" for="claimStatus0">Draft</label></div>
+                                <div class="form-check schedule-filter-option"><input class="form-check-input claims-status-filter" type="checkbox" value="1" id="claimStatus1"><label class="form-check-label" for="claimStatus1">Ready</label></div>
+                                <div class="form-check schedule-filter-option"><input class="form-check-input claims-status-filter" type="checkbox" value="2" id="claimStatus2"><label class="form-check-label" for="claimStatus2">Submitted</label></div>
+                                <div class="form-check schedule-filter-option"><input class="form-check-input claims-status-filter" type="checkbox" value="5" id="claimStatus5"><label class="form-check-label" for="claimStatus5">Paid</label></div>
+                                <div class="form-check schedule-filter-option"><input class="form-check-input claims-status-filter" type="checkbox" value="7" id="claimStatus7"><label class="form-check-label" for="claimStatus7">Denied</label></div>
+                                <div class="form-check schedule-filter-option"><input class="form-check-input claims-status-filter" type="checkbox" value="8" id="claimStatus8"><label class="form-check-label" for="claimStatus8">Rejected</label></div>
+                            </div>
+                        </div>
+                        <!-- Date Range -->
+                        <div class="d-flex align-items-center gap-2 ms-auto">
+                            <i class="bi bi-calendar3 text-muted"></i>
+                            <input type="date" class="form-control form-control-sm billing-date-input" id="claimsDateFrom">
+                            <span class="text-muted small">to</span>
+                            <input type="date" class="form-control form-control-sm billing-date-input" id="claimsDateTo">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Claims Table -->
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="claimsTable">
+                            <thead>
+                                <tr>
+                                    <th>Claim #</th>
+                                    <th>Patient</th>
+                                    <th>Provider</th>
+                                    <th>Payer</th>
+                                    <th>Service Date</th>
+                                    <th>Billed</th>
+                                    <th>Paid</th>
+                                    <th>Balance</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div class="billing-pagination" id="claimsPagination" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ CHARGES TAB ═══ -->
+        <div class="tab-pane fade" id="chargesTab">
+            <!-- Summary Cards -->
+            <div class="billing-summary-cards" id="chargesSummaryCards">
+                <div class="billing-summary-card billing-card-blue">
+                    <div class="billing-card-icon"><i class="bi bi-receipt"></i></div>
+                    <div class="billing-card-content">
+                        <div class="billing-card-value" id="chargesTotalCount">0</div>
+                        <div class="billing-card-label">Total Charges</div>
+                    </div>
+                </div>
+                <div class="billing-summary-card billing-card-green">
+                    <div class="billing-card-icon"><i class="bi bi-currency-dollar"></i></div>
+                    <div class="billing-card-content">
+                        <div class="billing-card-value" id="chargesTotalAmount">$0.00</div>
+                        <div class="billing-card-label">Total Amount</div>
+                    </div>
+                </div>
+                <div class="billing-summary-card billing-card-teal">
+                    <div class="billing-card-icon"><i class="bi bi-check2-all"></i></div>
+                    <div class="billing-card-content">
+                        <div class="billing-card-value" id="chargesBilledCount">0</div>
+                        <div class="billing-card-label">Billed</div>
+                    </div>
+                </div>
+                <div class="billing-summary-card billing-card-orange">
+                    <div class="billing-card-icon"><i class="bi bi-hourglass-split"></i></div>
+                    <div class="billing-card-content">
+                        <div class="billing-card-value" id="chargesPendingCount">0</div>
+                        <div class="billing-card-label">Pending</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter Bar -->
+            <div class="card mb-3 schedule-filters-card" id="chargesFiltersCard">
+                <div class="card-body py-3">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-funnel text-primary"></i>
+                            <h6 class="mb-0 fw-semibold text-secondary">Filters</h6>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span id="chargesFilterCount" class="badge bg-primary-subtle text-primary" style="display: none;">0</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary schedule-filter-clear-btn" id="clearChargesFilters" style="display: none;" title="Clear all filters">
+                                <i class="bi bi-x-lg me-1"></i>Clear
+                            </button>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <!-- Patient Filter -->
+                        <div class="dropdown schedule-filter-dropdown">
+                            <button class="btn schedule-filter-btn dropdown-toggle" type="button" id="chargesPatientFilterBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                                <i class="bi bi-person me-1"></i>Patient
+                            </button>
+                            <div class="dropdown-menu schedule-filter-menu p-3" style="min-width: 280px;">
+                                <input type="text" class="form-control form-control-sm schedule-filter-search mb-2" id="chargesPatientFilterSearch" placeholder="Search patients (min 3 chars)...">
+                                <div id="chargesPatientFilterList" class="schedule-filter-list" style="max-height: 200px; overflow-y: auto;"></div>
+                                <button type="button" class="btn btn-sm btn-link text-danger mt-1 p-0" id="clearChargesPatientFilter" style="display: none;"><i class="bi bi-x me-1"></i>Clear</button>
+                            </div>
+                        </div>
+                        <!-- Provider Filter -->
+                        <div class="dropdown schedule-filter-dropdown">
+                            <button class="btn schedule-filter-btn dropdown-toggle" type="button" id="chargesProviderFilterBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                                <i class="bi bi-person-badge me-1"></i>Provider
+                            </button>
+                            <div class="dropdown-menu schedule-filter-menu p-3" style="min-width: 280px;">
+                                <input type="text" class="form-control form-control-sm schedule-filter-search mb-2" id="chargesProviderFilterSearch" placeholder="Search providers...">
+                                <div id="chargesProviderFilterList" class="schedule-filter-list" style="max-height: 200px; overflow-y: auto;"></div>
+                                <button type="button" class="btn btn-sm btn-link text-danger mt-1 p-0" id="clearChargesProviderFilter" style="display: none;"><i class="bi bi-x me-1"></i>Clear</button>
+                            </div>
+                        </div>
+                        <!-- Status Filter -->
+                        <div class="dropdown schedule-filter-dropdown">
+                            <button class="btn schedule-filter-btn dropdown-toggle" type="button" id="chargesStatusFilterBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                                <i class="bi bi-tag me-1"></i>Status
+                                <span class="badge bg-primary rounded-pill ms-1 d-none" id="chargesStatusFilterCount">0</span>
+                            </button>
+                            <div class="dropdown-menu schedule-filter-menu p-3" style="min-width: 200px;">
+                                <div class="form-check schedule-filter-option"><input class="form-check-input charges-status-filter" type="checkbox" value="0" id="chargeStatus0"><label class="form-check-label" for="chargeStatus0">Pending</label></div>
+                                <div class="form-check schedule-filter-option"><input class="form-check-input charges-status-filter" type="checkbox" value="1" id="chargeStatus1"><label class="form-check-label" for="chargeStatus1">Billed</label></div>
+                                <div class="form-check schedule-filter-option"><input class="form-check-input charges-status-filter" type="checkbox" value="2" id="chargeStatus2"><label class="form-check-label" for="chargeStatus2">Paid</label></div>
+                            </div>
+                        </div>
+                        <!-- Date Range -->
+                        <div class="d-flex align-items-center gap-2 ms-auto">
+                            <i class="bi bi-calendar3 text-muted"></i>
+                            <input type="date" class="form-control form-control-sm billing-date-input" id="chargesDateFrom">
+                            <span class="text-muted small">to</span>
+                            <input type="date" class="form-control form-control-sm billing-date-input" id="chargesDateTo">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charges Table -->
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="chargesTable">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Patient</th>
+                                    <th>Provider</th>
+                                    <th>CPT</th>
+                                    <th>Units</th>
+                                    <th>Amount</th>
+                                    <th>Paid</th>
+                                    <th>Balance</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div class="billing-pagination" id="chargesPagination" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ PAYMENTS TAB ═══ -->
+        <div class="tab-pane fade" id="paymentsTab">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="mb-0 fw-semibold">Payments</h6>
+                <div class="d-flex gap-2">
+                    @* TODO: Copay reminders paused — will re-enable later
+                    <button class="btn btn-warning" id="sendCopayRemindersBtn" onclick="window.sendCopayReminders()">
+                        <i class="bi bi-envelope-fill me-1"></i>Send Copay Reminders
+                    </button>
+                    *@
+                    <button class="btn btn-primary" id="collectPaymentBtn" onclick="window.openCollectPaymentModal()">
+                        <i class="bi bi-cash-coin me-1"></i>Collect Payment
+                    </button>
+                </div>
+            </div>
+            <!-- Payments Filters -->
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                <div class="dropdown schedule-filter-dropdown">
+                    <button class="btn schedule-filter-btn dropdown-toggle" type="button" id="paymentsPatientFilterBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                        <i class="bi bi-person me-1"></i>Patient
+                    </button>
+                    <div class="dropdown-menu schedule-filter-menu p-3" style="min-width: 280px;">
+                        <input type="text" class="form-control form-control-sm schedule-filter-search mb-2" id="paymentsPatientFilterSearch" placeholder="Search patients (min 3 chars)...">
+                        <div id="paymentsPatientFilterList" class="schedule-filter-list" style="max-height: 200px; overflow-y: auto;"></div>
+                        <button type="button" class="btn btn-sm btn-link text-danger mt-1 p-0" id="clearPaymentsPatientFilter" style="display: none;"><i class="bi bi-x me-1"></i>Clear</button>
+                    </div>
+                </div>
+                <div class="dropdown schedule-filter-dropdown">
+                    <button class="btn schedule-filter-btn dropdown-toggle" type="button" id="paymentsDateFilterBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                        <i class="bi bi-calendar-range me-1"></i>Date Range
+                    </button>
+                    <div class="dropdown-menu schedule-filter-menu p-3" style="min-width: 280px;">
+                        <label class="form-label small text-muted">From</label>
+                        <input type="date" class="form-control form-control-sm mb-2" id="paymentsDateFrom">
+                        <label class="form-label small text-muted">To</label>
+                        <input type="date" class="form-control form-control-sm mb-2" id="paymentsDateTo">
+                        <button type="button" class="btn btn-sm btn-primary w-100" id="applyPaymentsDateFilter">Apply</button>
+                        <button type="button" class="btn btn-sm btn-link text-danger mt-1 p-0" id="clearPaymentsDateFilter" style="display: none;"><i class="bi bi-x me-1"></i>Clear</button>
+                    </div>
+                </div>
+                <span id="paymentsFilterCount" class="badge bg-primary-subtle text-primary" style="display: none;">0</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary schedule-filter-clear-btn" id="clearPaymentsFilters" style="display: none;" title="Clear all filters">
+                    <i class="bi bi-x-lg me-1"></i>Clear All
+                </button>
+            </div>
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="paymentsTable">
+                            <thead>
+                                <tr><th>Date</th><th>Patient</th><th>Type</th><th>Method</th><th>Amount</th><th>Status</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ COPAY BALANCES TAB ═══ -->
+        <div class="tab-pane fade" id="copayBalancesTab">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center gap-3">
+                    <h6 class="mb-0 fw-semibold">Patients with Outstanding Copay</h6>
+                    <div class="position-relative" style="width: 280px;">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            <input type="text" class="form-control" id="copayBalanceSearch" placeholder="Filter by patient name..." autocomplete="off">
+                        </div>
+                    </div>
+                </div>
+                @* TODO: Copay reminders paused — will re-enable later
+                <div class="d-flex gap-2">
+                    <button class="btn btn-warning" id="sendCopayRemindersBtn2" onclick="window.sendCopayReminders()">
+                        <i class="bi bi-envelope-fill me-1"></i>Send Copay Reminders
+                    </button>
+                </div>
+                *@
+            </div>
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="copayBalancesTable">
+                            <thead>
+                                <tr>
+                                    <th>Patient</th>
+                                    <th>Contact</th>
+                                    <th class="text-end">Balance</th>
+                                    <th class="text-center" style="width:200px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="4" class="text-center text-muted py-4">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="billing-pagination" id="copayBalancesPagination" style="display:none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ LEDGER DETAIL MODAL ═══ -->
+        <div class="modal fade" id="ledgerDetailModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+            <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-journal-text me-2"></i>Patient Ledger: <span id="ledgerModalPatientName"></span></h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <!-- Ledger Summary Cards -->
+                        <div class="billing-summary-cards mb-3" id="ledgerSummaryCards">
+                            <div class="billing-summary-card billing-card-blue">
+                                <div class="billing-card-icon"><i class="bi bi-receipt"></i></div>
+                                <div class="billing-card-content">
+                                    <div class="billing-card-value" id="ledgerTotalCharges">$0.00</div>
+                                    <div class="billing-card-label">Total Charges</div>
+                                </div>
+                            </div>
+                            <div class="billing-summary-card billing-card-green">
+                                <div class="billing-card-icon"><i class="bi bi-shield-check"></i></div>
+                                <div class="billing-card-content">
+                                    <div class="billing-card-value" id="ledgerInsurancePaid">$0.00</div>
+                                    <div class="billing-card-label">Insurance Paid</div>
+                                </div>
+                            </div>
+                            <div class="billing-summary-card billing-card-teal">
+                                <div class="billing-card-icon"><i class="bi bi-person-check"></i></div>
+                                <div class="billing-card-content">
+                                    <div class="billing-card-value" id="ledgerPatientPaid">$0.00</div>
+                                    <div class="billing-card-label">Patient Paid</div>
+                                </div>
+                            </div>
+                            <div class="billing-summary-card billing-card-orange">
+                                <div class="billing-card-icon"><i class="bi bi-exclamation-triangle"></i></div>
+                                <div class="billing-card-content">
+                                    <div class="billing-card-value" id="ledgerBalance">$0.00</div>
+                                    <div class="billing-card-label">Balance Due</div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Ledger Table -->
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0" id="ledgerTable">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Type</th>
+                                        <th>CPT</th>
+                                        <th>Description</th>
+                                        <th>Charges</th>
+                                        <th>Payments</th>
+                                        <th>Adjustments</th>
+                                        <th>Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-primary" id="ledgerModalCollectBtn">
+                            <i class="bi bi-cash-coin me-1"></i>Collect Payment
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ A/R AGING TAB ═══ -->
+        <div class="tab-pane fade" id="arAgingTab">
+            <div class="card">
+                <div class="card-header"><h5 class="mb-0">Accounts Receivable Aging</h5></div>
+                <div class="card-body" id="arAgingDetails"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Modals {
+    <partial name="_Modals" />
+    <partial name="_ModalsBilling" />
+}
+
+@section Scripts {
+}

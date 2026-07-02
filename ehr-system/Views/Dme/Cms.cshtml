@@ -1,0 +1,63 @@
+@using EHR.Helpers
+@{
+    ViewData["ActivePage"] = "billing";
+    var claim = (Dictionary<string, object?>)ViewBag.Claim;
+    var lines = (List<Dictionary<string, object?>>)ViewBag.Lines;
+    var cust = (Dictionary<string, object?>?)ViewBag.Cust;
+    var diagnoses = (List<Dictionary<string, object?>>)ViewBag.Diagnoses;
+    var ins = (Dictionary<string, object?>?)ViewBag.PrimaryIns;
+    string dx = string.Join("   ", diagnoses.Select(d => F.S(d["IcdCode"])));
+}
+
+<div class="dme-wrap">
+    <div class="dme-head dme-no-print">
+        <div><a href="/Dme/Billing" class="dme-muted" style="font-size:13px;text-decoration:none"><i class="bi bi-arrow-left"></i> Billing</a>
+            <h1 style="margin-top:6px">CMS-1500 — @F.S(claim["ClaimNumber"])</h1></div>
+        <div class="d-flex gap-2">
+            <button onclick="window.print()" class="dme-btn dme-btn-light"><i class="bi bi-printer"></i> Print</button>
+            @if (F.S(claim["Status"]) == "ready")
+            {
+                <form method="post" action="/Dme/Submit" style="display:inline">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@F.I(claim["ClaimId"])" />
+                    <button class="dme-btn dme-btn-primary" type="submit"><i class="bi bi-send"></i> Submit to clearinghouse</button>
+                </form>
+            }
+        </div>
+    </div>
+
+    <div class="cms1500" style="max-width:760px">
+        <div class="cms-row" style="background:#eef3fb"><div class="cms-cell" style="font-weight:700">HEALTH INSURANCE CLAIM FORM — CMS-1500 (facsimile)</div><div class="cms-cell" style="flex:.5">@F.S(claim["ClaimNumber"])</div></div>
+        <div class="cms-row">
+            <div class="cms-cell" style="flex:2"><div class="cms-lbl">1 Payer</div>@F.S(claim["PayerName"])</div>
+            <div class="cms-cell"><div class="cms-lbl">1a Insured ID</div>@(ins == null ? "" : F.S(ins["MemberId"]))</div>
+        </div>
+        <div class="cms-row">
+            <div class="cms-cell" style="flex:1.5"><div class="cms-lbl">2 Patient name</div>@(cust == null ? "" : F.S(cust["LastName"]) + ", " + F.S(cust["FirstName"]))</div>
+            <div class="cms-cell"><div class="cms-lbl">3 DOB</div>@(cust == null ? "" : F.Date(cust["Dob"]))</div>
+            <div class="cms-cell" style="flex:1.8"><div class="cms-lbl">5 Address</div>@(cust == null ? "" : F.S(cust["AddressLine1"]) + ", " + F.S(cust["City"]) + " " + F.S(cust["State"]))</div>
+        </div>
+        <div class="cms-row">
+            <div class="cms-cell" style="flex:3"><div class="cms-lbl">21 Diagnosis (ICD-10)</div>@(string.IsNullOrEmpty(dx) ? "—" : dx)</div>
+            <div class="cms-cell"><div class="cms-lbl">23 Prior Auth</div>—</div>
+        </div>
+        <div class="cms-row" style="background:#f6f8fc"><div class="cms-cell" style="font-weight:600">24. Service lines</div></div>
+        @foreach (var l in lines)
+        {
+            <div class="cms-row">
+                <div class="cms-cell" style="flex:1.4"><div class="cms-lbl">24A Date</div>@F.Date(claim["ServiceDate"])</div>
+                <div class="cms-cell" style="flex:.5"><div class="cms-lbl">B POS</div>12</div>
+                <div class="cms-cell"><div class="cms-lbl">D HCPCS</div>@F.S(l["Hcpcs"])</div>
+                <div class="cms-cell" style="flex:.6"><div class="cms-lbl">Mod</div>@F.S(l["Modifier"])</div>
+                <div class="cms-cell" style="flex:.4"><div class="cms-lbl">E Dx</div>A</div>
+                <div class="cms-cell"><div class="cms-lbl">F Charges</div>@F.Money(l["Charge"])</div>
+                <div class="cms-cell" style="flex:.5"><div class="cms-lbl">G Units</div>@F.I(l["Units"])</div>
+            </div>
+        }
+        <div class="cms-row">
+            <div class="cms-cell"><div class="cms-lbl">28 Total charge</div>@F.Money(claim["Total"])</div>
+            <div class="cms-cell" style="flex:2.5"><div class="cms-lbl">33 Billing provider</div>Lakeview Medical Supply · NPI 1980000000</div>
+        </div>
+    </div>
+    <div class="dme-muted dme-no-print" style="font-size:11.5px;margin-top:10px">Readable facsimile for demo. Production renders the official red-ink form / 837P EDI.</div>
+</div>

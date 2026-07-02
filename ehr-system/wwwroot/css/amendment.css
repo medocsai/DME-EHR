@@ -1,0 +1,400 @@
+/* ============================================================
+   Amendment & Addendum — styles
+   Used by the note view buttons, countdown badges, amendment page,
+   addendum modal, and version history list.
+   ============================================================ */
+
+/* ----- Countdown badge ----- */
+.amendment-countdown {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: #fef3c7;
+    border: 1px solid #fde68a;
+    color: #92400e;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+.amendment-countdown.ending {
+    background: #fee2e2;
+    border-color: #fecaca;
+    color: #991b1b;
+    animation: amendmentCountdownPulse 1.5s ease-in-out infinite;
+}
+.amendment-countdown i {
+    font-size: 13px;
+}
+@keyframes amendmentCountdownPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.65; }
+}
+
+/* ----- Disabled amendment button tooltip ----- */
+.amendment-disabled-wrap {
+    position: relative;
+    display: inline-block;
+}
+.amendment-disabled-wrap .amendment-disabled-tip {
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1f2937;
+    color: #fff;
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    pointer-events: none;
+    z-index: 10;
+}
+.amendment-disabled-wrap .amendment-disabled-tip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: #1f2937;
+}
+.amendment-disabled-wrap:hover .amendment-disabled-tip {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* (Legacy amendment-page-wizard CSS — layout, sidebar, step numbers, footer bar,
+   and simplified-codes-panel styles — removed 2026-04-20 when the full-page
+   amendment flow was replaced by a modal. The modal uses the existing Bootstrap
+   modal styling and mounts DxCptCodesComponent, which brings its own styles.) */
+
+/* ----- Version history list (in note view) ----- */
+.note-version-history {
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    margin-bottom: 14px;
+    overflow: hidden;
+}
+.note-version-history .version-row {
+    padding: 10px 14px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    background: #fff;
+}
+.note-version-history .version-row:last-child {
+    border-bottom: none;
+}
+.note-version-history .ver-pill {
+    min-width: 80px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: #f3f4f6;
+    color: #6b7280;
+    white-space: nowrap;
+}
+.note-version-history .ver-pill.original { background: #e0e7ff; color: #4338ca; }
+.note-version-history .ver-pill.current  { background: #d1fae5; color: #065f46; }
+.note-version-history .ver-pill.addendum { background: #dbeafe; color: #1e40af; }
+.note-version-history .ver-info { flex: 1; }
+.note-version-history .ver-info .ver-line1 { font-size: 12px; font-weight: 600; }
+.note-version-history .ver-info .ver-line2 { font-size: 11px; color: #6b7280; margin-top: 2px; }
+.note-version-history .ver-info .ver-reason {
+    font-size: 12px;
+    margin-top: 4px;
+    padding: 4px 8px;
+    background: #f8f9fc;
+    border-radius: 4px;
+    color: #111827;
+}
+
+/* ----- Addendum block appended below the note ----- */
+.note-addendum-block {
+    border-top: 2px solid #6366f1;
+    margin-top: 16px;
+    padding-top: 12px;
+}
+.note-addendum-block .addendum-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    flex-wrap: wrap;
+}
+.note-addendum-block .addendum-reason {
+    font-size: 12px;
+    color: #6b7280;
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    background: #eff6ff;
+    border-radius: 4px;
+    border-left: 3px solid #6366f1;
+}
+.note-addendum-block .addendum-content {
+    font-size: 13px;
+    line-height: 1.6;
+    padding: 10px 12px;
+    background: #f8f9fc;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+}
+
+/* ============================================================
+   SIDE-BY-SIDE NOTE VIEW (tabbed clinical note modal)
+   Left: selected version's content (60%)
+   Right: activity timeline (40%)
+   ============================================================ */
+
+/* Widen the tabbed clinical note modal so the split has room to breathe */
+#tabbedClinicalNoteModal .modal-dialog { max-width: 1400px; }
+
+/* Scoped fix: the app's global CSS makes outline buttons look nearly borderless
+   until hover. For THIS modal's footer only, enforce a visible border at rest so
+   the Print/PDF / Word / Amendment / Addendum buttons read clearly. */
+#tabbedClinicalNoteModal .modal-footer .btn-outline-primary,
+#tabbedClinicalNoteModal .modal-footer .btn-outline-warning,
+#tabbedClinicalNoteModal .modal-footer .btn-outline-success,
+#tabbedClinicalNoteModal .modal-footer .btn-outline-danger,
+#tabbedClinicalNoteModal .modal-footer .btn-outline-secondary {
+    border-width: 1px !important;
+    border-style: solid !important;
+}
+#tabbedClinicalNoteModal .modal-footer .btn-outline-primary  { border-color: #6366F1 !important; }
+#tabbedClinicalNoteModal .modal-footer .btn-outline-warning  { border-color: #f59e0b !important; }
+#tabbedClinicalNoteModal .modal-footer .btn-outline-success  { border-color: #10b981 !important; }
+#tabbedClinicalNoteModal .modal-footer .btn-outline-danger   { border-color: #ef4444 !important; }
+#tabbedClinicalNoteModal .modal-footer .btn-outline-secondary{ border-color: #9ca3af !important; }
+
+/* The split container replaces the old .signed-note-view single column.
+   Implemented with CSS Grid for predictable 60/40 that collapses on narrow screens. */
+.note-split {
+    display: grid;
+    grid-template-columns: 60% 40%;
+    min-height: 560px;
+    gap: 0;
+}
+@media (max-width: 991.98px) { .note-split { grid-template-columns: 1fr; } }
+
+.note-split .note-pane {
+    padding: 12px 16px;
+    border-right: 1px solid #e5e7eb;
+    max-height: 560px;
+    overflow-y: auto;
+}
+.note-split .timeline-pane {
+    padding: 12px 16px;
+    background: #fafbfd;
+    max-height: 560px;
+    overflow-y: auto;
+}
+@media (max-width: 991.98px) {
+    .note-split .note-pane    { border-right: none; border-bottom: 1px solid #e5e7eb; max-height: none; }
+    .note-split .timeline-pane { max-height: none; }
+}
+
+/* Version indicator bar at top of note pane */
+.version-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    font-size: 12px;
+    flex-wrap: wrap;
+}
+.version-bar.current { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
+.version-bar.historical { background: #fef3c7; border: 1px solid #fde68a; color: #92400e; }
+.version-bar .label { font-weight: 700; }
+.version-bar .vb-meta { color: #6b7280; font-size: 11px; }
+.version-bar.historical .vb-meta { color: #92400e; opacity: 0.85; }
+.version-bar .return-link {
+    margin-left: auto;
+    font-weight: 600;
+    color: #6366F1;
+    cursor: pointer;
+    font-size: 12px;
+    background: none;
+    border: none;
+    padding: 0;
+}
+.version-bar .return-link:hover { text-decoration: underline; }
+
+/* Timeline heading */
+.timeline-pane h6.tl-heading {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #6b7280;
+    margin: 0 0 12px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.timeline-pane h6.tl-heading .badge-count {
+    background: #e0e7ff;
+    color: #4338ca;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    margin-left: auto;
+}
+.timeline-empty {
+    text-align: center;
+    color: #6b7280;
+    font-size: 12px;
+    padding: 16px 10px;
+    font-style: italic;
+}
+
+/* Timeline card */
+.tl-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    cursor: pointer;
+}
+.tl-card:hover { box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-color: #d1d5db; }
+.tl-card.addendum-card  { border-left: 3px solid #6366F1; }
+.tl-card.original-card  { border-left: 3px solid #c7d2fe; }
+.tl-card.amendment-card { border-left: 3px solid #f59e0b; }
+.tl-card.active {
+    background: #eef2ff;
+    border-color: #6366F1;
+    box-shadow: 0 0 0 2px rgba(99,102,241,0.14);
+}
+.tl-card-head { padding: 8px 12px; }
+.tl-card-head .row1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tl-card-head .pill {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
+.tl-card-head .pill.original { background: #e0e7ff; color: #4338ca; }
+.tl-card-head .pill.amendment { background: #fef3c7; color: #92400e; }
+.tl-card-head .pill.addendum { background: #dbeafe; color: #1e40af; }
+.tl-card-head .pill.current-marker { background: #d1fae5; color: #065f46; }
+.tl-card-head .pill.viewing-marker {
+    background: #6366F1;
+    color: #fff;
+    margin-left: auto;
+}
+.tl-card-head .event-date { font-size: 11px; color: #6b7280; margin-top: 4px; }
+.tl-card-head .signer { font-size: 11px; color: #6b7280; margin-top: 3px; }
+.tl-card-head .signer i { color: #6b7280; margin-right: 3px; font-size: 10px; }
+.tl-card-head .reason-line {
+    font-size: 12px;
+    color: #111827;
+    margin-top: 5px;
+    padding: 4px 8px;
+    background: #f8f9fc;
+    border-radius: 3px;
+    border-left: 2px solid #e5e7eb;
+    line-height: 1.4;
+}
+.tl-card-head .reason-line strong {
+    color: #6b7280;
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.tl-card-head .jump-hint {
+    font-size: 11px;
+    color: #6b7280;
+    margin-top: 6px;
+    font-style: italic;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.tl-card.addendum-card:hover .jump-hint { color: #6366F1; }
+
+/* Addendum flash highlight (sidebar jump feedback) */
+@keyframes addendumHighlightFlash {
+    0%   { background: #fef9c3; border-color: #facc15; box-shadow: 0 0 0 3px rgba(250,204,21,0.3); }
+    70%  { background: #fef9c3; border-color: #facc15; box-shadow: 0 0 0 3px rgba(250,204,21,0.15); }
+    100% { background: #f8f9fc; border-color: #e5e7eb; box-shadow: none; }
+}
+.note-addendum-block.flash .addendum-content { animation: addendumHighlightFlash 1.6s ease-out; }
+
+/* ----- "Encounter in progress" label (shown instead of Amend/Addendum
+         buttons when viewing a signed note from outside the encounter
+         workspace while the encounter is still In Progress — backdoor block) ----- */
+.amendment-inprogress-label {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    background: #fef3c7;
+    border: 1px solid #fde68a;
+    color: #92400e;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.3;
+}
+.amendment-inprogress-label i { font-size: 13px; }
+
+/* ----- Amendment modal step indicator (Mode 3 wizard) ----- */
+#amendmentSteps .step-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #f8f9fc;
+    border: 1px solid #e5e7eb;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+#amendmentSteps .step-pill .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* ----- Window-state banner on note view ----- */
+.amendment-window-banner {
+    padding: 8px 14px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.amendment-window-banner.open {
+    background: #fef3c7;
+    border: 1px solid #fde68a;
+    color: #92400e;
+}
+.amendment-window-banner.closed {
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    color: #065f46;
+}

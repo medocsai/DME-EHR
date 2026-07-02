@@ -1,0 +1,551 @@
+@{
+    var pageTitle = ViewData["Title"]?.ToString() ?? "MEDOCS";
+    var activePage = ViewData["ActivePage"]?.ToString() ?? "dashboard";
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@pageTitle - MEDOCS DME</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@@1.11.1/font/bootstrap-icons.css" rel="stylesheet"
+          integrity="sha384-4LISF5TTJX/fLmGSxO53rV4miRxdg84mZsxmO8Rx5jGtp/LbrixFETvWa5a6sESd" crossorigin="anonymous">
+    <!-- FullCalendar 6.x bundles CSS into index.global.min.js — no separate stylesheet needed -->
+    <!-- Trumbowyg CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/trumbowyg@@2.27.3/dist/ui/trumbowyg.min.css" rel="stylesheet"
+          integrity="sha384-BMSJyRuWWysKSQXUwY6xhPnRLhIEIKVrndBFiMT8osUv0Jy4u+kVojiTB4oIk9Cy" crossorigin="anonymous">
+    <!-- Custom Styles -->
+    <link href="~/css/styles.css?v=1779131275" rel="stylesheet">
+    <!-- Patient Profile Modal redesign (scoped) -->
+    <link href="~/css/patient-profile-modal.css?v=1776506837" rel="stylesheet">
+    <!-- Encounter Workspace Grid Styles -->
+    <link href="~/css/encounter-workspace.css?v=1777286138" rel="stylesheet">
+    <!-- MEDOCS AI Voice Entry Styles -->
+    <link href="~/css/medocs-voice.css?v=1776285000" rel="stylesheet">
+    <!-- MEDOCS AI Help Widget Styles -->
+    <link href="~/css/imehr-help.css?v=1776285000" rel="stylesheet">
+    <!-- Telehealth Video Panel Styles -->
+    <link href="~/css/telehealth.css?v=1776285000" rel="stylesheet">
+    <!-- Amendment & Addendum Styles -->
+    <link href="~/css/amendment.css?v=1776708094" rel="stylesheet">
+    <!-- DME design system -->
+    <link href="~/css/dme.css?v=2" rel="stylesheet">
+
+    @await RenderSectionAsync("Styles", required: false)
+</head>
+<body>
+    <!-- Global Loading Overlay -->
+    <div id="globalLoader" class="global-loader d-none">
+        <div class="loader-content">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="loader-text mt-3">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Initial App Loading Screen -->
+    <div id="appLoadingScreen" class="app-loading-screen">
+        <div class="app-loading-content">
+            <div class="app-loading-logo">
+                <img src="/medocslogo.png" alt="MEDOCS" class="app-loading-logo-img">
+            </div>
+            <p class="app-loading-subtitle">DME Suite</p>
+            <div class="spinner-border text-light mt-4" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="app-loading-status mt-3">Initializing application...</p>
+        </div>
+    </div>
+
+    <!-- Login Page -->
+    <div id="loginPage" class="login-page d-none">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="logo">
+                    <img src="/medocslogo.png" alt="MEDOCS" class="logo-img">
+                </div>
+                <p class="text-muted">Durable Medical Equipment</p>
+            </div>
+            <form id="loginForm">
+                <div class="alert alert-danger d-none" id="loginError"></div>
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-control" id="loginEmail" required placeholder="you@@example.com" autocomplete="off">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
+                    <input type="password" class="form-control" id="loginPassword" required placeholder="********" autocomplete="off">
+                </div>
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="loginRememberDevice">
+                    <label class="form-check-label text-muted small" for="loginRememberDevice">
+                        Remember this device for 15 days (skip verification code next time)
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="bi bi-box-arrow-in-right me-2"></i>Sign In
+                </button>
+            </form>
+            <!-- OTP Verification UI (shown after email+password succeed) -->
+            <div id="otpVerification" class="d-none">
+                <div class="text-center mb-4">
+                    <i class="bi bi-shield-lock text-primary" style="font-size: 2.5rem;"></i>
+                    <h5 class="mb-2 mt-2">Verify Your Identity</h5>
+                    <p class="text-muted small mb-1">We sent a 6-digit verification code to</p>
+                    <p class="mb-0"><strong id="otpMaskedEmail"></strong></p>
+                </div>
+                <form id="otpForm">
+                    <div class="alert alert-danger d-none" id="otpError"></div>
+                    <div class="alert alert-success d-none" id="otpSuccess"></div>
+                    <div class="mb-3">
+                        <label class="form-label">Verification Code</label>
+                        <input type="text"
+                               class="form-control form-control-lg text-center"
+                               id="otpCode"
+                               inputmode="numeric"
+                               pattern="[0-9]{6}"
+                               maxlength="6"
+                               required
+                               autocomplete="one-time-code"
+                               placeholder="000000"
+                               style="letter-spacing: 0.5em; font-size: 1.5rem;">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-check-circle me-2"></i>Verify &amp; Sign In
+                    </button>
+                </form>
+                <div class="text-center mt-3">
+                    <button type="button" class="btn btn-link text-muted small" id="otpResendBtn">
+                        Didn't receive a code? Resend
+                    </button>
+                </div>
+                <div class="text-center mt-1">
+                    <button type="button" class="btn btn-link text-muted small" id="otpCancelBtn">
+                        <i class="bi bi-arrow-left me-1"></i>Back to login
+                    </button>
+                </div>
+            </div>
+            <!-- Tenant Selection UI -->
+            <div id="tenantSelection" class="d-none">
+                <div class="text-center mb-4">
+                    <p class="mb-1">Welcome back,</p>
+                    <h5 id="tenantUserName" class="mb-3">User</h5>
+                    <p class="text-muted">Select the clinic you want to access:</p>
+                </div>
+                <div id="tenantList" class="tenant-list"></div>
+                <div class="mt-4 text-center">
+                    <button type="button" class="btn btn-link text-muted" onclick="cancelTenantSelection()">
+                        <i class="bi bi-arrow-left me-1"></i>Back to login
+                    </button>
+                </div>
+            </div>
+            <div class="text-center mt-3" id="loginFooterLinks">
+                <a href="#" onclick="showForgotPassword(); return false;" class="text-muted small">Forgot Password?</a>
+            </div>
+            <div class="login-footer">
+                <small class="text-muted">HIPAA Compliant - AES-256 Encryption</small>
+            </div>
+        </div>
+        <!-- Forgot Password Form -->
+        <div id="forgotPasswordCard" class="login-card d-none">
+            <div class="login-header">
+                <div class="logo">
+                    <img src="/medocslogo.png" alt="MEDOCS" class="logo-img">
+                </div>
+                <h1>Reset Password</h1>
+                <p class="text-muted">Enter your email to receive a reset link</p>
+            </div>
+            <form id="forgotPasswordForm">
+                <div class="alert alert-danger d-none" id="forgotPasswordError"></div>
+                <div class="alert alert-success d-none" id="forgotPasswordSuccess"></div>
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-control" id="forgotPasswordEmail" required placeholder="you@@example.com" autocomplete="off">
+                </div>
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="bi bi-envelope me-2"></i>Send Reset Link
+                </button>
+            </form>
+            <div class="text-center mt-3">
+                <a href="#" onclick="hideForgotPassword(); return false;" class="text-muted small">
+                    <i class="bi bi-arrow-left me-1"></i>Back to Login
+                </a>
+            </div>
+            <div class="login-footer">
+                <small class="text-muted">HIPAA Compliant - AES-256 Encryption</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="mainApp" class="d-none">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img src="/medocslogo.png" alt="MEDOCS" class="sidebar-logo-img">
+                </div>
+                <div style="text-align:center;font-size:11px;font-weight:700;letter-spacing:2px;color:#2f6bdf;margin-top:2px">DME SUITE</div>
+            </div>
+
+            <div class="sidebar-tenant" id="sidebarTenant">
+                <div class="sidebar-tenant-logo d-none" id="sidebarTenantLogo">
+                    <img id="sidebarTenantLogoImg" src="" alt="Clinic Logo" class="sidebar-clinic-logo-img">
+                </div>
+                <strong>Clinic Name</strong>
+            </div>
+
+            <!-- Location Switcher -->
+            <div class="sidebar-location" id="sidebarLocation">
+                <div class="location-current" id="currentLocationDisplay" onclick="openLocationSwitcher()">
+                    <div class="location-icon">
+                        <i class="bi bi-geo-alt-fill"></i>
+                    </div>
+                    <div class="location-info">
+                        <span class="location-label">Location</span>
+                        <span class="location-name" id="currentLocationName">Main Location</span>
+                    </div>
+                    <div class="location-arrow">
+                        <i class="bi bi-chevron-down"></i>
+                    </div>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="/Dme/Dashboard" class="nav-item @(activePage == "dashboard" ? "active" : "")">
+                    <i class="bi bi-grid-1x2"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="/Dme/Schedule" class="nav-item @(activePage == "schedule" ? "active" : "")">
+                    <i class="bi bi-calendar3"></i>
+                    <span>Schedule</span>
+                </a>
+                <a href="/Dme/Customers" class="nav-item @(activePage == "customers" ? "active" : "")">
+                    <i class="bi bi-people"></i>
+                    <span>Customers</span>
+                </a>
+                <a href="/Dme/Orders" class="nav-item @(activePage == "orders" ? "active" : "")">
+                    <i class="bi bi-box-seam"></i>
+                    <span>Orders / Delivery</span>
+                </a>
+                <a href="/Hcpcs" class="nav-item @(activePage == "hcpcs" ? "active" : "")">
+                    <i class="bi bi-list-ul"></i>
+                    <span>HCPCS Catalog</span>
+                </a>
+                <a href="/Dme/Inventory" class="nav-item @(activePage == "inventory" ? "active" : "")">
+                    <i class="bi bi-box"></i>
+                    <span>Inventory</span>
+                </a>
+                <a href="/Dme/Rentals" class="nav-item @(activePage == "rentals" ? "active" : "")">
+                    <i class="bi bi-arrow-repeat"></i>
+                    <span>Rentals</span>
+                </a>
+                <a href="/Dme/Billing" class="nav-item @(activePage == "billing" ? "active" : "")">
+                    <i class="bi bi-receipt"></i>
+                    <span>Billing</span>
+                </a>
+                <a href="/UserManagement" class="nav-item requires-admin @(activePage == "users" ? "active" : "")">
+                    <i class="bi bi-people-fill"></i>
+                    <span>User Management</span>
+                </a>
+                <a href="#" class="nav-item requires-admin" onclick="openLocationManagement(); return false;">
+                    <i class="bi bi-geo-alt"></i>
+                    <span>Locations</span>
+                </a>
+                <a href="/Settings" class="nav-item requires-admin @(activePage == "settings" ? "active" : "")">
+                    <i class="bi bi-gear-fill"></i>
+                    <span>Settings</span>
+                </a>
+                <a href="/Documentation" class="nav-item @(activePage == "documentation" ? "active" : "")">
+                    <i class="bi bi-book"></i>
+                    <span>Documentation</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar" id="userAvatar">U</div>
+                    <div class="user-details">
+                        <span class="user-name" id="userName">User Name</span>
+                        <span class="user-role" id="userRole">Role</span>
+                    </div>
+                </div>
+                <div class="d-flex gap-2 mt-2">
+                    <button class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#changePasswordModal" title="Change Password">
+                        <i class="bi bi-key"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-light clinician-only" id="btnOpenPreferences" data-bs-toggle="modal" data-bs-target="#preferencesModal" title="Preferences">
+                        <i class="bi bi-gear"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-light flex-grow-1" id="logoutBtn">
+                        <i class="bi bi-box-arrow-left me-1"></i>Logout
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="main-header">
+                <button class="btn btn-link d-lg-none" id="sidebarToggle" aria-label="Toggle sidebar" aria-expanded="false">
+                    <i class="bi bi-list"></i>
+                </button>
+                <h4 class="page-title mb-0" id="headerPageTitle">@pageTitle</h4>
+
+                <!-- Ask Medocs AI Button -->
+                <a href="https://app.medocs.ai/ask-medocs-ai" target="_blank" class="ask-ai-btn" title="Ask Medocs AI">
+                    <span class="ask-ai-stars">
+                        <svg width="18" height="18" viewBox="0 0 24 24">
+                            <path d="M12 2l2.9 6.8 7.1.6-5.3 4.6 1.6 7-6.3-3.8-6.3 3.8 1.6-7-5.3-4.6 7.1-.6z" />
+                        </svg>
+                    </span>
+                    <span class="d-none d-md-inline">Ask Medocs AI</span>
+                </a>
+
+                <!-- Global Patient Search -->
+                <div class="header-patient-search" id="headerPatientSearchContainer">
+                    <div class="header-search-wrapper">
+                        <i class="bi bi-search header-search-icon"></i>
+                        <input type="text" class="form-control header-search-input"
+                               id="headerPatientSearchInput"
+                               placeholder="Search customers..."
+                               autocomplete="off" aria-label="Search customers">
+                        <kbd class="header-search-shortcut d-none d-lg-inline">Ctrl+K</kbd>
+                    </div>
+                    <div class="header-search-results d-none" id="headerPatientSearchResults"></div>
+                </div>
+
+                <!-- Super Admin Clinic Filter -->
+                <div class="clinic-filter-container requires-super-admin" id="clinicFilterContainer">
+                    <label class="clinic-filter-label">
+                        <i class="bi bi-building me-1"></i>Clinic:
+                    </label>
+                    <select class="form-select form-select-sm" id="globalClinicFilter">
+                        <option value="">All Clinics</option>
+                    </select>
+                </div>
+                <div class="header-actions d-flex align-items-center gap-2">
+                    <button class="btn btn-outline-secondary position-relative d-none" id="patientMessagesBtn" title="Messages">
+                        <i class="bi bi-chat-dots"></i>
+                        <span class="d-none d-md-inline ms-1">Messages</span>
+                        <span class="badge rounded-pill position-absolute top-0 start-100 translate-middle d-none" id="patientMessagesBadge" style="font-size: 0.65rem; background-color: #8B0000; color: #FFFFFF;">0</span>
+                    </button>
+
+                    @* Care Notes notification bell -- Clinician role only.
+                       Visibility is enforced by the .clinician-only class
+                       (handled in GlobalBridge.js -- non-clinicians get display:none). *@
+                    <div class="position-relative clinician-only" id="careNotesContainer">
+                        <button class="btn btn-outline-secondary position-relative" id="careNotesBtn" title="Care Notes">
+                            <i class="bi bi-journal-medical"></i>
+                            <span class="d-none d-md-inline ms-1">Care Notes</span>
+                            <span class="badge rounded-pill position-absolute top-0 start-100 translate-middle d-none" id="careNotesBadge" style="font-size: 0.65rem; background-color: #8B0000; color: #FFFFFF;">0</span>
+                        </button>
+                        <div class="cn-dropdown" id="careNotesDropdown" style="display:none;"></div>
+                    </div>
+
+                    <a href="/Dme/NewOrder" class="btn btn-primary">
+                        <i class="bi bi-plus-lg me-1"></i>
+                        <span class="d-none d-md-inline">New Order</span>
+                    </a>
+                </div>
+            </header>
+
+            <div class="content-area">
+                @RenderBody()
+            </div>
+        </main>
+    </div>
+
+    <!-- Global Modals -->
+    <partial name="_ModalsAppointment" />
+    <partial name="_ModalsBilling" />
+    <partial name="_ModalsHistoryReview" />
+
+    <!-- Messaging System UI -->
+    <partial name="_ModalsMessaging" />
+
+    <!-- Patient-Provider Messaging Modal -->
+    <partial name="_PatientMessagingProviderModal" />
+
+    <!-- File Viewer Modal (fullscreen) -->
+    <div class="modal fade" id="fileViewerModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content fv-modal-content">
+                <div class="modal-header fv-modal-header">
+                    <h6 class="modal-title fv-modal-title">File Viewer</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body fv-modal-body p-0"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- All Modals -->
+    @await RenderSectionAsync("Modals", required: false)
+
+    <!-- External Dependencies (SRI integrity hashes prevent CDN tampering / hijack) -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"
+            integrity="sha384-1H217gwSVyLSIfaLxHbE7dRb3v4mYCKbpQvzx0cegeju1MVsGrX5xXxAvs/HgeFs" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@@5.3.2/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@@6.1.10/index.global.min.js"
+            integrity="sha384-WfE/vOHqht3KDj6FvpwQUf3UxEPUHoGJ3w1yZ8rhpLWnVigt8HjXL2zXqtcfS7mf" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/trumbowyg@@2.27.3/dist/trumbowyg.min.js"
+            integrity="sha384-OZd+lx/Xv8IR7nJZmRKR4NJhT0urUXigW5V7FOEtmrFRf1BKKVc0DWhdiCh8UX8+" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"
+            integrity="sha384-/taWmisziXYpcfnYsumSUmNaiMvG/fF/OJOUCLnqCIYTrpOZy7WbFF6FfIxwOrfL" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+            integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU" crossorigin="anonymous"></script>
+    <!-- DOMPurify for clinical-note XSS sanitization (strips <script>, event handlers, javascript: URLs) -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@@3.4.2/dist/purify.min.js"
+            integrity="sha384-AX0sZ/phUL4R6LAFP+mob0mJIWg2c3PX8wPn48ctytOl7XKfRQHbakBt5/QID7uh" crossorigin="anonymous"></script>
+    <!-- Global sanitizer wrapper. Falls back to text-only render if DOMPurify failed
+         to load (CDN failure / SRI mismatch) so we never accidentally inject raw HTML. -->
+    <script>
+        window.sanitizeClinicalHtml = function (html) {
+            if (html == null) return '';
+            if (window.DOMPurify) {
+                return window.DOMPurify.sanitize(String(html), {
+                    USE_PROFILES: { html: true },
+                    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
+                    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'srcdoc']
+                });
+            }
+            // Defensive fallback: render as escaped text so a missing sanitizer
+            // never silently allows raw HTML through to innerHTML.
+            console.error('[Security] DOMPurify not loaded — rendering clinical content as text only');
+            var tmp = document.createElement('div');
+            tmp.textContent = String(html);
+            return tmp.innerHTML;
+        };
+    </script>
+    <!-- Chart.js for Analytical Reports -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@@4.4.7/dist/chart.umd.min.js"
+            integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC" crossorigin="anonymous"></script>
+
+    <!-- ========================================== -->
+    <!-- Modular JavaScript Architecture (Phase 1) -->
+    <!-- ========================================== -->
+
+    <!-- Shared Utilities (load first - no dependencies) -->
+    <script src="~/js/shared/utils/StringUtils.js?v=1776285000"></script>
+    <script src="~/js/shared/utils/DomUtils.js?v=1776285000"></script>
+    <script src="~/js/shared/utils/DateUtils.js?v=1776285000"></script>
+    <script src="~/js/shared/utils/FormatUtils.js?v=1776285000"></script>
+    <script src="~/js/shared/utils/ValidationUtils.js?v=1776285000"></script>
+    <script src="~/js/shared/utils/InputMaskUtils.js?v=1776285000"></script>
+    <script src="~/js/shared/utils/TimezoneUtils.js?v=1776285000"></script>
+    <script src="~/js/shared/utils/AvatarUtils.js?v=1776285000"></script>
+
+    <!-- Shared Constants -->
+    <script src="~/js/shared/constants/UserRoles.js?v=1776285000"></script>
+    <script src="~/js/shared/constants/AppointmentTypes.js?v=1776285000"></script>
+    <script src="~/js/shared/constants/AppointmentStatuses.js?v=1776285000"></script>
+    <script src="~/js/shared/constants/PatientStatuses.js?v=1776285000"></script>
+    <script src="~/js/shared/constants/InsuranceCompanies.js?v=1776285000"></script>
+    <script src="~/js/shared/constants/PrescriptionConstants.js?v=1776285000"></script>
+    <script src="~/js/shared/constants/HistoryPresets.js?v=1776285000"></script>
+
+    <!-- Shared UI Components -->
+    <script src="~/js/shared/ui/Toast.js?v=1776285000"></script>
+    <script src="~/js/shared/ui/LoadingState.js?v=1776285000"></script>
+    <script src="~/js/shared/ui/Modal.js?v=1776285000"></script>
+    <script src="~/js/shared/ui/ConfirmDialog.js?v=1776285000"></script>
+    <script src="~/js/shared/ui/Autocomplete.js?v=1776285000"></script>
+    <script src="~/js/shared/ui/DataTable.js?v=1776285000"></script>
+    <script src="~/js/shared/ui/FormHandler.js?v=1776285000"></script>
+
+    <!-- Core Services -->
+    <script src="~/js/core/EventBus.js?v=1776285000"></script>
+    <script src="~/js/core/ApiService.js?v=1776285000"></script>
+    <script src="~/js/core/StateManager.js?v=1776285000"></script>
+    <script src="~/js/core/AuthService.js?v=1776375986"></script>
+    <script src="~/js/core/App.js?v=1776285002"></script>
+    <script src="~/js/shared/ui/FileViewerModal.js?v=1776285000"></script>
+    <script src="~/js/shared/ui/HistoryActionModal.js?v=1777095224"></script>
+    <script src="~/js/core/GlobalBridge.js?v=1778060324"></script>
+    <script src="~/js/core/NoteGenerationTracker.js?v=1776285000"></script>
+    <script src="~/js/core/ScheduleSignalRService.js?v=1776285000"></script>
+    <script src="~/js/core/ConsentSignalRService.js?v=1776285000"></script>
+
+    <!-- Feature Modules -->
+    <script src="~/js/modules/auth/AuthModule.js?v=1776375986"></script>
+    <script src="~/js/modules/settings/SettingsModule.js?v=1776285000"></script>
+    <script src="~/js/modules/settings/LongevityLocationTogglesModule.js?v=1777078000"></script>
+    <script src="~/js/modules/users/UsersModule.js?v=1778613709"></script>
+    <script src="~/js/modules/templates/TemplatesModule.js?v=1776285000"></script>
+    <script src="~/js/modules/tenants/TenantsModule.js?v=1776285000"></script>
+    <!-- Patient Module Helpers -->
+    <script src="~/js/modules/patients/PatientUtilities.js?v=1776285000"></script>
+    <script src="~/js/modules/patients/PatientRenderer.js?v=1779131275"></script>
+    <script src="~/js/modules/patients/PatientConversationsModule.js?v=1777641200"></script>
+    <script src="~/js/modules/carenotes/CareNotesVoice.js?v=1777633411"></script>
+    <script src="~/js/modules/carenotes/CareNotesModule.js?v=1777633411"></script>
+    <script src="~/js/modules/patients/PatientClinicalManager.js?v=1777589261"></script>
+    <script src="~/js/modules/patients/PatientDocumentManager.js?v=1776285000"></script>
+    <script src="~/js/modules/patients/PatientInsuranceManager.js?v=1776285000"></script>
+    <script src="~/js/modules/patients/PatientFormHandler.js?v=1779131275"></script>
+    <script src="~/js/modules/patients/MedicalLienModule.js?v=1776285000"></script>
+    <script src="~/js/modules/patients/PatientAppointmentsNotesModule.js?v=1776708195"></script>
+    <!-- Patient Module (Main) -->
+    <script src="~/js/modules/patients/PatientModule.js?v=1779131275"></script>
+    <!-- Patient Intake (clinic side): QR button + Profile accordion -->
+    <!-- Encounter integration is now via iframe (ClinicFrame.cshtml) — the old
+         EncounterIntakeRightPanel.js right-drawer was deleted in Step 1.
+         Spec: rules/technical/intake-on-clinical-note.md §3, §6. -->
+    <script src="~/lib/qrcode/qrcode.min.js?v=1776982987"></script>
+    <script src="~/js/modules/intake/ProfileIntakeQrButton.js?v=1778523040"></script>
+    <script src="~/js/modules/intake/ProfileIntakeAccordion.js?v=1776982987"></script>
+    <script src="~/js/modules/intake/IntakeStatusIndicator.js?v=1777567982"></script>
+    <script src="~/js/modules/providers/ProviderModule.js?v=1776285000"></script>
+    <script src="~/js/modules/dashboard/DashboardModule.js?v=1778587367"></script>
+    <script src="~/js/modules/calendar/CalendarModule.js?v=1779131275"></script>
+    <script src="~/js/modules/schedule/ScheduleGridModule.js?v=1779131275"></script>
+    <script src="~/js/modules/appointments/AppointmentModule.js?v=1779131275"></script>
+    <script src="~/js/modules/clinicalnotes/ClinicalNotesModule.js?v=1776692330"></script>
+    <script src="~/js/modules/clinicalnotes/ClinicalNoteSignModule.js?v=1776692330"></script>
+    <script src="~/js/modules/clinicalnotes/AmendmentAddendumModule.js?v=1776715418"></script>
+    <script src="~/js/modules/billing/BillingModule.js?v=1776715418"></script>
+    <script src="~/js/modules/billing/ClaimFormModule.js?v=1776715418"></script>
+    <script src="~/js/modules/prescriptions/PrescriptionsModule.js?v=1776285000"></script>
+    <script src="~/js/shared/constants/OrderConstants.js?v=1776285000"></script>
+    <script src="~/js/modules/orders/OrderPrintTemplate.js?v=1779131275"></script>
+    <script src="~/js/modules/orders/OrdersModule.js?v=1779131275"></script>
+    <script src="~/js/modules/encounters/MedocsVoiceService.js?v=1776285000"></script>
+    <script src="~/js/modules/encounters/MedocsVoiceUI.js?v=1776285000"></script>
+    <script src="~/js/modules/encounters/TelehealthScribeService.js?v=1776285000"></script>
+    <script src="~/js/modules/encounters/TelehealthScribeUI.js?v=1778626964"></script>
+    <script src="~/js/modules/encounters/UnifiedVoiceBar.js?v=1776285000"></script>
+    <!-- Dx & CPT Codes picker (shared by encounter step + amendment modal) -->
+    <script src="~/js/modules/dxcpt/DxCptCodesComponent.js?v=1776715418"></script>
+    <script src="~/js/modules/encounters/EncounterWorkspaceModule.js?v=1778626964"></script>
+    <!-- CareEpisode module removed for IM workflow (replaced by Encounters) -->
+    <script src="~/js/modules/reports/ReportsModule.js?v=1776285000"></script>
+    <script src="~/js/modules/consents/ConsentModule.js?v=1776285000"></script>
+    <script src="~/js/modules/locations/LocationModule.js?v=1776982987"></script>
+    <script src="~/js/modules/unavailability/UnavailabilityModule.js?v=1776285000"></script>
+
+    <!-- Recording Service & Scribe Module -->
+    <script src="~/js/core/RecordingService.js?v=1776285000"></script>
+    <script src="~/js/modules/scribe/ScribeModule.js?v=1776285000"></script>
+
+    <!-- Internal Messaging System -->
+    <script src="~/js/core/MessagingSignalRService.js?v=1776285000"></script>
+    <script src="~/js/modules/messaging/PatientMentionHelper.js?v=1776285000"></script>
+    <script src="~/js/modules/messaging/MessagingModule.js?v=1776285000"></script>
+
+    <!-- Patient-Provider Messaging (Provider Side) -->
+    <script src="~/js/modules/messaging/PatientMessagingProviderModule.js?v=1776285000"></script>
+
+    <!-- MEDOCS AI Help Widget -->
+    <script src="~/js/modules/help/IMEHRHelpModule.js?v=1776285003"></script>
+
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

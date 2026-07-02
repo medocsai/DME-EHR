@@ -1,0 +1,121 @@
+@using EHR.Helpers
+@{
+    ViewData["ActivePage"] = "orders";
+    var o = (Dictionary<string, object?>)ViewBag.Order;
+    var lines = (List<Dictionary<string, object?>>)ViewBag.Lines;
+    var status = F.S(o["Status"]);
+    int si = status == "billed" ? 4 : status == "delivered" ? 3 : status == "confirmed" ? 2 : 0;
+    var stages = new[] { "Order received", "Eligibility / HCPCS", "Order / ship", "Proof of delivery", "Claim prepared" };
+    decimal total = lines.Sum(l => F.S(l["Mode"]) == "purchase" ? F.Dec(l["UnitPrice"]) * F.I(l["Qty"]) : F.Dec(l["MonthlyRate"]));
+}
+
+<div class="dme-wrap">
+    <a href="/Dme/Orders" class="dme-muted" style="font-size:13px;text-decoration:none"><i class="bi bi-arrow-left"></i> Orders</a>
+
+    <div class="dme-card" style="margin-top:10px">
+        <div class="dme-card-body">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+                <div>
+                    <div style="font-size:19px;font-weight:700">@F.S(o["OrderNumber"]) @Html.Raw(F.StatusChip(status))</div>
+                    <div class="dme-muted" style="font-size:13px">@F.S(o["CustomerName"]) · @(string.IsNullOrEmpty(F.S(o["DoctorName"])) ? "no referring doctor" : F.S(o["DoctorName"])) · delivery @F.Date(o["DeliveryDate"])</div>
+                </div>
+                <div class="d-flex gap-2">
+                    @if (status == "confirmed")
+                    {
+                        <button class="dme-btn dme-btn-primary" onclick="document.getElementById('podPanel').scrollIntoView({behavior:'smooth'})"><i class="bi bi-truck"></i> Mark Delivered + POD</button>
+                    }
+                    @if (status == "delivered" || status == "billed")
+                    {
+                        <a href="/Dme/Billing" class="dme-btn dme-btn-light"><i class="bi bi-receipt"></i> Go to Billing</a>
+                    }
+                </div>
+            </div>
+            <div class="dme-steps">
+                @for (int i = 0; i < stages.Length; i++)
+                {
+                    <div class="dme-step @(i == si ? "active" : i < si ? "done" : "")"><span class="num">@(i < si ? "✓" : (i + 1).ToString())</span>@stages[i]</div>
+                    if (i < stages.Length - 1) { <div class="dme-sep"></div> }
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="dme-card">
+        <div class="dme-card-head"><h2>Order lines</h2><span class="dme-muted">Total @F.Money(total)</span></div>
+        <table class="dme-table">
+            <thead><tr><th>HCPCS</th><th>Item</th><th>Mode</th><th>Qty</th><th>Modifiers</th><th>CMN</th><th style="text-align:right">Amount</th></tr></thead>
+            <tbody>
+                @foreach (var l in lines)
+                {
+                    decimal amt = F.S(l["Mode"]) == "purchase" ? F.Dec(l["UnitPrice"]) * F.I(l["Qty"]) : F.Dec(l["MonthlyRate"]);
+                    <tr>
+                        <td class="dme-mono">@F.S(l["Hcpcs"])</td>
+                        <td>@F.S(l["ItemName"])</td>
+                        <td>@(F.S(l["Mode"]) == "purchase" ? "Purchase" : "Rental")</td>
+                        <td>@F.I(l["Qty"])</td>
+                        <td class="dme-mono dme-muted">@F.S(l["Modifiers"])</td>
+                        <td>@(F.B(l["CmnOnFile"]) ? Html.Raw("<span class=\"dme-chip green\">on file</span>") : Html.Raw("<span class=\"dme-chip amber\">missing</span>"))</td>
+                        <td style="text-align:right" class="dme-mono">@F.Money(amt)@(F.S(l["Mode"]) == "rental" ? "/mo" : "")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (status == "delivered" || status == "billed")
+    {
+        <div class="dme-card">
+            <div class="dme-card-body" style="display:flex;align-items:center;gap:14px">
+                <i class="bi bi-check-circle-fill" style="font-size:24px;color:#0f6e56"></i>
+                <div><div style="font-weight:600">Proof of delivery captured</div>
+                    <div class="dme-muted" style="font-size:12.5px">Signed by @F.S(o["PodSignedBy"]) on @F.Date(o["PodSignedAt"])</div></div>
+                @if (o["PodSignature"] != null && !string.IsNullOrEmpty(F.S(o["PodSignature"])))
+                {
+                    <img src="@F.S(o["PodSignature"])" alt="signature" style="height:54px;margin-left:auto;border:1px solid #e6e9ef;border-radius:8px" />
+                }
+            </div>
+        </div>
+    }
+
+    @if (status == "confirmed")
+    {
+        <div class="dme-card" id="podPanel">
+            <div class="dme-card-head"><h2>Proof of delivery</h2></div>
+            <div class="dme-card-body" style="max-width:480px">
+                <form method="post" action="/Dme/Deliver" id="podForm">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@F.I(o["OrderId"])" />
+                    <input type="hidden" name="signature" id="podSig" />
+                    <label class="form-label">Received by</label>
+                    <input name="signedBy" class="form-control mb-2" value="@F.S(o["CustomerName"])" />
+                    <label class="form-label">Signature</label>
+                    <canvas class="sig-pad" id="sigCanvas"></canvas>
+                    <div class="d-flex justify-content-between mt-2">
+                        <button type="button" class="dme-btn dme-btn-light dme-btn-sm" id="sigClear">Clear</button>
+                        <button type="submit" class="dme-btn dme-btn-primary" id="podComplete"><i class="bi bi-check-lg"></i> Complete delivery</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <script>
+            (function () {
+                var canvas = document.getElementById('sigCanvas');
+                var ctx = canvas.getContext('2d');
+                var drawing = false, dirty = false, last = null;
+                function resize() { var r = canvas.getBoundingClientRect(); if (r.width) { canvas.width = r.width; canvas.height = r.height; ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.strokeStyle = '#16324f'; } }
+                setTimeout(resize, 60);
+                function pos(e) { var r = canvas.getBoundingClientRect(); var p = e.touches ? e.touches[0] : e; return { x: p.clientX - r.left, y: p.clientY - r.top }; }
+                function start(e) { if (!canvas.width) resize(); drawing = true; last = pos(e); e.preventDefault(); }
+                function move(e) { if (!drawing) return; var p = pos(e); ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke(); last = p; dirty = true; e.preventDefault(); }
+                function end() { drawing = false; }
+                canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move); window.addEventListener('mouseup', end);
+                canvas.addEventListener('touchstart', start); canvas.addEventListener('touchmove', move); canvas.addEventListener('touchend', end);
+                document.getElementById('sigClear').onclick = function () { ctx.clearRect(0, 0, canvas.width, canvas.height); dirty = false; };
+                document.getElementById('podForm').addEventListener('submit', function (e) {
+                    if (!dirty) { e.preventDefault(); alert('Please capture a signature first.'); return; }
+                    document.getElementById('podSig').value = canvas.toDataURL('image/png');
+                });
+            })();
+        </script>
+    }
+</div>

@@ -1,0 +1,57 @@
+@using EHR.Helpers
+@{
+    ViewData["ActivePage"] = "inventory";
+    var catalog = (List<Dictionary<string, object?>>)ViewBag.Catalog;
+    var units = (List<Dictionary<string, object?>>)ViewBag.Units;
+    int low = catalog.Count(x => F.I(x["OnHand"]) <= F.I(x["ReorderPoint"]));
+    int rented = units.Count(u => F.S(u["Status"]) == "rented");
+}
+
+<div class="dme-wrap">
+    <div class="dme-head"><div><h1>Inventory</h1><div class="dme-sub">Serialized units &amp; warehouse stock</div></div></div>
+
+    <div class="dme-kpis">
+        <div class="dme-kpi"><div class="k-label">Catalog items</div><div class="k-value">@catalog.Count</div><div class="k-foot">HCPCS Level II</div></div>
+        <div class="dme-kpi"><div class="k-label">Serialized units</div><div class="k-value">@units.Count</div><div class="k-foot">tracked by serial</div></div>
+        <div class="dme-kpi"><div class="k-label">Units on rent</div><div class="k-value">@rented</div><div class="k-foot">out with customers</div></div>
+        <div class="dme-kpi"><div class="k-label">Low stock</div><div class="k-value">@low</div><div class="k-foot">at/below reorder point</div></div>
+    </div>
+
+    <div class="dme-grid2">
+        <div class="dme-card">
+            <div class="dme-card-head"><h2>Serialized units</h2></div>
+            <table class="dme-table">
+                <thead><tr><th>Item</th><th>Serial</th><th>Status</th><th>In service</th></tr></thead>
+                <tbody>
+                    @foreach (var u in units)
+                    {
+                        <tr>
+                            <td>@F.S(u["ItemName"]) <span class="dme-muted dme-mono">@F.S(u["Hcpcs"])</span></td>
+                            <td class="dme-mono">@F.S(u["SerialNumber"])</td>
+                            <td>@Html.Raw(F.StatusChip(u["Status"]))</td>
+                            <td class="dme-muted">@F.Date(u["InServiceDate"])</td>
+                        </tr>
+                    }
+                    @if (units.Count == 0) { <tr><td colspan="4" class="dme-empty">No serialized units.</td></tr> }
+                </tbody>
+            </table>
+        </div>
+        <div class="dme-card">
+            <div class="dme-card-head"><h2>Stock levels</h2></div>
+            <table class="dme-table">
+                <thead><tr><th>HCPCS</th><th>Item</th><th>On hand</th></tr></thead>
+                <tbody>
+                    @foreach (var x in catalog)
+                    {
+                        var l = F.I(x["OnHand"]) <= F.I(x["ReorderPoint"]);
+                        <tr>
+                            <td class="dme-mono">@F.S(x["Hcpcs"])</td>
+                            <td>@F.S(x["Name"])</td>
+                            <td class="dme-mono">@F.I(x["OnHand"]) @if (l) { <span class="dme-chip amber">reorder</span> }</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

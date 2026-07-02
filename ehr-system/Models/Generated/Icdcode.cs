@@ -1,0 +1,15 @@
+﻿using System;
+using System.Collections.Generic;
+
+namespace EHR.Models.Generated;
+
+public partial class Icdcode
+{
+    public string Code { get; set; }
+
+    public string Description { get; set; }
+
+    public string Category { get; set; }
+
+    public bool? IsActive { get; set; }
+}

@@ -1,0 +1,29 @@
+@{
+    ViewData["Title"] = "Providers";
+    ViewData["ActivePage"] = "providers";
+}
+
+<!-- Providers Page -->
+<div class="page active" id="providersPage">
+    <div class="page-header">
+        <div class="d-flex gap-2 align-items-center">
+            <select class="form-select" id="providerStatusFilter" style="width: auto;">
+                <option value="">All Providers</option>
+                <option value="true" selected>Active Only</option>
+                <option value="false">Inactive Only</option>
+            </select>
+            <button class="btn btn-primary requires-admin" onclick="window.providerModule?.openNewForm()">
+                <i class="bi bi-plus-lg me-1"></i>Add Provider
+            </button>
+        </div>
+    </div>
+    <div class="row g-4" id="providersGrid"></div>
+</div>
+
+@section Modals {
+    <partial name="_ModalsProvider" />
+    <partial name="_Modals" />
+}
+
+@section Scripts {
+}
