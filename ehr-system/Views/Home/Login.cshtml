@@ -1,0 +1,26 @@
+@{
+    ViewData["Title"] = "Sign in";
+    ViewData["ActivePage"] = "";
+    var returnUrl = ViewBag.ReturnUrl as string;
+}
+
+@*
+    Sign-in landing page.
+
+    The login card itself lives in Views/Shared/_Layout.cshtml and is revealed
+    by the existing client-side auth boot (wwwroot/js/core/App.js). This view
+    only needs to render the layout and, when the user was bounced here from a
+    protected page, remember where to send them back to after login.
+
+    Nothing tenant-specific or PHI-bearing is rendered here, which is what makes
+    it safe to serve anonymously.
+*@
+
+@if (!string.IsNullOrEmpty(returnUrl))
+{
+    <script>
+        // Stored, not placed in a visible field, so the value survives the
+        // OTP step without the user being able to edit it mid-flow.
+        sessionStorage.setItem('postLoginReturnUrl', @Html.Raw(System.Text.Json.JsonSerializer.Serialize(returnUrl)));
+    </script>
+}

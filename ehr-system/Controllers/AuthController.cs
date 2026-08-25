@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
+
 using EHR.Helpers;
 using EHR.Models;
 using EHR.Models.Generated;
@@ -96,6 +97,18 @@ public class AuthController : ControllerBase
                 result.DeviceToken = null; // Never return raw token in response body
             }
 
+            // Mirror the JWT into an HttpOnly session cookie so server-rendered
+            // Razor pages can identify the caller. A page navigation sends no
+            // Authorization header, so the cookie is the only way those pages
+            // can be protected at all. See Helpers/SessionCookie.cs.
+            // Not issued while the user still has a clinic to pick — at that
+            // point the token in `result` is not yet a full session token.
+            if (!result.RequiresTenantSelection && !string.IsNullOrEmpty(result.Token))
+            {
+                SessionCookie.Issue(Response, result.Token,
+                    result.TokenExpiry ?? DateTime.UtcNow.AddMinutes(30), Request.IsHttps);
+            }
+
             return Ok(result);
         }
         catch (Exception ex)
@@ -136,16 +149,32 @@ public class AuthController : ControllerBase
         var result = await _authService.RefreshTokenAsync(request.RefreshToken);
         if (result == null)
             return Unauthorized(new { message = "Invalid or expired refresh token" });
-        
+
+        // Roll the page session forward with the SPA session. The JWT lives 30
+        // minutes; without this the cookie would expire mid-session and the
+        // Razor pages would bounce to login while the SPA kept working.
+        if (!string.IsNullOrEmpty(result.Token))
+        {
+            SessionCookie.Issue(Response, result.Token,
+                result.TokenExpiry ?? DateTime.UtcNow.AddMinutes(30), Request.IsHttps);
+        }
+
         return Ok(result);
     }
     
+    /// <summary>
+    /// End the session. The policy scheme accepts header or cookie, so a
+    /// page-only session can still log itself out. LogoutAsync bumps
+    /// TokenVersion, which revokes the header token and the cookie token alike
+    /// because both run the same validation.
+    /// </summary>
     [Authorize]
     [HttpPost("logout")]
     public async Task<ActionResult> Logout()
     {
         var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
         await _authService.LogoutAsync(userId);
+        SessionCookie.Clear(Response, Request.IsHttps);
         return Ok(new { message = "Logged out successfully" });
     }
     

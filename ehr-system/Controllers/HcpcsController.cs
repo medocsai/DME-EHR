@@ -1,50 +1,53 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
+using EHR.Helpers;
 
 namespace EHR.Controllers;
 
 /// <summary>
-/// DME — HCPCS Level II catalog page (Phase 1 DME feature).
-/// Reads the DME HcpcsCodes table directly (no EF entity yet) so it stays
-/// isolated from the generated EHR DbContext during the conversion.
+/// DME — HCPCS Level II catalog page.
+///
+/// The catalog is tenant data, not a shared national reference table: each DME
+/// supplier maintains its own item master and its own contract pricing. It
+/// therefore reads through IDmeDb like every other DME screen, so the row level
+/// security policy scopes it. It previously opened its own SqlConnection with
+/// no tenant context, which meant it returned every tenant's catalog.
 /// </summary>
+[Authorize]
+[PhiAccessAudit(EntityType = "HcpcsCatalog")]
 public class HcpcsController : Controller
 {
-    private readonly IConfiguration _config;
-    public HcpcsController(IConfiguration config) => _config = config;
+    private readonly IDmeDb _db;
+    public HcpcsController(IDmeDb db) => _db = db;
 
     public IActionResult Index()
     {
         ViewData["Title"] = "HCPCS Catalog";
         ViewData["ActivePage"] = "hcpcs";
 
-        var items = new List<HcpcsRow>();
-        using (var conn = new SqlConnection(_config.GetConnectionString("DefaultConnection")))
-        {
-            conn.Open();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"SELECT Hcpcs, Name, Category, IsSerialized, Rentable, Purchasable,
-                                       PurchasePrice, MonthlyRate, CappedRentalMonths, Modifiers, OnHand
-                                FROM dbo.HcpcsCodes ORDER BY Category, Hcpcs";
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
+        // OnHand comes from the stock ledger via the view, never from a stored
+        // counter. See Migrations/Manual/2026-08-25_DME_Single_Source_Of_Truth.sql.
+        var items = _db.Query(@"
+            SELECT Hcpcs, Name, Category, IsSerialized, Rentable, Purchasable,
+                   PurchasePrice, MonthlyRate, CappedRentalMonths, Modifiers, OnHand
+            FROM dbo.vHcpcsCatalog
+            ORDER BY Category, Hcpcs")
+            .Select(r => new HcpcsRow
             {
-                items.Add(new HcpcsRow
-                {
-                    Hcpcs = r.GetString(0),
-                    Name = r.GetString(1),
-                    Category = r.GetString(2),
-                    IsSerialized = r.GetBoolean(3),
-                    Rentable = r.GetBoolean(4),
-                    Purchasable = r.GetBoolean(5),
-                    PurchasePrice = r.GetDecimal(6),
-                    MonthlyRate = r.GetDecimal(7),
-                    CappedRentalMonths = r.GetInt32(8),
-                    Modifiers = r.IsDBNull(9) ? "" : r.GetString(9),
-                    OnHand = r.GetInt32(10)
-                });
-            }
-        }
+                Hcpcs = F.S(r["Hcpcs"]),
+                Name = F.S(r["Name"]),
+                Category = F.S(r["Category"]),
+                IsSerialized = F.B(r["IsSerialized"]),
+                Rentable = F.B(r["Rentable"]),
+                Purchasable = F.B(r["Purchasable"]),
+                PurchasePrice = F.Dec(r["PurchasePrice"]),
+                MonthlyRate = F.Dec(r["MonthlyRate"]),
+                CappedRentalMonths = F.I(r["CappedRentalMonths"]),
+                Modifiers = F.S(r["Modifiers"]),
+                OnHand = F.I(r["OnHand"])
+            })
+            .ToList();
+
         return View("~/Views/Hcpcs/Index.cshtml", items);
     }
 }

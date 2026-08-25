@@ -9,12 +9,24 @@ namespace EHR.Controllers;
 public class HomeController : Controller
 {
     /// <summary>
-    /// Main application entry point - redirects to Dashboard.
-    /// Login is handled client-side via JavaScript.
+    /// Application entry point and the sign-in landing page.
+    ///
+    /// Authenticated callers go straight to the DME dashboard. Everyone else
+    /// gets the Login view, which renders the shared layout so the existing
+    /// client-side login card is shown. This action is deliberately anonymous:
+    /// it is where the 401 handler sends unauthenticated page navigations, so
+    /// requiring auth here would produce a redirect loop.
     /// </summary>
-    public IActionResult Index()
+    [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+    public IActionResult Index(string? returnUrl = null)
     {
-        return RedirectToAction("Dashboard", "Dme");
+        if (User.Identity?.IsAuthenticated == true)
+            return RedirectToAction("Dashboard", "Dme");
+
+        // Only ever bounce back to a local path. An absolute URL here would let
+        // a crafted link turn the login page into an open redirect.
+        ViewBag.ReturnUrl = Url.IsLocalUrl(returnUrl) ? returnUrl : null;
+        return View("Login");
     }
 
     /// <summary>

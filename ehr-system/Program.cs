@@ -97,6 +97,23 @@ builder.Services.AddSingleton<EncryptionHelper>();
 // Audit logging for all PHI access (HIPAA Security Rule 45 CFR 164.312(b))
 builder.Services.AddScoped<IAuditService, AuditService>();
 
+// DME change auditing. Needs the request context to attribute the change to a
+// user and an IP, so the accessor is registered alongside it.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IDmeAudit, DmeAudit>();
+
+// DME data access (raw ADO against the DME-native tables in DMEEHR).
+// Scoped, not static: it resolves the caller's tenant from ITenantProvider and
+// binds every connection to it so the SQL Server row level security policy can
+// filter. See Helpers/DmeDb.cs.
+builder.Services.AddScoped<EHR.Helpers.IDmeDb, EHR.Helpers.DmeDb>();
+
+// DME customer PHI: encryption at rest plus the blind index that keeps search
+// working over ciphertext. Wraps the shared EncryptionHelper so the DME product
+// never grows its own cryptography. Singleton because it is stateless and its
+// only dependency already is one.
+builder.Services.AddSingleton<EHR.Helpers.DmeCustomerPhi>();
+
 // Google Cloud Storage Services
 builder.Services.Configure<GoogleCloudStorageOptions>(
     builder.Configuration.GetSection("GoogleCloudStorage"));
@@ -248,101 +265,43 @@ builder.Services.AddHostedService<AuditLogRetentionBackgroundService>();
 builder.Services.AddHostedService<EmailExactBackfillService>();
 
 // JWT Authentication
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "YourSecretKeyHere12345678901234567890";
-var key = Encoding.UTF8.GetBytes(jwtKey);
-
+// Two schemes, one set of rules (see Configuration/JwtBearerSetup.cs):
+//   Bearer        - the SPA, token in the Authorization header
+//   SessionCookie - server-rendered Razor pages, token in an HttpOnly cookie
+// A browser navigation sends no Authorization header, so without the cookie
+// scheme a server-rendered page can never identify the caller.
 builder.Services.AddAuthentication(options =>
 {
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    // A policy scheme picks the real scheme per request, so HttpContext.User is
+    // populated the same way everywhere and plain [Authorize] works on both API
+    // controllers and server-rendered pages. Without this the default scheme is
+    // Bearer, and a page navigation (no Authorization header) always looks
+    // anonymous even when a valid session cookie is present.
+    options.DefaultScheme = EHR.Helpers.SessionCookie.PolicyScheme;
+    options.DefaultChallengeScheme = EHR.Helpers.SessionCookie.PolicyScheme;
 })
-.AddJwtBearer(options =>
+.AddPolicyScheme(EHR.Helpers.SessionCookie.PolicyScheme, "Bearer header, else session cookie", options =>
 {
-    options.RequireHttpsMetadata = false;
-    options.SaveToken = true;
-    options.TokenValidationParameters = new TokenValidationParameters
+    options.ForwardDefaultSelector = ctx =>
     {
-        ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(key),
-        ValidateIssuer = true,
-        ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "IMEHR",
-        ValidateAudience = true,
-        ValidAudience = builder.Configuration["Jwt:Audience"] ?? "IMEHRUsers",
-        ValidateLifetime = true,
-        ClockSkew = TimeSpan.Zero
+        // An explicit Authorization header always wins: API and fetch callers
+        // keep behaving exactly as before this scheme existed.
+        string? header = ctx.Request.Headers.Authorization;
+        if (!string.IsNullOrEmpty(header) && header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            return JwtBearerDefaults.AuthenticationScheme;
+
+        // Otherwise fall back to the cookie when one is present. Falling back to
+        // Bearer when it is not keeps 401 responses shaped the way API clients
+        // already expect.
+        return EHR.Helpers.SessionCookie.Read(ctx.Request) != null
+            ? EHR.Helpers.SessionCookie.Scheme
+            : JwtBearerDefaults.AuthenticationScheme;
     };
-    // Support SignalR authentication via query string + per-token-version
-    // invalidation (D1).
-    options.Events = new JwtBearerEvents
-    {
-        OnMessageReceived = context =>
-        {
-            var accessToken = context.Request.Query["access_token"];
-            var path = context.HttpContext.Request.Path;
-            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
-            {
-                context.Token = accessToken;
-            }
-            return Task.CompletedTask;
-        },
-
-        // OnTokenValidated runs AFTER signature/lifetime checks pass and
-        // BEFORE the request reaches MVC. We use it to enforce token-version
-        // invalidation — bumping User.TokenVersion (logout, password change,
-        // password reset) immediately fails every existing JWT for that user
-        // without waiting for the natural 8-hour expiry.
-        OnTokenValidated = async context =>
-        {
-            var principal = context.Principal;
-            if (principal == null) { context.Fail("No principal."); return; }
-
-            // Patient portal tokens carry a "PatientId" claim instead of "UserId"
-            // and have no "tv" version (their backing record lives in
-            // PatientPortalAccounts, not Users). Their session is enforced
-            // separately via PatientPortalAccounts.IsActive / FailedLoginAttempts
-            // / LockoutEndAt at login time, plus the JWT's 4-hour expiry. Skip
-            // the User-table TokenVersion check for these tokens — applying it
-            // would 401 every portal request and bounce the patient back to login.
-            if (principal.FindFirst("PatientId") != null)
-            {
-                return;
-            }
-
-            var userIdStr = principal.FindFirst("UserId")?.Value
-                            ?? principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            var tvStr = principal.FindFirst("tv")?.Value;
-
-            if (!int.TryParse(userIdStr, out var uid) || !int.TryParse(tvStr, out var tv))
-            {
-                // Old tokens issued before D1 deploy have no "tv" claim — fail
-                // them so users re-login and get a v1 token. After this rolls
-                // out, the absence of "tv" is itself an invalidation signal.
-                context.Fail("Token missing required version claim.");
-                return;
-            }
-
-            // Resolve EhrDbContext from the request scope (do not capture from
-            // the root provider — DbContext is scoped).
-            var db = context.HttpContext.RequestServices
-                .GetRequiredService<EHR.Models.Generated.EhrDbContext>();
-            var current = await db.Users
-                .Where(u => u.UserId == uid)
-                .Select(u => new { u.TokenVersion, u.IsActive })
-                .FirstOrDefaultAsync();
-
-            if (current == null || current.IsActive != true)
-            {
-                context.Fail("User not found or inactive.");
-                return;
-            }
-            if (current.TokenVersion != tv)
-            {
-                context.Fail("Token has been revoked (version mismatch).");
-                return;
-            }
-        }
-    };
-});
+})
+.AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
+    EHR.Configuration.JwtBearerSetup.Configure(options, builder.Configuration, tokenFromCookie: false))
+.AddJwtBearer(EHR.Helpers.SessionCookie.Scheme, options =>
+    EHR.Configuration.JwtBearerSetup.Configure(options, builder.Configuration, tokenFromCookie: true));
 
 builder.Services.AddAuthorization();
 
@@ -465,9 +424,6 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-// DME data layer (raw-ADO against the DME-native tables in DMEEHR).
-EHR.Helpers.DmeDb.Init(builder.Configuration.GetConnectionString("DefaultConnection") ?? "");
-
 // HTTPS + HSTS in non-development environments. Production load balancer
 // (or IIS) terminates TLS but we still emit redirect + HSTS so browsers cache it.
 if (!app.Environment.IsDevelopment())
@@ -525,6 +481,29 @@ if (app.Environment.IsDevelopment())
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "PT EHR API v1");
     });
 }
+
+// Turn a 401 on a browser page navigation into a redirect to the sign-in page.
+// Without this, a logged-out user clicking a bookmarked /Dme/... link gets a
+// blank 401 body instead of the login card. Deliberately narrow: API callers
+// and fetch/XHR still receive a real 401 with the response shape they expect,
+// so nothing that already works changes behaviour.
+app.UseStatusCodePages(context =>
+{
+    var http = context.HttpContext;
+    var isPageNavigation =
+        http.Response.StatusCode == StatusCodes.Status401Unauthorized
+        && HttpMethods.IsGet(http.Request.Method)
+        && !http.Request.Path.StartsWithSegments("/api")
+        && http.Request.Headers.Accept.ToString().Contains("text/html", StringComparison.OrdinalIgnoreCase);
+
+    if (isPageNavigation)
+    {
+        var returnUrl = http.Request.Path + http.Request.QueryString;
+        http.Response.Redirect("/?returnUrl=" + Uri.EscapeDataString(returnUrl));
+    }
+
+    return Task.CompletedTask;
+});
 
 app.UseCors("CorsPolicy");
 app.UseStaticFiles();

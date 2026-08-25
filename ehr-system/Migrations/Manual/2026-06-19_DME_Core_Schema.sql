@@ -1,7 +1,29 @@
 /* ============================================================================
    DME Core Schema + Seed  (DMEEHR database)
-   Clean DME-native model on the converted app shell. Plaintext demo data.
-   Idempotent: safe to re-run.
+   Clean DME-native model on the converted app shell.
+
+   RUN ORDER (a fresh database needs all four, in this order):
+     1. 2026-06-19_DME_Core_Schema.sql            <- this file
+     2. 2026-08-25_DME_Tenant_Isolation.sql
+     3. 2026-08-25_DME_Single_Source_Of_Truth.sql
+     4. 2026-08-25_DME_Customer_PHI_Encryption.sql
+   Then POST /Dme/BackfillPhi once, as an admin, to encrypt the seeded customer
+   rows. Verified end to end on a scratch database on 2026-08-25.
+
+   IDEMPOTENCY, precisely:
+   Safe to re-run on its own. NOT safe to re-run after step 3, which drops
+   DmeRentals.MonthsBilled, DmeOrders.CustomerName/DoctorName, DmeClaims.Total
+   and HcpcsCodes.OnHand. The seed block below still names those columns, and
+   SQL Server binds column names when it COMPILES a batch, so the seed fails to
+   compile even though its IF guard would have skipped it. No data is harmed
+   (the guard means nothing is inserted) but the script reports errors.
+
+   Migrations are an ordered chain, so re-running an earlier one after a later
+   one is not a normal operation. Stated here because the file used to claim
+   plain "idempotent", which was not true once step 3 existed.
+
+   Seed data is plaintext at this point; step 4 plus the backfill is what
+   encrypts it.
    ============================================================================ */
 SET QUOTED_IDENTIFIER ON;
 SET ANSI_NULLS ON;
@@ -83,7 +105,71 @@ CREATE TABLE dbo.DmePayers (
 );
 GO
 
-/* ---------- Inventory: serialized units (HcpcsCodes already holds the catalog) ---------- */
+/* ---------- Catalog: HCPCS item master ----------
+   ADDED 2026-08-25. This table existed in the DMEEHR database but its CREATE
+   was in no migration in the repository, so a fresh checkout could not rebuild
+   the database: every DME screen that reads the catalog failed. Scripted from
+   the live schema and seeded with the same 22 items.
+
+   The catalog is TENANT data, not a shared national reference table: each DME
+   supplier maintains its own item master and its own contract pricing.
+
+   OnHand is present here because it is what the table originally had. The
+   later 2026-08-25_DME_Single_Source_Of_Truth.sql migration converts it into
+   an opening balance in DmeStockMovements and DROPS it, because a stored stock
+   counter drifts (it said 14 units of E1390 when one was in stock). Keeping the
+   column here means the migration chain reproduces the real history rather than
+   pretending the mistake never happened, and a fresh build ends up in exactly
+   the same state as the existing database. Do not read OnHand from this table:
+   read it from vHcpcsCatalog. */
+IF OBJECT_ID('dbo.HcpcsCodes','U') IS NULL
+CREATE TABLE dbo.HcpcsCodes (
+    HcpcsCodeId        INT IDENTITY(1,1) PRIMARY KEY,
+    Hcpcs              NVARCHAR(10)  NOT NULL,
+    Name               NVARCHAR(200) NOT NULL,
+    Category           NVARCHAR(60)  NOT NULL,
+    IsSerialized       BIT           NOT NULL CONSTRAINT DF_Hcpcs_Serial   DEFAULT 0,
+    Rentable           BIT           NOT NULL CONSTRAINT DF_Hcpcs_Rentable DEFAULT 0,
+    Purchasable        BIT           NOT NULL CONSTRAINT DF_Hcpcs_Purch    DEFAULT 1,
+    PurchasePrice      DECIMAL(10,2) NOT NULL CONSTRAINT DF_Hcpcs_Price    DEFAULT 0,
+    MonthlyRate        DECIMAL(10,2) NOT NULL CONSTRAINT DF_Hcpcs_Rate     DEFAULT 0,
+    CappedRentalMonths INT           NOT NULL CONSTRAINT DF_Hcpcs_Cap      DEFAULT 0,
+    Modifiers          NVARCHAR(50)  NULL,
+    ReorderPoint       INT           NOT NULL CONSTRAINT DF_Hcpcs_Reorder  DEFAULT 5,
+    OnHand             INT           NOT NULL CONSTRAINT DF_Hcpcs_OnHand   DEFAULT 0,   -- dropped by the 2026-08-25 SSOT migration
+    TenantId           INT           NOT NULL CONSTRAINT DF_Hcpcs_Tenant   DEFAULT 1
+);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.HcpcsCodes)
+BEGIN
+    INSERT INTO dbo.HcpcsCodes (Hcpcs,Name,Category,IsSerialized,Rentable,Purchasable,PurchasePrice,MonthlyRate,CappedRentalMonths,Modifiers,ReorderPoint,OnHand) VALUES
+    ('E0250','Hospital Bed, Full-Electric','Beds & Support',1,1,0,0.00,165.00,13,'RR',5,4),
+    ('E0260','Hospital Bed, Semi-Electric','Beds & Support',1,1,0,0.00,135.00,13,'RR',5,7),
+    ('E0277','Powered Pressure-Reducing Mattress','Beds & Support',1,1,0,0.00,168.00,13,'RR',5,5),
+    ('A4253','Blood Glucose Test Strips (50 ct)','Diabetic',0,0,1,26.50,0.00,0,'NU',5,120),
+    ('A5500','Diabetic Custom Shoe (per shoe)','Diabetic',0,0,1,64.00,0.00,0,'KX',5,24),
+    ('E0607','Blood Glucose Monitor, Home','Diabetic',0,0,1,38.00,0.00,0,'NU',5,30),
+    ('E0114','Crutches, Underarm, Aluminum (pair)','Mobility',0,0,1,28.00,0.00,0,'NU',5,35),
+    ('E0143','Walker, Folding, Wheeled','Mobility',0,0,1,58.00,0.00,0,'NU',5,40),
+    ('E0163','Commode Chair, Stationary','Mobility',0,0,1,92.00,0.00,0,'NU',5,16),
+    ('K0001','Standard Wheelchair','Mobility',1,1,1,420.00,45.00,13,'NU,RR',5,18),
+    ('K0005','Ultralightweight Wheelchair','Mobility',1,0,1,2380.00,0.00,0,'NU',5,3),
+    ('K0823','Power Wheelchair, Group 2 Std','Mobility',1,1,0,0.00,489.00,13,'RR,KX',5,4),
+    ('E0730','TENS Unit, 4-Lead','Orthotics',0,1,1,148.00,34.00,0,'NU,RR',5,12),
+    ('L0650','Lumbar-Sacral Orthosis (LSO)','Orthotics',0,0,1,312.00,0.00,0,'NU',5,10),
+    ('A7030','CPAP Full Face Mask','Respiratory',0,0,1,96.50,0.00,0,'NU',5,60),
+    ('A7034','Nasal CPAP Mask','Respiratory',0,0,1,78.00,0.00,0,'NU',5,75),
+    ('E0431','Portable Gaseous Oxygen System','Respiratory',1,1,0,0.00,32.00,36,'RR',5,9),
+    ('E0470','Respiratory Assist Device (BiPAP)','Respiratory',1,1,0,0.00,210.00,13,'RR',5,6),
+    ('E0570','Nebulizer, with compressor','Respiratory',0,1,1,64.00,18.00,0,'NU,RR',5,22),
+    ('E0601','CPAP Device','Respiratory',1,1,1,685.00,92.00,13,'RR,NU',5,11),
+    ('E1390','Oxygen Concentrator, single delivery','Respiratory',1,1,0,0.00,178.00,36,'RR',5,14),
+    ('A6402','Sterile Gauze Pad (box)','Wound Care',0,0,1,14.00,0.00,0,'NU',5,90);
+END
+GO
+
+/* ---------- Inventory: serialized units ---------- */
 IF OBJECT_ID('dbo.DmeSerializedUnits','U') IS NULL
 CREATE TABLE dbo.DmeSerializedUnits (
     UnitId        INT IDENTITY(1,1) PRIMARY KEY,

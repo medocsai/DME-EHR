@@ -45,6 +45,63 @@ App runs at **http://localhost:5005**.
 All JS/CSS are loaded in `Views/Shared/_Layout.cshtml` with `?v=N`. When you edit a `.js` or
 `.css` file, bump its `?v` in `_Layout.cshtml` so browsers reload it.
 
+## Foundation (added 2026-08-25, branch foundation/security-and-ssot)
+
+### Security
+- **Auth on DME pages.** `DmeController` and `HcpcsController` carry `[Authorize]`.
+  Two authentication schemes sit behind one policy scheme (`MedocsSmartAuth`,
+  `Configuration/JwtBearerSetup.cs`): `Bearer` for the SPA, `SessionCookie` for
+  server-rendered pages. A page navigation sends no Authorization header, so the
+  JWT is mirrored into an HttpOnly SameSite=Strict cookie at verify-otp and
+  refresh, and cleared at logout (`Helpers/SessionCookie.cs`). A 401 on a browser
+  GET redirects to `/` instead of returning a blank body.
+- **Tenant isolation.** SQL Server row level security (`TenantIsolationPolicy`)
+  covers every DME table with FILTER (reads) and BLOCK (writes) predicates.
+  `Helpers/DmeDb.cs` is request-scoped, sets `SESSION_CONTEXT(CurrentTenantId)`
+  on every connection, and THROWS if the tenant is unknown; the policy treats
+  "no context" as "show everything", so an unscoped connection must never happen.
+  `` is injected into every command automatically.
+- **PHI at rest.** DME customer PHI is AES-GCM encrypted via the shared
+  `EncryptionHelper` (`Helpers/DmeCustomerPhi.cs` owns the column list). Search
+  works through a blind index (`DmeCustomerSearchTokens`), prefix-hashed the same
+  way `BlindIndexService` does it for patients. `POST /Dme/BackfillPhi` (admin
+  only) encrypts existing rows and is safe to re-run.
+- **Audit.** `[PhiAccessAudit]` logs every successful read. `Services/DmeAudit.cs`
+  logs every mutation with before/after state, user and IP, into `AuditLogs`.
+
+### Single source of truth
+`MonthsBilled`, `OnHand`, `Claims.Total`, and the copied `CustomerName` /
+`DoctorName` columns were **dropped**. They are computed by the views
+`vDmeRentals`, `vDmeClaims`, `vDmeOrders`, `vHcpcsCatalog`. **Read through the
+views, never the base tables.** Two facts that had no home are now stored:
+`DmeClaimLines.RentalId` (which rental a month billed) and `DmeStockMovements`
+(the stock ledger). Point-in-time facts are deliberately still stored and must
+stay: `DmeClaims.CustomerName`/`PayerName`, line prices, `DmeRentals.MonthlyRate`.
+
+**Trap:** the views return `CustomerFirstName` + `CustomerLastName` separately.
+Two ciphertexts concatenated in SQL cannot be decrypted. Always call
+`_phi.ComposeCustomerNames(rows)` after reading `vDmeOrders` / `vDmeRentals`,
+or the screen renders base64.
+
+### Migrations (run in this order on a fresh database)
+1. `2026-06-19_DME_Core_Schema.sql`
+2. `2026-08-25_DME_Tenant_Isolation.sql`
+3. `2026-08-25_DME_Single_Source_Of_Truth.sql`
+4. `2026-08-25_DME_Customer_PHI_Encryption.sql`
+Then `POST /Dme/BackfillPhi` once as an admin. Verified end to end on a scratch
+database. Note `ALTER SECURITY POLICY` and any batch naming a dropped column are
+validated at COMPILE time, so `IF NOT EXISTS` guards do not protect them: use
+`sp_executesql`.
+
+### Tests
+`dotnet test ehr-system/EHR.Tests` — **275 passing, 1 skipped**. The DME suite is
+in `EHR.Tests/Dme/`. Four SecurityOverhaul test files are excluded in the csproj
+because they test `EHR.Services.Security`, which exists in IMEHR but was never
+copied into this fork.
+
+Run `bash scripts/verify-dme-foundation.sh` against a running app for the
+end-to-end proof (39 checks).
+
 ## Constraints
 - **NEVER touch** the IMEHR codebase (`..\imehr`), the rehabdox codebase, or the `IMEHR` /
   `PTEHR` databases. All work stays in `imehr-dme` + the `DMEEHR` database.
@@ -53,3 +110,14 @@ All JS/CSS are loaded in `Views/Shared/_Layout.cshtml` with `?v=N`. When you edi
 - Core flow: New Customer → New Order (HCPCS items) → Deliver + POD signature →
   auto-bills the rental + queues the claim → Billing / CMS-1500. Schedule = delivery calendar.
 - Deliberately faked (labeled in-app): live eligibility, 837/835 EDI clearinghouse.
+
+## Working Style (READ FIRST, EVERY SESSION)
+Read these before doing anything, every session:
+- `D:\Common\Work Style\Must Rule.txt`
+- `D:\Common\Work Style\workStyle.md`
+- `D:\Common\Work Style\TEAM_WORKING_MODEL.md`
+- `D:\Common\Work Style\single-source-of-truth.txt`
+
+Short version: I am Hammas, the CTO. You are the PM. Shortest possible answers, section by
+section. Compute, never store derived state. Hired-guy separation. Long-term fixes only.
+No over-engineering, no work outside the paid scope. Never use em dashes.
