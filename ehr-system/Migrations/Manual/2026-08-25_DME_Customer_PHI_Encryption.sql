@@ -75,6 +75,39 @@ CLOSE widen; DEALLOCATE widen;
 GO
 
 /* ---------------------------------------------------------------------------
+   1a. Dob becomes a string column so it can hold ciphertext
+
+   Date of birth is a HIPAA identifier and belongs with the rest of the PHI, but
+   a DATE column physically cannot store an encrypted value. The column is
+   converted to NVARCHAR.
+
+   Converted via an explicit CONVERT(..., 23) rather than a plain ALTER COLUMN,
+   because an implicit DATE-to-string conversion uses the session's date format:
+   the same migration run on a machine with a different regional setting would
+   silently produce 12/04/1958 instead of 1958-04-12, and every age on every
+   screen would then be wrong for half the customers. ISO 8601 also parses
+   unambiguously back in .NET regardless of culture.
+
+   Verified safe first: Dob is display-only in this product (F.Date and F.Age).
+   Nothing sorts, filters or joins on it, so losing the DATE type costs nothing
+   here. If a future feature needs to query by age, that wants a separate
+   derived column or a blind index, not a plaintext birth date.
+   --------------------------------------------------------------------------- */
+IF EXISTS (SELECT 1 FROM sys.columns c
+           JOIN sys.types t ON t.user_type_id = c.user_type_id
+           WHERE c.object_id = OBJECT_ID('dbo.DmeCustomers') AND c.name = 'Dob' AND t.name = 'date')
+BEGIN
+    ALTER TABLE dbo.DmeCustomers ADD DobText NVARCHAR(512) NULL;
+
+    EXEC sp_executesql N'UPDATE dbo.DmeCustomers SET DobText = CONVERT(varchar(10), Dob, 23) WHERE Dob IS NOT NULL;';
+
+    ALTER TABLE dbo.DmeCustomers DROP COLUMN Dob;
+    EXEC sp_rename 'dbo.DmeCustomers.DobText', 'Dob', 'COLUMN';
+    PRINT 'Converted DmeCustomers.Dob to NVARCHAR(512) (ISO 8601) for encryption';
+END
+GO
+
+/* ---------------------------------------------------------------------------
    1b. DmeClaims.CustomerName also holds ciphertext
 
    That column is deliberately stored rather than derived (a submitted claim is

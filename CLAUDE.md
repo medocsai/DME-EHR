@@ -83,6 +83,17 @@ Two ciphertexts concatenated in SQL cannot be decrypted. Always call
 `_phi.ComposeCustomerNames(rows)` after reading `vDmeOrders` / `vDmeRentals`,
 or the screen renders base64.
 
+### Onboarding a new tenant (SaaS)
+Super Admin creates the tenant at `/Home/Tenants` (`POST /api/tenants`, role 0 only).
+That creates the tenant, a default location and an admin user. It does NOT create
+DME reference data, and the HCPCS catalog and payer list are tenant-scoped, so a
+new tenant has an empty catalog and cannot raise an order until you run
+`Migrations/Manual/DME_Onboard_New_Tenant.sql` by hand (set `@TargetTenantId`).
+Deliberately a script, not a button: every DME connection is pinned to the
+caller tenant and RLS BLOCKs cross-tenant writes, so an in-app version would
+have to punch a hole through the isolation. Order/claim numbering needs no
+seeding.
+
 ### Migrations (run in this order on a fresh database)
 1. `2026-06-19_DME_Core_Schema.sql`
 2. `2026-08-25_DME_Tenant_Isolation.sql`
@@ -94,7 +105,7 @@ validated at COMPILE time, so `IF NOT EXISTS` guards do not protect them: use
 `sp_executesql`.
 
 ### Tests
-`dotnet test ehr-system/EHR.Tests` — **275 passing, 1 skipped**. The DME suite is
+`dotnet test ehr-system/EHR.Tests` — **281 passing, 1 skipped**. The DME suite is
 in `EHR.Tests/Dme/`. Four SecurityOverhaul test files are excluded in the csproj
 because they test `EHR.Services.Security`, which exists in IMEHR but was never
 copied into this fork.

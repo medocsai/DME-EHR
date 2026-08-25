@@ -40,12 +40,57 @@ public class DmeCustomerPhiTests
 
     [Theory]
     [InlineData("AccountNo", "it is an internal handle we generate, not derived from the person, and staff search on it")]
-    [InlineData("Dob", "it is a DATE column; encrypting it needs a type change and a migration of its own, and half-doing it would be worse than not doing it")]
     public void DeliberateExclusions_StayExcluded(string column, string why)
     {
         DmeCustomerPhi.EncryptedColumns.Should().NotContain(column,
             $"{column} is deliberately left in the clear: {why}. " +
             "If that changes it must be a decision, not a drive-by edit.");
+    }
+
+    /// <summary>
+    /// Date of birth is a HIPAA identifier on its own. It was excluded on
+    /// 2026-08-25 morning because the column was a DATE and could not hold
+    /// ciphertext, then included the same day once the column was converted to
+    /// NVARCHAR with an ISO 8601 value.
+    /// </summary>
+    [Fact]
+    public void DateOfBirth_IsEncrypted()
+    {
+        DmeCustomerPhi.EncryptedColumns.Should().Contain("Dob",
+            "a date of birth identifies a person under HIPAA safe harbour and belongs " +
+            "with the rest of the PHI");
+    }
+
+    [Theory]
+    [InlineData(1958, 4, 12, "1958-04-12")]
+    [InlineData(1944, 9, 3, "1944-09-03")]
+    public void DateOfBirth_IsStoredIsoFormatted(int y, int m, int d, string expected)
+    {
+        DmeCustomerPhi.FormatDob(new DateTime(y, m, d)).Should().Be(expected,
+            "the column is a string now, so the format is ours to control. Server default " +
+            "formatting would make the stored value depend on the machine's locale, and " +
+            "12/04/1958 read back on another host is a different birthday");
+    }
+
+    [Fact]
+    public void DateOfBirth_FormatsNullAsNull()
+    {
+        DmeCustomerPhi.FormatDob(null).Should().BeNull(
+            "a customer with no recorded birth date must stay empty, not become a fixed date");
+    }
+
+    [Fact]
+    public void DateOfBirth_RoundTripsAndStillParses()
+    {
+        var phi = Phi();
+        var row = new Dictionary<string, object?> { ["Dob"] = phi.Encrypt(DmeCustomerPhi.FormatDob(new DateTime(1944, 9, 3))) };
+
+        phi.DecryptRow(row);
+
+        DateTime.TryParse(row["Dob"] as string, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var parsed).Should().BeTrue(
+            "the screens compute age from this value, so it has to parse back to a real date");
+        parsed.Should().Be(new DateTime(1944, 9, 3));
     }
 
     [Fact]

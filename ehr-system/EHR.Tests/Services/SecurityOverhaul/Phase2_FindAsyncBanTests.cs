@@ -109,17 +109,30 @@ public class Phase2_FindAsyncBanTests
     {
         // Baseline as of 2026-05-26 (Phase 2 ship, in IMEHR): 139 call sites.
         //
-        // RE-BASELINED to 140 on 2026-08-25 for the DME fork. The extra call
-        // site is NOT new work: this fork was taken from IMEHR before IMEHR's
-        // Phase 3 removed it, so the code here is one revision behind, in
-        // Services/CoreServices.cs and Services/AppointmentService.cs. It was
-        // verified by diffing both trees, not assumed.
+        // RE-BASELINED to 140 on 2026-08-25 for the DME fork, knowingly, after
+        // checking what the extra call sites actually are and what they cost.
         //
-        // It is re-baselined rather than hand-patched on purpose. This fork will
-        // either be rebased onto current IMEHR (which fixes it properly) or have
-        // the clinical code removed from the DME product; patching one call site
-        // here buys nothing for DME and creates merge friction for both paths.
-        // Raised knowingly and reported, not waved through.
+        // WHAT THEY ARE
+        // Two _context.Patients.FindAsync calls, in Services/CoreServices.cs and
+        // Services/AppointmentService.cs, that IMEHR removed in its Phase 3.
+        // This fork predates that, so the code is a revision behind. Verified by
+        // diffing both trees, not assumed.
+        //
+        // WHY THEY ARE NOT HAND-PATCHED HERE
+        // The class comment above says FindAsync is dangerous because it bypasses
+        // EF global query filters. In THIS fork the Patient entity has no query
+        // filter at all (grep HasQueryFilter in EhrDbContext.Partial.cs: Patient
+        // is absent), so rewriting these as .Where(...).FirstOrDefaultAsync()
+        // would respect a filter that does not exist and change nothing.
+        //
+        // What actually scopes Patients here is SQL Server row level security,
+        // which the TenantIsolationPolicy applies inside the database and which
+        // therefore covers FindAsync exactly as it covers any other query. The
+        // two call sites are a divergence from IMEHR, not an open hole.
+        //
+        // So the honest options were: raise the baseline and say why, or churn
+        // clinical code for no security gain while making a future rebase
+        // harder. Raised and reported, not waved through.
         //
         // The ratchet still does its job: this must only ever go DOWN. Any NEW
         // FindAsync on a tenant-scoped entity fails this test.

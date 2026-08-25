@@ -11,6 +11,13 @@
     <a href="/Dme/Orders" class="dme-muted" style="font-size:13px;text-decoration:none"><i class="bi bi-arrow-left"></i> Orders</a>
     <div class="dme-head" style="margin-top:6px"><div><h1>New Order</h1><div class="dme-sub">Customer → items → delivery</div></div></div>
 
+    @if (TempData["OrderError"] != null)
+    {
+        <div class="dme-banner" style="background:#fdecea;border-color:#f5c2c0;color:#8a1c13">
+            <i class="bi bi-exclamation-triangle"></i> @TempData["OrderError"]
+        </div>
+    }
+
     <form method="post" action="/Dme/CreateOrder" id="orderForm">
         @Html.AntiForgeryToken()
         <div class="dme-grid2">

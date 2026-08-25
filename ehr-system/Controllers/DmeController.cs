@@ -246,7 +246,7 @@ public class DmeController : Controller
             new {
                 acct,
                 fn = Enc(firstName), ln = Enc(lastName),
-                dob = (object?)dob ?? DBNull.Value, g = (object?)gender ?? DBNull.Value,
+                dob = Enc(DmeCustomerPhi.FormatDob(dob)), g = (object?)gender ?? DBNull.Value,
                 ssn = Enc(ssnLast4),
                 h = (object?)heightInches ?? DBNull.Value, w = (object?)weightLbs ?? DBNull.Value,
                 ph = Enc(phone), em = Enc(email),
@@ -323,7 +323,16 @@ public class DmeController : Controller
     {
         ViewData["Title"] = "New Order";
         ViewData["ActivePage"] = "orders";
-        ViewBag.Customers = _db.Query("SELECT CustomerId, AccountNo, FirstName, LastName FROM dbo.DmeCustomers ORDER BY LastName");
+        // Decrypt before the picker renders, and sort after, for the same reason
+        // the customer list does: names are ciphertext, so an unsorted-looking
+        // dropdown of base64 is what you get otherwise.
+        var customers = _db.Query("SELECT CustomerId, AccountNo, FirstName, LastName FROM dbo.DmeCustomers");
+        _phi.DecryptRows(customers);
+        ViewBag.Customers = customers
+            .OrderBy(c => F.S(c["LastName"]), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(c => F.S(c["FirstName"]), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         ViewBag.Doctors = _db.Query("SELECT * FROM dbo.DmeDoctors ORDER BY LastName");
         ViewBag.Catalog = _db.Query("SELECT * FROM dbo.vHcpcsCatalog ORDER BY Category, Hcpcs");
         ViewBag.PreCustomer = customerId;
@@ -335,6 +344,19 @@ public class DmeController : Controller
     public async Task<IActionResult> CreateOrder(int customerId, int? doctorId, DateTime? deliveryDate, decimal deposit,
                                      string[]? hcpcs, string[]? mode, int[]? qty)
     {
+        // An order with no lines is not an order. Without this guard the form
+        // saves an empty ticket that later generates a $0.00 claim, and the
+        // client hit exactly that: ORD-01013 in their feedback has no lines and
+        // a zero total. The lines are added by JavaScript, so submitting before
+        // clicking Add is a normal thing for a real user to do, which is why the
+        // check has to be here on the server and not in the page.
+        var hasLine = hcpcs?.Any(h => !string.IsNullOrWhiteSpace(h)) == true;
+        if (!hasLine)
+        {
+            TempData["OrderError"] = "Add at least one item before saving the order.";
+            return RedirectToAction("NewOrder", new { customerId });
+        }
+
         // Existence check only. The customer and doctor NAMES are no longer
         // copied onto the order: vDmeOrders joins them, so correcting a spelling
         // on the customer record fixes every order at once instead of leaving

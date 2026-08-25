@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EHR.Controllers;
@@ -5,7 +6,24 @@ namespace EHR.Controllers;
 /// <summary>
 /// Controller for serving main MVC views.
 /// Handles navigation between major application pages.
+///
+/// SECURITY
+/// [Authorize] at the class level. Until 2026-08-25 this controller had none at
+/// all and the gate was a client-side JavaScript check that hid a div, which is
+/// no gate: it included the Super Admin clinic console at /Home/Tenants. The API
+/// behind those pages was role-checked, but the pages themselves rendered to
+/// anyone, so the protection depended on the browser choosing to enforce it.
+///
+/// Three actions are deliberately anonymous and marked individually:
+/// Index (the sign-in landing page, where the 401 handler sends people),
+/// ResetPassword (reached from an emailed link, before any session exists) and
+/// Error. Everything else needs a logged-in user.
+///
+/// The patient-facing Kiosk and Telehealth join pages live in their own
+/// controllers and stay anonymous on purpose: they are gated by a one-time
+/// token in the URL, not by a session.
 /// </summary>
+[Authorize]
 public class HomeController : Controller
 {
     /// <summary>
@@ -17,7 +35,7 @@ public class HomeController : Controller
     /// it is where the 401 handler sends unauthenticated page navigations, so
     /// requiring auth here would produce a redirect loop.
     /// </summary>
-    [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+    [AllowAnonymous]
     public IActionResult Index(string? returnUrl = null)
     {
         if (User.Identity?.IsAuthenticated == true)
@@ -144,6 +162,7 @@ public class HomeController : Controller
     /// <summary>
     /// Medical Lien Templates page view (Super Admin only).
     /// </summary>
+    [Authorize(Roles = "0")]
     public IActionResult MedicalLienTemplates()
     {
         ViewData["Title"] = "Medical Lien Templates";
@@ -162,6 +181,7 @@ public class HomeController : Controller
     /// <summary>
     /// Clinics/Tenants management page view (Super Admin only).
     /// </summary>
+    [Authorize(Roles = "0")]
     public IActionResult Tenants()
     {
         ViewData["Title"] = "Clinics";
@@ -225,6 +245,7 @@ public class HomeController : Controller
     /// Standalone page, accepts ?token=... in the query string.
     /// Token is validated client-side via /api/auth/validate-reset-token.
     /// </summary>
+    [AllowAnonymous]
     [Route("reset-password")]
     public IActionResult ResetPassword()
     {
@@ -235,6 +256,7 @@ public class HomeController : Controller
     /// <summary>
     /// Error page view.
     /// </summary>
+    [AllowAnonymous]
     public IActionResult Error()
     {
         return View();

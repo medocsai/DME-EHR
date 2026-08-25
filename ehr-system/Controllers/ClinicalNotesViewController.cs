@@ -8,6 +8,7 @@ namespace EHR.Controllers;
 /// This is separate from ClinicalNotesController (API) which handles the data operations.
 /// </summary>
 [AllowAnonymous]
+[Microsoft.AspNetCore.Authorization.Authorize]
 public class ClinicalNotesViewController : Controller
 {
     /// <summary>
