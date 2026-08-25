@@ -96,67 +96,15 @@ builder.Services.AddSingleton<IFileStorageService, GoogleCloudStorageService>();
 
 builder.Services.AddMemoryCache();
 
-// Additional services
-
-// Provider Favorite Codes (Dx & CPT step) — per-user starred ICD-10/CPT codes
-
-// Dashboard service for alert widgets
-
-// Internal Medicine clinical services
-
-// E-Prescribing services
-
-// Orders Module (Labs, Imaging, Referrals)
-
 // User management and email services
 builder.Services.AddScoped<IUserManagementService, UserManagementService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 
-// SMS and Notification services
-builder.Services.AddScoped<ISmsService, SmsService>();
-
-// Patient document service (HIPAA-compliant file uploads)
-
-// Patient profile validation service
-
-// Telehealth services
-
-// Patient Consent System services
-
-// Medical Lien Form services
-
-// Patient Portal services
-
-// SignalR for real-time notifications
-
-// Internal Messaging System services
-
-// Patient-Provider Messaging System services
-
-// Recording Session service
-
-// Transcription service for audio chunk processing
-
-// Centralized Gemini API service - all Gemini calls go through this
-
-// MEDOCS AI Help Assistant services
-
-// MEDOCS AI Voice Entry service for Encounter Workspace
-
-// Care episode extraction service for Initial Evaluation notes
-
-// Copay Integration - Stripe + Installment + Reminder services
-
-// Appointment Reminder Background Service
 
 // Audit log retention sweep (HIPAA §164.316(b)(2)) — deletes AuditLog rows
 // older than HIPAA:AuditRetentionDays. Only this service can delete; the
 // AuditLogs table has an INSTEAD OF DELETE trigger gated by session context.
 builder.Services.AddHostedService<AuditLogRetentionBackgroundService>();
-
-// One-time backfill: ensures every existing patient has a full-length
-// "EmailExact" search token so the duplicate-email check matches emails
-// longer than 15 characters (the prefix-token cap). Safe to leave deployed.
 
 // Refuse to start with missing or publicly-known secrets. Runs before anything
 // reads a key, so a misconfigured deployment fails loudly instead of quietly

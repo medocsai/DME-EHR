@@ -88,7 +88,6 @@ public partial class EhrDbContext : DbContext
 
     // Patient-Provider Messaging System
 
-    // Stripe Connect (Phase 1)
 
     // Patient Intake (Phase 1)
 
@@ -370,13 +369,11 @@ public partial class EhrDbContext : DbContext
         // ============================================
 
         // ============================================
-        // Stripe Connect Phase 1
         // ============================================
 
 
 
 
-        // Location → StripeConnectAccount FK + new fee columns
         modelBuilder.Entity<Location>(entity =>
         {
             entity.Property(e => e.OnlineFeePercent).HasColumnType("decimal(5, 2)");
