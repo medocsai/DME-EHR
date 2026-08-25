@@ -1,3 +1,4 @@
+using EHR.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using EHR.Services;
@@ -102,7 +103,7 @@ public class TelehealthController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to admit patient for appointment {AppointmentId}", dto?.AppointmentId);
-            return StatusCode(500, new { message = "Server error admitting patient: " + ex.Message });
+            return this.ServerError(ex, "Server error admitting patient.");
         }
     }
 

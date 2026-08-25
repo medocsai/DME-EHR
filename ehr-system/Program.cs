@@ -432,6 +432,10 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
+// Catch anything no controller caught. First in the pipeline because it can
+// only protect what runs after it.
+app.UseMiddleware<EHR.Helpers.UnhandledExceptionMiddleware>();
+
 // Security headers on every response — set before the rest of the pipeline so
 // even errors / 404s carry them. CSP starts in Report-Only mode so violations
 // surface in browser console without breaking working features; switch the

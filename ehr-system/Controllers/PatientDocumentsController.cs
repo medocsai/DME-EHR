@@ -47,7 +47,7 @@ public class PatientDocumentsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { message = "Failed to load documents", error = ex.Message });
+            return this.ServerError(ex, "Failed to load documents");
         }
     }
 

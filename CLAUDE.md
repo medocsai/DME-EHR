@@ -104,8 +104,20 @@ database. Note `ALTER SECURITY POLICY` and any batch naming a dropped column are
 validated at COMPILE time, so `IF NOT EXISTS` guards do not protect them: use
 `sp_executesql`.
 
+### Hardening (same pass)
+- **Staff password policy** (`Helpers/PasswordPolicy.cs`): 12 char minimum, no
+  composition rules, maximum 64 (under BCrypt's 72-byte input limit). Applied at
+  all four places a staff password is set. Previously there was none at all.
+- **No exception detail to callers** (`Helpers/ApiError.cs`): use
+  `this.ServerError(ex, "public message")` in a catch block. It logs the full
+  exception and returns a correlation id. Stack traces and `ex.Message` in a 500
+  body are blocked by a test.
+- **Admin/clinical pages need auth.** `HomeController` is `[Authorize]` with
+  `[AllowAnonymous]` on sign-in, password reset and error only; `/Home/Tenants`
+  and `/Home/MedicalLienTemplates` are role 0.
+
 ### Tests
-`dotnet test ehr-system/EHR.Tests` — **281 passing, 1 skipped**. The DME suite is
+`dotnet test ehr-system/EHR.Tests` — **297 passing, 1 skipped**. The DME suite is
 in `EHR.Tests/Dme/`. Four SecurityOverhaul test files are excluded in the csproj
 because they test `EHR.Services.Security`, which exists in IMEHR but was never
 copied into this fork.

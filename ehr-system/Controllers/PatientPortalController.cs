@@ -1869,7 +1869,7 @@ public class PatientPortalController : Controller
         {
             _logger.LogError(ex, "Error creating payment intent for PatientId={PatientId}: {Message}", patientId, ex.Message);
             try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "..", "emails_sent", "_stripe_errors.log"), $"{DateTime.Now}: {ex}\n\n"); } catch { }
-            return StatusCode(500, new { message = $"Error: {ex.Message}" });
+            return this.ServerError(ex, "An unexpected error occurred.");
         }
     }
 

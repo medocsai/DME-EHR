@@ -1,3 +1,4 @@
+using EHR.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
@@ -52,7 +53,7 @@ public class MessagingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting conversations. Exception: {Message}", ex.Message);
-            return StatusCode(500, new { message = $"Failed to get conversations: {ex.Message}" });
+            return this.ServerError(ex, "Failed to get conversations.");
         }
     }
 

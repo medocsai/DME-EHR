@@ -1,3 +1,4 @@
+using EHR.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using EHR.Models;
@@ -80,7 +81,7 @@ public class UsersController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { message = "An error occurred while creating the user", details = ex.Message });
+            return this.ServerError(ex, "An error occurred while creating the user");
         }
     }
 
@@ -143,8 +144,11 @@ public class UsersController : ControllerBase
         if (dto.UserId != id)
             return BadRequest(new { message = "User ID mismatch" });
 
-        if (string.IsNullOrWhiteSpace(dto.NewPassword) || dto.NewPassword.Length < 8)
-            return BadRequest(new { message = "Password must be at least 8 characters" });
+        // One rule, one place. This used to be an inline "length < 8" check that
+        // disagreed with the policy the service enforces.
+        var policyError = EHR.Helpers.PasswordPolicy.Validate(dto.NewPassword);
+        if (policyError != null)
+            return BadRequest(new { message = policyError });
 
         var result = await _userService.AdminResetPasswordAsync(id, dto.NewPassword);
         if (!result)

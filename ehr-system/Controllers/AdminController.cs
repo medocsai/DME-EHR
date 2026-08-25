@@ -63,7 +63,7 @@ public class AdminController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { success = false, message = $"Seeding failed: {ex.Message}" });
+            return this.ServerError(ex, "Seeding failed.");
         }
     }
 

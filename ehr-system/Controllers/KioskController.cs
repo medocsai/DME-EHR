@@ -1,3 +1,4 @@
+using EHR.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -535,7 +536,7 @@ public class KioskSettingsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating kiosk settings for location {LocationId}", locationId);
-            return StatusCode(500, new { message = $"Error saving settings: {ex.Message}" });
+            return this.ServerError(ex, "Error saving settings.");
         }
     }
 

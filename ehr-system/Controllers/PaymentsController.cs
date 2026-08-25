@@ -1,3 +1,4 @@
+using EHR.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -104,7 +105,7 @@ public class PaymentsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { message = ex.Message });
+            return this.ServerError(ex, "An unexpected error occurred.");
         }
     }
 
@@ -123,7 +124,7 @@ public class PaymentsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { message = ex.Message });
+            return this.ServerError(ex, "An unexpected error occurred.");
         }
     }
 
@@ -144,7 +145,7 @@ public class PaymentsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { message = ex.Message });
+            return this.ServerError(ex, "An unexpected error occurred.");
         }
     }
 
@@ -163,7 +164,7 @@ public class PaymentsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { message = ex.Message });
+            return this.ServerError(ex, "An unexpected error occurred.");
         }
     }
 }

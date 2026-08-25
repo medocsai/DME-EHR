@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using EHR.Helpers;
 using Microsoft.EntityFrameworkCore;
 using EHR.Services;
 using EHR.Models;
@@ -54,7 +55,7 @@ public class CareEpisodesController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { error = $"Error loading care episode: {ex.Message}", details = ex.InnerException?.Message, stackTrace = ex.StackTrace });
+            return this.ServerError(ex, "Error loading care episode");
         }
     }
 

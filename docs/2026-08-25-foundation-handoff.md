@@ -143,7 +143,7 @@ separately and composing the name in the application after decryption
 
 - **Build:** succeeds. New warnings are all `CS8632` (nullable annotation without
   an enabled context), the same class as the 816 already in the project.
-- **Tests:** `275 passing, 1 skipped, 0 failing`. The test project had **never
+- **Tests:** `297 passing, 1 skipped, 0 failing`. The test project had **never
   compiled** in this fork (12 errors) so the suite had been red since day one.
 - **Mutations:** three guards were deliberately broken and each was caught by
   exactly the right test — removing `[Authorize]`, softening the tenant throw to
@@ -164,9 +164,10 @@ Demo data was restored to its original state; test artifacts were removed.
 1. **`HcpcsCodes` is tenant data.** Each supplier keeps its own item master and
    contract pricing. The alternative (a shared national catalog plus a per-tenant
    pricing table) is a bigger product change and can still be done later.
-2. **`Dob` is not encrypted.** It is a `DATE` column; encrypting it needs a type
-   change and its own migration, and the clinical side does not encrypt
-   `DateOfBirth` either. Flagged rather than quietly skipped.
+2. **`Dob` IS encrypted**, as of the follow-up pass. The column was converted
+   from `DATE` to `NVARCHAR` holding ISO 8601 first. This is stricter than the
+   clinical side, which still stores `DateOfBirth` in the clear; that gap is in
+   IMEHR code and is reported rather than reached into.
 3. **`AccountNo` is not encrypted.** We generate it, it is not derived from the
    person, and staff search on it.
 4. **`FindAsync` baseline raised 139 -> 140.** Not new work: this fork predates
@@ -186,14 +187,20 @@ Demo data was restored to its original state; test artifacts were removed.
 1. **The fork is far behind IMEHR.** DME is 1 commit off an older IMEHR; IMEHR is
    at 231 commits and has since added `Services/Security/` (~1,700 lines: ~30
    entity access guards, CSRF middleware, denial rate limiting, GUID public IDs
-   instead of the raw ints DME still puts in URLs). Rebase or cherry-pick is a
-   real decision with real cost.
+   instead of the raw ints DME still puts in URLs). Measured: **125 of 307
+   shared .cs files differ**, so this is a rewrite, not a merge.
+
+   Recommendation: do NOT rebase. Those guards protect clinical entities the DME
+   product does not expose; DME already has CSRF on every POST and RLS blocking
+   cross-tenant access. The real question is whether the DME product should
+   carry the clinical codebase at all. Deleting it would remove more risk than
+   porting guards adds.
+
 2. **IMEHR has the same client-side-only login gate** on its own `HomeController`.
-   Not touched, per the standing constraint, but the live EHR is worth a look.
-3. **An order can be saved with zero lines.** The client hit this: `ORD-01013` in
-   their screenshots has no lines and a $0.00 total. Lines are added by JavaScript
-   only and `CreateOrder` has no guard. One-line fix, not in tonight's scope.
-4. **Four quarantined test files** stay excluded until a decision on item 1.
+   Not touched, per the standing constraint, but the live EHR is worth a look:
+   the identical hole was open here until this work.
+
+3. **Four quarantined test files** stay excluded until a decision on item 1.
 
 ---
 
@@ -203,3 +210,85 @@ The client's eight feedback points are untouched, as instructed. The two that
 need new schema (dashboard paid/denied/top-denial-code, and POD file
 attachments) now have a foundation to sit on: `DmeClaims` has no payment or
 denial columns yet, and there is no attachment table anywhere in the DME schema.
+
+---
+
+## Follow-up pass (same day)
+
+Everything above was committed as `bca8cf4`. The items below closed the open
+list and swept for what else was missing, and are `94c43a1` plus the hardening
+commit.
+
+### Closed from the open list
+
+- **Empty orders.** `CreateOrder` now rejects an order with no lines and shows
+  the reason on the form. The client hit this: `ORD-01013` has no lines and a
+  zero total. Verified both ways: an empty submission creates nothing, a valid
+  one still saves.
+- **`Dob` encrypted.** Column converted with an explicit `CONVERT(..., 23)`, not
+  an implicit cast: an implicit `DATE`-to-string conversion uses the session's
+  date format, so the same migration on a differently-localised machine would
+  store `12/04/1958` and every age on every screen would be wrong for half the
+  customers.
+- **`FindAsync` baseline.** Held at 140, with the reasoning recorded in the test.
+  The two extra call sites are `_context.Patients.FindAsync`, and the class
+  comment says `FindAsync` is dangerous because it bypasses EF global query
+  filters. In this fork `Patient` has **no** query filter, so rewriting them
+  would respect a filter that does not exist. What actually scopes Patients here
+  is row level security, which covers `FindAsync` like any other query.
+
+### Found while checking, and fixed
+
+- **A second ciphertext leak.** The New Order customer picker read
+  `FirstName`/`LastName` straight from `DmeCustomers` without decrypting, so the
+  dropdown listed base64. Same class as the first, same silence: HTTP 200,
+  nothing thrown. `DmePhiRenderingTests` is now a ratchet that source-scans every
+  action reading encrypted customer data and names the offender.
+- **Admin and clinical pages were still anonymous.** `HomeController` had 23 view
+  actions and no `[Authorize]` at all, **including the Super Admin clinic console
+  at `/Home/Tenants`**. The API behind those pages was role-checked but the pages
+  themselves rendered to anyone. Now: anonymous redirects to sign-in, ClinicAdmin
+  gets 403 on `/Home/Tenants`, Super Admin gets in. Kiosk and Telehealth join
+  pages stay anonymous by design, gated by a one-time token in the URL.
+- **Staff passwords had no policy.** The patient portal validated strength; staff
+  accounts did not, at any of the four places a password is set. A clinic
+  administrator, or the Super Admin who creates tenants, could be given the
+  password `a`. `Helpers/PasswordPolicy.cs` now applies everywhere, with a
+  12-character minimum and no composition rules (NIST SP 800-63B advises against
+  those; length is the control that helps). Maximum is 64, deliberately under
+  BCrypt's 72-byte input limit so no part of a typed password is silently
+  discarded.
+- **Exception detail was returned to callers.** Six endpoints, four on the Super
+  Admin console, returned the exception message **and the full stack trace** in
+  the response body, in every environment. A stack trace maps internal
+  namespaces, file paths and often the failing SQL; a `SqlException` message can
+  carry column values, which on these tables means PHI. `Helpers/ApiError.cs`
+  logs the detail server-side and returns a correlation id, with full detail only
+  in Development. Applied across 22 call sites in 11 controllers, plus a
+  catch-all middleware for anything nobody caught.
+
+### New tenant onboarding
+
+Making the catalog and payers tenant-scoped is correct, but left a new tenant
+with an empty catalog and therefore unable to raise an order.
+`Migrations/Manual/DME_Onboard_New_Tenant.sql` copies a catalog and payer list
+from a nominated source tenant.
+
+Deliberately a script and not a button: every DME connection is pinned to the
+caller's tenant and RLS BLOCKs cross-tenant writes, so an in-app version would
+have to punch a hole through the isolation this work exists to provide. It was
+written as an endpoint first and thrown away for that reason. It copies rather
+than invents because prices are commercial terms and made-up rates would end up
+on real claims.
+
+### Confirmed already sound
+
+- **Audit logs are tamper-protected.** `TR_AuditLogs_Immutable` is present and
+  enabled; deletes need `SESSION_CONTEXT('AllowAuditDelete')`. Retention is 6
+  years (`HIPAA:AuditRetentionDays`, 2190).
+- **Super Admin exists** (`contact@medocs.ai`, role 0) and tenant creation is
+  role-0 only. Verified: anonymous 401, ClinicAdmin 403.
+- **Remaining controllers without class-level `[Authorize]`** all have per-action
+  authorization or are intentionally anonymous (patient portal has its own auth
+  scheme, Stripe webhook is signature-verified, kiosk and telehealth are
+  token-gated).

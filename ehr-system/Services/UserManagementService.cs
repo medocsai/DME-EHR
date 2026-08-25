@@ -137,6 +137,13 @@ public class UserManagementService : IUserManagementService
         if (_tenantProvider.TenantId.HasValue && effectiveTenantId.Value != _tenantProvider.TenantId.Value)
             throw new UnauthorizedAccessException("Cannot create user for a different tenant");
 
+        // A staff account holds an entire tenant's PHI. Until 2026-08-25 there
+        // was no password rule here at all, so an administrator could be created
+        // with the password "a". See Helpers/PasswordPolicy.cs.
+        var createPolicyError = EHR.Helpers.PasswordPolicy.Validate(dto.Password, dto.Email);
+        if (createPolicyError != null)
+            throw new InvalidOperationException(createPolicyError);
+
         // Validate ProviderId if provided
         if (dto.ProviderId.HasValue)
         {
@@ -239,6 +246,10 @@ public class UserManagementService : IUserManagementService
         // If current user is not Super Admin, verify they can only reset their tenant's users
         if (_tenantProvider.TenantId.HasValue && user.TenantId != _tenantProvider.TenantId.Value)
             return false;
+
+        var resetPolicyError = EHR.Helpers.PasswordPolicy.Validate(newPassword, user.Email);
+        if (resetPolicyError != null)
+            throw new InvalidOperationException(resetPolicyError);
 
         // Find all users with the same email (across tenants) and update their passwords
         var allUsersWithSameEmail = await FindAllUsersByEmailAsync(user.Email);
@@ -354,10 +365,14 @@ public class UserManagementService : IUserManagementService
         if (!users.Any())
             return false;
 
-        var newPasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
-
         // Get email from first user to find all accounts
         var firstUser = users.First();
+
+        var tokenResetPolicyError = EHR.Helpers.PasswordPolicy.Validate(newPassword, firstUser.Email);
+        if (tokenResetPolicyError != null)
+            throw new InvalidOperationException(tokenResetPolicyError);
+
+        var newPasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
 
         // Update password for all accounts with this email
         var allUsersWithSameEmail = await FindAllUsersByEmailAsync(firstUser.Email);

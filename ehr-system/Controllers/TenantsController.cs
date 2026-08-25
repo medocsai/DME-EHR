@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using EHR.Helpers;
 using Microsoft.AspNetCore.Authorization;
 using EHR.Models;
 using EHR.Services;
@@ -51,7 +52,7 @@ public class TenantsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Tenants] GET /api/tenants FAILED: {Message}", ex.Message);
-            return StatusCode(500, new { message = "Failed to load tenants", error = ex.Message, stackTrace = ex.StackTrace });
+            return this.ServerError(ex, "Failed to load tenants");
         }
     }
 
@@ -75,7 +76,7 @@ public class TenantsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Tenants] GET /api/tenants/{Id} FAILED: {Message}", id, ex.Message);
-            return StatusCode(500, new { message = $"Failed to load tenant {id}", error = ex.Message, stackTrace = ex.StackTrace });
+            return this.ServerError(ex, "Failed to load tenant");
         }
     }
 
@@ -94,7 +95,7 @@ public class TenantsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Tenants] GET /api/tenants/subdomain/{Subdomain} FAILED: {Message}", subdomain, ex.Message);
-            return StatusCode(500, new { message = $"Failed to load tenant by subdomain", error = ex.Message, stackTrace = ex.StackTrace });
+            return this.ServerError(ex, "Failed to load tenant by subdomain");
         }
     }
 
@@ -118,7 +119,7 @@ public class TenantsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Tenants] POST /api/tenants FAILED: {Message}", ex.Message);
-            return StatusCode(500, new { message = "Failed to create tenant", error = ex.Message, stackTrace = ex.StackTrace });
+            return this.ServerError(ex, "Failed to create tenant");
         }
     }
 
@@ -142,7 +143,7 @@ public class TenantsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Tenants] PUT /api/tenants/{Id} FAILED: {Message}", id, ex.Message);
-            return StatusCode(500, new { message = $"Failed to update tenant {id}", error = ex.Message, stackTrace = ex.StackTrace });
+            return this.ServerError(ex, "Failed to update tenant");
         }
     }
 
@@ -161,7 +162,7 @@ public class TenantsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Tenants] DELETE /api/tenants/{Id} FAILED: {Message}", id, ex.Message);
-            return StatusCode(500, new { message = $"Failed to delete tenant {id}", error = ex.Message });
+            return this.ServerError(ex, $"Failed to delete tenant {id}");
         }
     }
 
@@ -180,7 +181,7 @@ public class TenantsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Tenants] POST /api/tenants/{Id}/status FAILED: {Message}", id, ex.Message);
-            return StatusCode(500, new { message = $"Failed to update status", error = ex.Message });
+            return this.ServerError(ex, $"Failed to update status");
         }
     }
 
@@ -195,7 +196,7 @@ public class TenantsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Tenants] GET /api/tenants/{Id}/stats FAILED: {Message}", id, ex.Message);
-            return StatusCode(500, new { message = $"Failed to load tenant stats", error = ex.Message });
+            return this.ServerError(ex, $"Failed to load tenant stats");
         }
     }
 

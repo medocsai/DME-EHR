@@ -707,6 +707,13 @@ public class AuthService : IAuthService
         if (!BCrypt.Net.BCrypt.Verify(oldPassword, user.PasswordHash))
             return false;
 
+        // Checked AFTER the current password is verified, so an attacker who
+        // does not know the current password learns nothing about the policy.
+        // See Helpers/PasswordPolicy.cs.
+        var policyError = EHR.Helpers.PasswordPolicy.Validate(dto.NewPassword, user.Email);
+        if (policyError != null)
+            throw new InvalidOperationException(policyError);
+
         var allUsersWithSameEmail = await FindAllUsersByEmailAsync(user.Email);
         var newPasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
 

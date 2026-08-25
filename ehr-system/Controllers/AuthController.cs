@@ -183,11 +183,25 @@ public class AuthController : ControllerBase
     public async Task<ActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
     {
         var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
-        var result = await _authService.ChangePasswordAsync(userId, dto);
-        
+
+        bool result;
+        try
+        {
+            result = await _authService.ChangePasswordAsync(userId, dto);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // The password policy message is our own text, written to be shown
+            // to the user ("Password must be at least 12 characters."). Letting
+            // it fall through to the generic 500 handler would tell them only
+            // that something went wrong, which is how people end up retrying
+            // the same rejected password.
+            return BadRequest(new { message = ex.Message });
+        }
+
         if (!result)
             return BadRequest(new { message = "Current password is incorrect" });
-        
+
         return Ok(new { message = "Password changed successfully" });
     }
     
@@ -266,8 +280,11 @@ public class AuthController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.Token))
             return BadRequest(new { message = "Reset token is required" });
 
-        if (string.IsNullOrWhiteSpace(dto.NewPassword) || dto.NewPassword.Length < 8)
-            return BadRequest(new { message = "Password must be at least 8 characters" });
+        // One rule, one place. This used to be an inline "length < 8" check that
+        // disagreed with the policy the service enforces.
+        var policyError = EHR.Helpers.PasswordPolicy.Validate(dto.NewPassword);
+        if (policyError != null)
+            return BadRequest(new { message = policyError });
 
         var result = await _userManagementService.ResetPasswordWithTokenAsync(dto.Token, dto.NewPassword);
 

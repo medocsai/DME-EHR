@@ -1292,7 +1292,7 @@ public class ReportsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, ex.Message+" "+ex.InnerException);
-            return StatusCode(500, new { message = "Error generating report. Please try again. " + ex.Message + " " + ex.InnerException });
+            return this.ServerError(ex, "Error generating report. Please try again.");
         }
     }
 

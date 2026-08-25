@@ -1,3 +1,4 @@
+using EHR.Helpers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -151,7 +152,7 @@ public class StripeConnectController : ControllerBase
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to regenerate onboarding link for existing account {AccountId}", existing.StripeAccountId);
-                    return StatusCode(500, new { message = ex.Message });
+                    return this.ServerError(ex, "An unexpected error occurred.");
                 }
             }
 
@@ -177,7 +178,7 @@ public class StripeConnectController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error starting Stripe Connect onboarding for location {LocationId}", request.LocationId);
-            return StatusCode(500, new { message = ex.Message });
+            return this.ServerError(ex, "An unexpected error occurred.");
         }
     }
 
@@ -202,7 +203,7 @@ public class StripeConnectController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error refreshing onboarding link for account {AccountId}", request.StripeConnectAccountId);
-            return StatusCode(500, new { message = ex.Message });
+            return this.ServerError(ex, "An unexpected error occurred.");
         }
     }
 
@@ -231,7 +232,7 @@ public class StripeConnectController : ControllerBase
         {
             _logger.LogError(ex, "Error linking location {LocationId} to account {AccountId}",
                 request.LocationId, request.StripeConnectAccountId);
-            return StatusCode(500, new { message = ex.Message });
+            return this.ServerError(ex, "An unexpected error occurred.");
         }
     }
 
@@ -257,7 +258,7 @@ public class StripeConnectController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error disconnecting Stripe account {AccountId}", stripeConnectAccountId);
-            return StatusCode(500, new { message = ex.Message });
+            return this.ServerError(ex, "An unexpected error occurred.");
         }
     }
 
@@ -288,7 +289,7 @@ public class StripeConnectController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error refreshing Stripe Connect status {AccountId}", stripeConnectAccountId);
-            return StatusCode(500, new { message = ex.Message });
+            return this.ServerError(ex, "An unexpected error occurred.");
         }
     }
 
@@ -311,7 +312,7 @@ public class StripeConnectController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating dashboard link {AccountId}", stripeConnectAccountId);
-            return StatusCode(500, new { message = ex.Message });
+            return this.ServerError(ex, "An unexpected error occurred.");
         }
     }
 }
