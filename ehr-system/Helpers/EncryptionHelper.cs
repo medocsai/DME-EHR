@@ -124,55 +124,6 @@ namespace EHR.Helpers
             return Convert.ToBase64String(hashBytes);
         }
 
-        /// <summary>
-        /// Encrypt all configured PHI fields on an entity.
-        /// Uses EncryptionConfiguration instead of attributes.
-        /// </summary>
-        public void EncryptEntity<T>(T entity) where T : class
-        {
-            if (entity == null) return;
-
-            var entityType = typeof(T);
-            if (!EncryptionConfiguration.HasEncryptedFields(entityType)) return;
-
-            foreach (var fieldName in EncryptionConfiguration.GetEncryptedFields(entityType))
-            {
-                var property = entityType.GetProperty(fieldName);
-                if (property == null || property.PropertyType != typeof(string)) continue;
-
-                var currentValue = property.GetValue(entity) as string;
-                if (!string.IsNullOrEmpty(currentValue) && !IsEncrypted(currentValue))
-                {
-                    var encryptedValue = Encrypt(currentValue);
-                    property.SetValue(entity, encryptedValue);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Decrypt all configured PHI fields on an entity.
-        /// Uses EncryptionConfiguration instead of attributes.
-        /// </summary>
-        public void DecryptEntity<T>(T entity) where T : class
-        {
-            if (entity == null) return;
-
-            var entityType = typeof(T);
-            if (!EncryptionConfiguration.HasEncryptedFields(entityType)) return;
-
-            foreach (var fieldName in EncryptionConfiguration.GetEncryptedFields(entityType))
-            {
-                var property = entityType.GetProperty(fieldName);
-                if (property == null || property.PropertyType != typeof(string)) continue;
-
-                var currentValue = property.GetValue(entity) as string;
-                if (!string.IsNullOrEmpty(currentValue) && IsEncrypted(currentValue))
-                {
-                    var decryptedValue = Decrypt(currentValue);
-                    property.SetValue(entity, decryptedValue);
-                }
-            }
-        }
 
         /// <summary>
         /// Check if a value appears to be encrypted (Base64 with expected length)

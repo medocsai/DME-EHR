@@ -67,7 +67,6 @@ public class UsersController : ControllerBase
                 FirstName = user.FirstName,
                 LastName = user.LastName,
                 Role = user.Role ?? 0,
-                ProviderId = user.ProviderId,
                 IsActive = user.IsActive ?? false
             });
         }

@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
-using EHR.Data;
 using EHR.Models.Generated;
 using EHR.Services;
 

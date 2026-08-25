@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using EHR.Data;
 using EHR.Models;
 using EHR.Helpers;
 
@@ -14,7 +13,6 @@ public interface ITenantService
     Task<Tenant?> UpdateTenantAsync(int tenantId, TenantUpdateDto dto);
     Task<bool> DeleteTenantAsync(int tenantId);
     Task<bool> UpdateTenantStatusAsync(int tenantId, TenantStatus status);
-    Task<DashboardStatsDto> GetTenantStatsAsync(int tenantId, int? providerId = null, int? locationId = null);
 }
 
 public class TenantService : ITenantService
@@ -43,7 +41,6 @@ public class TenantService : ITenantService
                 Plan = t.Plan ?? 0,
                 Status = t.Status ?? 0,
                 UserCount = t.Users.Count(u => u.IsActive == true),
-                PatientCount = t.Patients.Count(p => p.IsDeleted != true),
                 CreatedAt = t.CreatedAt ?? DateTime.UtcNow
             })
             .OrderBy(t => t.Name)
@@ -221,158 +218,6 @@ public class TenantService : ITenantService
         return true;
     }
     
-    public async Task<DashboardStatsDto> GetTenantStatsAsync(int tenantId, int? providerId = null, int? locationId = null)
-    {
-        // Use provided locationId or fall back to location provider
-        var effectiveLocationId = locationId ?? _locationProvider.LocationId;
-
-        // ISSUE #2 FIX: Get location's timezone for "today" calculation
-        string? locationTimeZoneId = null;
-        if (effectiveLocationId.HasValue)
-        {
-            locationTimeZoneId = await _locationService.GetLocationTimezoneAsync(effectiveLocationId.Value);
-        }
-        // Default to Central Time (America/Chicago) if no location specified
-        locationTimeZoneId ??= "America/Chicago";
-
-        // Get today's date in the location's timezone
-        var nowUtc = DateTime.UtcNow;
-        var locationNow = TimezoneHelper.ConvertFromUtc(nowUtc, locationTimeZoneId);
-        var todayInLocationTz = locationNow.Date;
-
-        // Convert location's today start/end to UTC for database queries
-        var today = TimezoneHelper.GetStartOfDayUtc(DateOnly.FromDateTime(todayInLocationTz), locationTimeZoneId);
-        var todayEnd = TimezoneHelper.GetStartOfDayUtc(DateOnly.FromDateTime(todayInLocationTz.AddDays(1)), locationTimeZoneId);
-        var authExpiryCutoff = DateOnly.FromDateTime(todayInLocationTz.AddDays(14));
-        var paymentDateStart = DateOnly.FromDateTime(todayInLocationTz);
-        var paymentDateEnd = DateOnly.FromDateTime(todayInLocationTz.AddDays(1));
-
-        // Base patient query with location filter
-        var patientsQuery = _context.Patients
-            .IgnoreQueryFilters()
-            .Where(p => p.TenantId == tenantId && p.IsDeleted != true);
-
-        if (effectiveLocationId.HasValue)
-        {
-            patientsQuery = patientsQuery.Where(p => p.PreferredLocationId == effectiveLocationId.Value);
-        }
-
-        // For TodayAppointments, filter by provider and location
-        var todayAppointmentsQuery = _context.Appointments
-            .IgnoreQueryFilters()
-            .Include(a => a.Patient)
-            .Where(a => a.TenantId == tenantId && a.StartTime >= today && a.StartTime < todayEnd);
-
-        if (effectiveLocationId.HasValue)
-        {
-            todayAppointmentsQuery = todayAppointmentsQuery.Where(a => a.Patient.PreferredLocationId == effectiveLocationId.Value);
-        }
-
-        if (providerId.HasValue)
-        {
-            todayAppointmentsQuery = todayAppointmentsQuery.Where(a => a.ProviderId == providerId);
-        }
-
-        // Completed appointments query with location filter
-        var completedQuery = _context.Appointments
-            .IgnoreQueryFilters()
-            .Include(a => a.Patient)
-            .Where(a => a.TenantId == tenantId &&
-                       a.StartTime >= today &&
-                       a.StartTime < todayEnd &&
-                       a.Status == (int)AppointmentStatus.Completed);
-
-        if (effectiveLocationId.HasValue)
-        {
-            completedQuery = completedQuery.Where(a => a.Patient.PreferredLocationId == effectiveLocationId.Value);
-        }
-
-        // No-show appointments query with location filter
-        var noShowQuery = _context.Appointments
-            .IgnoreQueryFilters()
-            .Include(a => a.Patient)
-            .Where(a => a.TenantId == tenantId &&
-                       a.StartTime >= today &&
-                       a.StartTime < todayEnd &&
-                       a.Status == (int)AppointmentStatus.NoShow);
-
-        if (effectiveLocationId.HasValue)
-        {
-            noShowQuery = noShowQuery.Where(a => a.Patient.PreferredLocationId == effectiveLocationId.Value);
-        }
-
-        // Clinical notes query - filter by patient's location
-        var notesQuery = _context.ClinicalNotes
-            .IgnoreQueryFilters()
-            .Include(n => n.Patient)
-            .Where(n => n.TenantId == tenantId &&
-                       (n.Status == (int)ClinicalNoteStatus.Draft ||
-                        n.Status == (int)ClinicalNoteStatus.PendingSignature));
-
-        if (effectiveLocationId.HasValue)
-        {
-            notesQuery = notesQuery.Where(n => n.Patient.PreferredLocationId == effectiveLocationId.Value);
-        }
-
-        // Authorizations query - filter by patient's location (via Insurance → Patient)
-        var authQuery = _context.Authorizations
-            .IgnoreQueryFilters()
-            .Include(a => a.Insurance)
-                .ThenInclude(i => i.Patient)
-            .Where(a => a.TenantId == tenantId &&
-                       a.ExpiryDate != null &&
-                       a.ExpiryDate <= authExpiryCutoff);
-
-        if (effectiveLocationId.HasValue)
-        {
-            authQuery = authQuery.Where(a => a.Insurance.Patient.PreferredLocationId == effectiveLocationId.Value);
-        }
-
-        var stats = new DashboardStatsDto
-        {
-            TotalPatients = await patientsQuery.CountAsync(),
-
-            // Active patients: those with active/overdue care episodes OR no care episodes yet (and not archived)
-            ActivePatients = await patientsQuery
-                .Where(p => !p.IsArchived &&
-                    (p.CareEpisodes.Any(ce => ce.Status == (int)CareEpisodeStatus.Active || ce.Status == (int)CareEpisodeStatus.Overdue) ||
-                     !p.CareEpisodes.Any()))
-                .CountAsync(),
-
-            TodayAppointments = await todayAppointmentsQuery.CountAsync(),
-
-            CompletedToday = await completedQuery.CountAsync(),
-
-            NoShowsToday = await noShowQuery.CountAsync(),
-
-            PendingNotes = await notesQuery.CountAsync(),
-
-            // Payments and billing - these are tenant-wide (not location-specific for now)
-            TodayCollections = await _context.Payments
-                .IgnoreQueryFilters()
-                .Where(p => p.TenantId == tenantId &&
-                           p.PaymentDate >= paymentDateStart &&
-                           p.PaymentDate < paymentDateEnd &&
-                           p.Status == (int)PaymentStatus.Completed)
-                .SumAsync(p => (decimal?)p.Amount) ?? 0,
-
-            OutstandingAR = await _context.BillingClaims
-                .IgnoreQueryFilters()
-                .Where(c => c.TenantId == tenantId &&
-                           (c.Status == (int)ClaimStatus.Submitted ||
-                            c.Status == (int)ClaimStatus.Pending))
-                .SumAsync(c => (decimal?)c.TotalCharged - (c.TotalPaid ?? 0)) ?? 0,
-
-            ClaimsPending = await _context.BillingClaims
-                .IgnoreQueryFilters()
-                .CountAsync(c => c.TenantId == tenantId &&
-                                c.Status == (int)ClaimStatus.Pending),
-
-            AuthorizationsExpiringSoon = await authQuery.CountAsync()
-        };
-
-        return stats;
-    }
 
     /// <summary>
     /// Generates a URL-safe subdomain from a clinic name.

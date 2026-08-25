@@ -176,12 +176,16 @@ class TenantsModule {
                 ? (url) => App.api.get(url)
                 : (url) => apiRequest(url);
 
-            const [tenant, stats] = await Promise.all([
-                apiGet(`/tenants/${tenantId}`),
-                apiGet(`/tenants/${tenantId}/stats`)
-            ]);
+            // The /stats endpoint was removed with the clinical EHR: it counted
+            // appointments, clinical notes and patients, none of which exist in
+            // a DME product. The tenant record itself carries what this summary
+            // needs. A DME equivalent (customers, open orders, active rentals)
+            // would have to read another tenant's data, which row level security
+            // deliberately blocks, so it is not a drop-in replacement.
+            const tenant = await apiGet(`/tenants/${tenantId}`);
 
-            Toast.info('Clinic Details', `${tenant.Name} - ${stats.TotalPatients || 0} patients, ${stats.TotalAppointments || 0} appointments`);
+            Toast.info('Clinic Details',
+                `${tenant.Name} — ${tenant.UserCount || 0} user(s), plan ${tenant.Plan ?? 'n/a'}`);
 
         } catch (error) {
             console.error('[TenantsModule] Failed to view tenant:', error);

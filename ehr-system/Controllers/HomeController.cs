@@ -4,24 +4,23 @@ using Microsoft.AspNetCore.Mvc;
 namespace EHR.Controllers;
 
 /// <summary>
-/// Controller for serving main MVC views.
-/// Handles navigation between major application pages.
+/// Serves the small set of non-DME pages the product still has: the sign-in
+/// landing page, staff user management, the Super Admin clinic console, and the
+/// password-reset page.
+///
+/// WHY IT IS THIS SHORT
+/// It had 23 actions serving the clinical EHR this product was copied from:
+/// patients, encounters, notes, prescriptions, schedule, reports, telehealth and
+/// the rest. MEDOCS DME is a standalone DME application. None of those pages
+/// were reachable from its navigation, none of them were part of the product,
+/// and every one of them was a page that could render patient data. They and
+/// their views are gone (2026-08-25).
 ///
 /// SECURITY
-/// [Authorize] at the class level. Until 2026-08-25 this controller had none at
-/// all and the gate was a client-side JavaScript check that hid a div, which is
-/// no gate: it included the Super Admin clinic console at /Home/Tenants. The API
-/// behind those pages was role-checked, but the pages themselves rendered to
-/// anyone, so the protection depended on the browser choosing to enforce it.
-///
-/// Three actions are deliberately anonymous and marked individually:
-/// Index (the sign-in landing page, where the 401 handler sends people),
-/// ResetPassword (reached from an emailed link, before any session exists) and
-/// Error. Everything else needs a logged-in user.
-///
-/// The patient-facing Kiosk and Telehealth join pages live in their own
-/// controllers and stay anonymous on purpose: they are gated by a one-time
-/// token in the URL, not by a session.
+/// [Authorize] at the class level. Three actions are deliberately anonymous and
+/// marked individually: Index (the sign-in landing page, where the 401 handler
+/// sends people), ResetPassword (reached from an emailed link, before any
+/// session exists) and Error. Tenants is Super Admin only.
 /// </summary>
 [Authorize]
 public class HomeController : Controller
@@ -31,9 +30,9 @@ public class HomeController : Controller
     ///
     /// Authenticated callers go straight to the DME dashboard. Everyone else
     /// gets the Login view, which renders the shared layout so the existing
-    /// client-side login card is shown. This action is deliberately anonymous:
-    /// it is where the 401 handler sends unauthenticated page navigations, so
-    /// requiring auth here would produce a redirect loop.
+    /// client-side login card is shown. Deliberately anonymous: this is where
+    /// the 401 handler sends unauthenticated page navigations, so requiring auth
+    /// here would produce a redirect loop.
     /// </summary>
     [AllowAnonymous]
     public IActionResult Index(string? returnUrl = null)
@@ -48,129 +47,9 @@ public class HomeController : Controller
     }
 
     /// <summary>
-    /// Dashboard page view.
-    /// </summary>
-    public IActionResult Dashboard()
-    {
-        ViewData["Title"] = "Dashboard";
-        return View("~/Views/Dashboard/Index.cshtml");
-    }
-
-    /// <summary>
-    /// Schedule/Calendar page view.
-    /// </summary>
-    public IActionResult Schedule()
-    {
-        ViewData["Title"] = "Schedule";
-        return View("~/Views/Schedule/Index.cshtml");
-    }
-
-    /// <summary>
-    /// Patients list page view.
-    /// </summary>
-    public IActionResult Patients()
-    {
-        ViewData["Title"] = "Patients";
-        return View("~/Views/Patients/Index.cshtml");
-    }
-
-    /// <summary>
-    /// Providers list page view.
-    /// </summary>
-    public IActionResult Providers()
-    {
-        ViewData["Title"] = "Providers";
-        return View("~/Views/Providers/Index.cshtml");
-    }
-
-    /// <summary>
-    /// Clinical notes page view.
-    /// </summary>
-    public IActionResult Notes()
-    {
-        ViewData["Title"] = "Clinical Notes";
-        return View("~/Views/Notes/Index.cshtml");
-    }
-
-    /// <summary>
-    /// E-Prescribing page view.
-    /// </summary>
-    public IActionResult Prescriptions()
-    {
-        ViewData["Title"] = "E-Prescribe";
-        return View("~/Views/Prescriptions/Index.cshtml");
-    }
-
-    /// <summary>
-    /// Orders page view (Labs, Imaging, Referrals).
-    /// </summary>
-    public IActionResult Orders()
-    {
-        ViewData["Title"] = "Orders";
-        return View("~/Views/Orders/Index.cshtml");
-    }
-
-    /// <summary>
-    /// Encounter Workspace page view.
-    /// Opens the guided visit workflow for a specific encounter.
-    /// </summary>
-    public IActionResult Encounter(int? id)
-    {
-        if (id == null) return RedirectToAction("Dashboard");
-        ViewData["Title"] = "Encounter Workspace";
-        ViewData["ActivePage"] = "encounter";
-        ViewData["EncounterId"] = id;
-        return View("~/Views/Encounters/Index.cshtml");
-    }
-
-    /// <summary>
-    /// Billing page view.
-    /// </summary>
-    public IActionResult Billing()
-    {
-        ViewData["Title"] = "Billing";
-        return View("~/Views/Billing/Index.cshtml");
-    }
-
-    /// <summary>
-    /// Unavailability/Time Off page view.
-    /// </summary>
-    public IActionResult Unavailability()
-    {
-        ViewData["Title"] = "Time Off";
-        return View("~/Views/Unavailability/Index.cshtml");
-    }
-
-    /// <summary>
-    /// Reports page view.
-    /// </summary>
-    public IActionResult Reports()
-    {
-        ViewData["Title"] = "Reports";
-        return View("~/Views/Reports/Index.cshtml");
-    }
-
-    /// <summary>
-    /// Note Templates page view.
-    /// </summary>
-    public IActionResult Templates()
-    {
-        ViewData["Title"] = "Note Templates";
-        return View("~/Views/Templates/Index.cshtml");
-    }
-
-    /// <summary>
-    /// Medical Lien Templates page view (Super Admin only).
-    /// </summary>
-    [Authorize(Roles = "0")]
-    public IActionResult MedicalLienTemplates()
-    {
-        ViewData["Title"] = "Medical Lien Templates";
-        return View("~/Views/Templates/MedicalLienTemplates.cshtml");
-    }
-
-    /// <summary>
-    /// Users management page view.
+    /// Staff user management. Linked from the navigation as /UserManagement.
+    /// The data behind it is UsersController, which is role gated to
+    /// SuperAdmin and ClinicAdmin.
     /// </summary>
     public IActionResult Users()
     {
@@ -179,7 +58,9 @@ public class HomeController : Controller
     }
 
     /// <summary>
-    /// Clinics/Tenants management page view (Super Admin only).
+    /// Super Admin clinic console: creates and manages tenants. Role 0 only,
+    /// matching the POST /api/tenants endpoint behind it. Until 2026-08-25 this
+    /// page had no authorization at all and rendered to anyone who typed the URL.
     /// </summary>
     [Authorize(Roles = "0")]
     public IActionResult Tenants()
@@ -189,61 +70,9 @@ public class HomeController : Controller
     }
 
     /// <summary>
-    /// Organization settings page view.
-    /// </summary>
-    public IActionResult Organization()
-    {
-        ViewData["Title"] = "Organization";
-        ViewData["ActivePage"] = "organization";
-        return View("~/Views/Organization/Index.cshtml");
-    }
-
-    /// <summary>
-    /// Settings page view.
-    /// </summary>
-    public IActionResult Settings()
-    {
-        ViewData["Title"] = "Settings";
-        return View("~/Views/Settings/Index.cshtml");
-    }
-
-    /// <summary>
-    /// Payment Integration page (Stripe Connect onboarding for ClinicAdmin).
-    /// Accessible at both /Home/PaymentIntegration (default conventional route)
-    /// and /Settings/PaymentIntegration (attribute route) — the latter is used
-    /// as the Stripe Connect onboarding return URL in appsettings.json.
-    /// </summary>
-    [Route("Settings/PaymentIntegration")]
-    public IActionResult PaymentIntegration()
-    {
-        ViewData["Title"] = "Payment Integration";
-        ViewData["ActivePage"] = "settings";
-        return View("~/Views/Settings/PaymentIntegration.cshtml");
-    }
-
-    /// <summary>
-    /// Consent forms page view.
-    /// </summary>
-    public IActionResult ConsentForms()
-    {
-        ViewData["Title"] = "Consent Forms";
-        return View("~/Views/ConsentForms/Index.cshtml");
-    }
-
-    /// <summary>
-    /// Documentation page view.
-    /// </summary>
-    public IActionResult Documentation()
-    {
-        ViewData["Title"] = "Documentation";
-        ViewData["ActivePage"] = "documentation";
-        return View("~/Views/Help/Index.cshtml");
-    }
-
-    /// <summary>
-    /// Reset password landing page (linked from password reset email).
-    /// Standalone page, accepts ?token=... in the query string.
-    /// Token is validated client-side via /api/auth/validate-reset-token.
+    /// Reset password landing page, linked from the password reset email.
+    /// Anonymous by necessity: the user has no session at this point. The token
+    /// in the query string is validated by /api/auth/validate-reset-token.
     /// </summary>
     [AllowAnonymous]
     [Route("reset-password")]
@@ -253,9 +82,7 @@ public class HomeController : Controller
         return View("~/Views/Auth/ResetPassword.cshtml");
     }
 
-    /// <summary>
-    /// Error page view.
-    /// </summary>
+    /// <summary>Error page. Anonymous so a failure before sign-in can still render.</summary>
     [AllowAnonymous]
     public IActionResult Error()
     {

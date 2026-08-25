@@ -217,8 +217,7 @@ public class AuthController : ControllerBase
             Role = User.FindFirst("Role")?.Value,
             TenantId = User.FindFirst("TenantId")?.Value,
             TenantName = User.FindFirst("TenantName")?.Value,
-            TenantSubdomain = User.FindFirst("TenantSubdomain")?.Value,
-            ProviderId = User.FindFirst("ProviderId")?.Value
+            TenantSubdomain = User.FindFirst("TenantSubdomain")?.Value
         });
     }
 

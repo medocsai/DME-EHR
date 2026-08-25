@@ -38,10 +38,8 @@ public sealed class SqlServerFixture : IAsyncLifetime
     {
         // Initialize the PHI encryption registry once for the test session.
         // EncryptEntity / DecryptEntity look up registered fields via
-        // EncryptionConfiguration.GetEncryptedFields(); without this call those
         // helpers are silent no-ops in tests, which masks encryption-on-save
         // and decrypt-on-read defects. Idempotent — safe to call repeatedly.
-        EHR.Configuration.EncryptionConfiguration.Initialize();
 
         // Build an initial DB so the first test in a class can call CreateDbContext()
         // without a prior ResetAsync(). Every test should still call ResetAsync() at

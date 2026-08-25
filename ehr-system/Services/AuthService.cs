@@ -4,7 +4,6 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using EHR.Data;
 using EHR.Models;
 using EHR.Models.Generated;
 using EHR.Helpers;
@@ -611,7 +610,6 @@ public class AuthService : IAuthService
             Email = selectedUser.Email,
             FullName = selectedUser.FirstName + " " + selectedUser.LastName,
             Role = selectedUser.Role ?? 0,
-            ProviderId = selectedUser.ProviderId,
             Token = token,
             RefreshToken = refreshToken,
             TokenExpiry = DateTime.UtcNow.AddMinutes(SessionMinutes),
@@ -694,7 +692,6 @@ public class AuthService : IAuthService
             Email = user.Email,
             FullName = user.FirstName + " " + user.LastName,
             Role = user.Role ?? 0,
-            ProviderId = user.ProviderId,
             Token = newToken,
             RefreshToken = newRefreshToken,
             TokenExpiry = DateTime.UtcNow.AddMinutes(SessionMinutes),
@@ -790,11 +787,6 @@ public class AuthService : IAuthService
         {
             claims.Add(new System.Security.Claims.Claim("TenantSubdomain", tenant.Subdomain));
             claims.Add(new System.Security.Claims.Claim("TenantName", tenant.Name));
-        }
-
-        if (user.ProviderId.HasValue)
-        {
-            claims.Add(new System.Security.Claims.Claim("ProviderId", user.ProviderId.Value.ToString()));
         }
 
         if (location != null)

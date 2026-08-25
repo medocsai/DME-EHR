@@ -7,14 +7,12 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
 using System.Threading.RateLimiting;
-using EHR.Data;
 using EHR.Services;
 using EHR.Services.Storage;
 using EHR.Services.Storage.Helpers;
 using EHR.Middleware;
 using EHR.Helpers;
 using EHR.Configuration;
-using EHR.Hubs;
 
 
 
@@ -62,32 +60,6 @@ builder.Services.AddScoped<ILocationProvider>(sp => sp.GetRequiredService<Locati
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITenantService, TenantService>();
 builder.Services.AddScoped<ILocationService, LocationService>();  // Multi-Location Support
-builder.Services.AddScoped<IPatientService, PatientService>();
-builder.Services.AddScoped<IAppointmentService, AppointmentService>();
-builder.Services.AddScoped<IProviderService, ProviderService>();
-builder.Services.AddScoped<IProfilePictureService, ProfilePictureService>();
-// Office Ally Eligibility API
-builder.Services.Configure<EHR.Configuration.OfficeAllyOptions>(
-    builder.Configuration.GetSection(EHR.Configuration.OfficeAllyOptions.SectionName));
-builder.Services.AddHttpClient<IEligibilityApiService, EligibilityApiService>(client =>
-{
-    var oaConfig = builder.Configuration.GetSection("OfficeAlly");
-    client.BaseAddress = new Uri(oaConfig["EligibilityApiBaseUrl"] ?? "https://edi.officeally.io");
-    client.Timeout = TimeSpan.FromSeconds(30);
-});
-
-// Authorization service must be registered before Insurance and CareEpisode services (dependency)
-builder.Services.AddScoped<IInsuranceAuthorizationService, AuthorizationService>();
-builder.Services.AddScoped<IInsuranceService, InsuranceService>();
-builder.Services.AddScoped<INoteService, NoteService>();
-builder.Services.AddScoped<IBillingService, BillingService>();
-builder.Services.AddScoped<IPaymentService, PaymentService>();
-builder.Services.AddScoped<ICareEpisodeService, CareEpisodeService>();
-
-// Care Episode System Services
-builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
-builder.Services.AddScoped<IInsuranceValidationService, InsuranceValidationService>();
-builder.Services.AddScoped<IEnhancedCareEpisodeService, EnhancedCareEpisodeService>();
 
 
 
@@ -122,59 +94,19 @@ builder.Services.AddSingleton<FileValidator>();
 builder.Services.AddSingleton<MetadataBuilder>();
 builder.Services.AddSingleton<IFileStorageService, GoogleCloudStorageService>();
 
-// Patient Intake (Phase 1) — backend contractors + employees
 builder.Services.AddMemoryCache();
-builder.Services.AddScoped<EHR.Services.Intake.IProvenanceTagger, EHR.Services.Intake.ProvenanceTagger>();
-builder.Services.AddScoped<EHR.Services.Intake.IIntakeSubmissionService, EHR.Services.Intake.IntakeSubmissionService>();
-builder.Services.AddScoped<EHR.Services.Intake.IIntakeProgressCalculator, EHR.Services.Intake.IntakeProgressCalculator>();
-builder.Services.AddScoped<EHR.Services.Intake.IPatientEnteredDataReader, EHR.Services.Intake.PatientEnteredDataReader>();
-builder.Services.AddScoped<EHR.Services.Intake.IIntakePrefillService, EHR.Services.Intake.IntakePrefillService>();
-builder.Services.AddScoped<EHR.Services.Intake.ILongevityFeatureGate, EHR.Services.Intake.LongevityFeatureGate>();
-builder.Services.AddScoped<EHR.Services.Intake.IIntakeAccessTokenService, EHR.Services.Intake.IntakeAccessTokenService>();
-builder.Services.AddScoped<EHR.Services.Intake.IPatientIdentityMatcher, EHR.Services.Intake.PatientIdentityMatcher>();
-builder.Services.AddScoped<EHR.Services.Intake.IIntakeAttemptThrottler, EHR.Services.Intake.IntakeAttemptThrottler>();
-builder.Services.AddScoped<EHR.Helpers.IIntakeStatusHelper, EHR.Helpers.IntakeStatusHelper>();
 
 // Additional services
-builder.Services.AddScoped<IBlindIndexService, BlindIndexService>();
-builder.Services.AddScoped<IPatientSearchService, PatientSearchService>();
-builder.Services.AddScoped<ITherapistUnavailabilityService, TherapistUnavailabilityService>();
-builder.Services.AddScoped<IClinicalNoteTemplateService, ClinicalNoteTemplateService>();
-builder.Services.AddScoped<IClinicalNoteService, ClinicalNoteService>();
-builder.Services.AddScoped<IClinicalNoteAmendmentService, ClinicalNoteAmendmentService>();
-builder.Services.AddScoped<IEncounterSummaryManager, EncounterSummaryManager>();
 
 // Provider Favorite Codes (Dx & CPT step) — per-user starred ICD-10/CPT codes
-builder.Services.AddScoped<IFavoritesService, FavoritesService>();
 
 // Dashboard service for alert widgets
-builder.Services.AddScoped<IDashboardService, DashboardService>();
 
 // Internal Medicine clinical services
-builder.Services.AddScoped<IEncounterService, EncounterService>();
-builder.Services.AddScoped<IPatientProblemService, PatientProblemService>();
-builder.Services.AddScoped<IPatientAllergyService, PatientAllergyService>();
-builder.Services.AddScoped<IPatientMedicationService, PatientMedicationService>();
-builder.Services.AddScoped<IPatientVitalService, PatientVitalService>();
-builder.Services.AddScoped<IPatientImmunizationService, PatientImmunizationService>();
-builder.Services.AddScoped<IPatientFamilyHistoryService, PatientFamilyHistoryService>();
-builder.Services.AddScoped<IPatientSocialHistoryService, PatientSocialHistoryService>();
-builder.Services.AddScoped<IEncounterContextService, EncounterContextService>();
-builder.Services.AddScoped<ITreatmentPlanService, TreatmentPlanService>();
-builder.Services.AddScoped<IPatientStickyNoteService, PatientStickyNoteService>();
-builder.Services.AddScoped<ICareNoteService, CareNoteService>();
-builder.Services.AddScoped<ICareNotesNotifier, CareNotesNotifier>();
-builder.Services.AddScoped<IAudioTranscriptionService, AudioTranscriptionService>();
-builder.Services.AddScoped<IHistoryReviewActionService, HistoryReviewActionService>();
 
 // E-Prescribing services
-builder.Services.AddScoped<IPrescriptionService, PrescriptionService>();
-builder.Services.AddScoped<IPharmacyService, PharmacyService>();
-builder.Services.AddScoped<IDrugDatabaseService, DrugDatabaseService>();
 
 // Orders Module (Labs, Imaging, Referrals)
-builder.Services.AddScoped<IOrderService, OrderService>();
-builder.Services.AddScoped<ILabTestCatalogService, LabTestCatalogService>();
 
 // User management and email services
 builder.Services.AddScoped<IUserManagementService, UserManagementService>();
@@ -182,77 +114,40 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 
 // SMS and Notification services
 builder.Services.AddScoped<ISmsService, SmsService>();
-builder.Services.AddScoped<INotificationService, NotificationService>();
 
 // Patient document service (HIPAA-compliant file uploads)
-builder.Services.AddScoped<IPatientDocumentService, PatientDocumentService>();
 
 // Patient profile validation service
-builder.Services.AddScoped<IPatientValidationService, PatientValidationService>();
 
 // Telehealth services
-builder.Services.AddScoped<ITelehealthService, TelehealthService>();
-builder.Services.AddSingleton<ITelehealthNotificationService, TelehealthNotificationService>();
 
 // Patient Consent System services
-builder.Services.AddScoped<IKioskService, KioskService>();
-builder.Services.AddScoped<IConsentTemplateService, ConsentTemplateService>();
-builder.Services.AddScoped<IConsentService, ConsentService>();
-builder.Services.AddSingleton<IHtmlToPdfService, HtmlToPdfService>();
 
 // Medical Lien Form services
-builder.Services.AddScoped<IMedicalLienService, MedicalLienService>();
-builder.Services.AddScoped<IMedicalLienTemplateService, MedicalLienTemplateService>();
 
 // Patient Portal services
-builder.Services.AddScoped<IPatientPortalAuthService, PatientPortalAuthService>();
-builder.Services.AddScoped<IPatientPortalInvitationService, PatientPortalInvitationService>();
 
 // SignalR for real-time notifications
-builder.Services.AddSignalR();
-builder.Services.AddScoped<IConsentNotificationService, ConsentNotificationService>();
-builder.Services.AddScoped<IRecordingProgressService, RecordingProgressService>();
-builder.Services.AddScoped<IMobileNotificationService, MobileNotificationService>();
-builder.Services.AddScoped<IScheduleNotificationService, ScheduleNotificationService>();
 
 // Internal Messaging System services
-builder.Services.AddScoped<IMessagingService, MessagingService>();
-builder.Services.AddScoped<IMessagingNotificationService, MessagingNotificationService>();
 
 // Patient-Provider Messaging System services
-builder.Services.AddScoped<IPatientMessagingService, PatientMessagingService>();
-builder.Services.AddScoped<IPatientMessagingNotificationService, PatientMessagingNotificationService>();
 
 // Recording Session service
-builder.Services.AddScoped<IRecordingSessionService, RecordingSessionService>();
 
 // Transcription service for audio chunk processing
-builder.Services.AddScoped<ITranscriptionService, TranscriptionService>();
 
 // Centralized Gemini API service - all Gemini calls go through this
-builder.Services.AddSingleton<IGeminiService, GeminiService>();
-builder.Services.AddSingleton<INoteGenerationJobService, NoteGenerationJobService>();
 
 // MEDOCS AI Help Assistant services
-builder.Services.AddSingleton<IUserGuideProvider, UserGuideProvider>();
-builder.Services.AddScoped<IIMEHRHelpService, IMEHRHelpService>();
 
 // MEDOCS AI Voice Entry service for Encounter Workspace
-builder.Services.AddScoped<IMedocsVoiceProcessingService, MedocsVoiceProcessingService>();
 
 // Care episode extraction service for Initial Evaluation notes
-builder.Services.AddScoped<ICareEpisodeExtractionService, CareEpisodeExtractionService>();
 
 // Copay Integration - Stripe + Installment + Reminder services
-builder.Services.AddScoped<IStripeService, StripeService>();
-builder.Services.AddScoped<IStripeConnectService, StripeConnectService>();
-builder.Services.AddScoped<IPlatformFeeCalculator, PlatformFeeCalculator>();
-builder.Services.AddScoped<IInstallmentService, InstallmentService>();
-builder.Services.AddScoped<ICopayReminderService, CopayReminderService>();
-builder.Services.AddHostedService<InstallmentProcessorBackgroundService>();
 
 // Appointment Reminder Background Service
-builder.Services.AddHostedService<AppointmentReminderBackgroundService>();
 
 // Audit log retention sweep (HIPAA §164.316(b)(2)) — deletes AuditLog rows
 // older than HIPAA:AuditRetentionDays. Only this service can delete; the
@@ -262,7 +157,6 @@ builder.Services.AddHostedService<AuditLogRetentionBackgroundService>();
 // One-time backfill: ensures every existing patient has a full-length
 // "EmailExact" search token so the duplicate-email check matches emails
 // longer than 15 characters (the prefix-token cap). Safe to leave deployed.
-builder.Services.AddHostedService<EmailExactBackfillService>();
 
 // Refuse to start with missing or publicly-known secrets. Runs before anything
 // reads a key, so a misconfigured deployment fails loudly instead of quietly
@@ -535,140 +429,25 @@ app.MapControllers();
 // Map MVC routes for view-based controllers
 // Clean URL routes - map /Page directly to HomeController actions for professional URLs
 app.MapControllerRoute(
-    name: "patients",
-    pattern: "Patients",
-    defaults: new { controller = "Home", action = "Patients" });
-
-app.MapControllerRoute(
-    name: "schedule",
-    pattern: "Schedule",
-    defaults: new { controller = "Home", action = "Schedule" });
-
-app.MapControllerRoute(
-    name: "providers",
-    pattern: "Providers",
-    defaults: new { controller = "Home", action = "Providers" });
-
-app.MapControllerRoute(
-    name: "clinical-notes",
-    pattern: "ClinicalNotes",
-    defaults: new { controller = "Home", action = "Notes" });
-
-app.MapControllerRoute(
-    name: "prescriptions",
-    pattern: "Prescriptions",
-    defaults: new { controller = "Home", action = "Prescriptions" });
-
-app.MapControllerRoute(
-    name: "orders",
-    pattern: "Orders",
-    defaults: new { controller = "Home", action = "Orders" });
-
-app.MapControllerRoute(
-    name: "encounter-workspace",
-    pattern: "Encounter/{id?}",
-    defaults: new { controller = "Home", action = "Encounter" });
-
-app.MapControllerRoute(
-    name: "billing",
-    pattern: "Billing",
-    defaults: new { controller = "Home", action = "Billing" });
-
-app.MapControllerRoute(
-    name: "time-off",
-    pattern: "TimeOff",
-    defaults: new { controller = "Home", action = "Unavailability" });
-
-app.MapControllerRoute(
-    name: "reports",
-    pattern: "Reports",
-    defaults: new { controller = "Home", action = "Reports" });
-
-app.MapControllerRoute(
     name: "user-management",
     pattern: "UserManagement",
     defaults: new { controller = "Home", action = "Users" });
-
-app.MapControllerRoute(
-    name: "locations",
-    pattern: "Locations",
-    defaults: new { controller = "Home", action = "Locations" });
-
-app.MapControllerRoute(
-    name: "settings",
-    pattern: "Settings",
-    defaults: new { controller = "Home", action = "Settings" });
-
-app.MapControllerRoute(
-    name: "templates",
-    pattern: "Templates",
-    defaults: new { controller = "Home", action = "Templates" });
 
 app.MapControllerRoute(
     name: "clinics",
     pattern: "Clinics",
     defaults: new { controller = "Home", action = "Tenants" });
 
-app.MapControllerRoute(
-    name: "consent-forms",
-    pattern: "ConsentForms",
-    defaults: new { controller = "Home", action = "ConsentForms" });
-
-app.MapControllerRoute(
-    name: "medical-lien-templates",
-    pattern: "MedicalLienTemplates",
-    defaults: new { controller = "Home", action = "MedicalLienTemplates" });
-
-app.MapControllerRoute(
-    name: "organization",
-    pattern: "Organization",
-    defaults: new { controller = "Home", action = "Organization" });
-
-app.MapControllerRoute(
-    name: "documentation",
-    pattern: "Documentation",
-    defaults: new { controller = "Home", action = "Documentation" });
-
 // Patient Portal routes (standalone pages, separate from main EHR)
-app.MapControllerRoute(
-    name: "portal-login",
-    pattern: "Portal",
-    defaults: new { controller = "PatientPortal", action = "Login" });
-
-app.MapControllerRoute(
-    name: "portal-pages",
-    pattern: "Portal/{action}",
-    defaults: new { controller = "PatientPortal" });
-
 // Default MVC route: /{controller=Home}/{action=Index}/{id?}
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
 // Map SignalR hubs
-app.MapHub<ConsentNotificationHub>("/hubs/consent");
-app.MapHub<RecordingProgressHub>("/hubs/recording-progress");
-app.MapHub<MobileHub>("/hubs/mobile");
-app.MapHub<ScheduleNotificationHub>("/hubs/schedule");
-app.MapHub<MessagingHub>("/hubs/messaging");
-app.MapHub<TelehealthHub>("/hubs/telehealth");
-app.MapHub<PatientMessagingHub>("/hubs/patient-messaging");
-app.MapHub<CareNotesHub>("/hubs/care-notes");
 
 // Initialize HIPAA-compliant encryption configuration
 // IMPORTANT: Call this BEFORE any database operations to ensure PHI is encrypted
-EncryptionConfiguration.Initialize();
-
-// Seed reference data on startup (Pharmacies, Drugs, Payers) — dev only.
-// Production data is managed via SQL migrations under Migrations/Manual/.
-if (app.Environment.IsDevelopment())
-{
-    using (var scope = app.Services.CreateScope())
-    {
-        var context = scope.ServiceProvider.GetRequiredService<EhrDbContext>();
-        DbSeeder.Seed(context);
-    }
-}
 
 // Note: No fallback to index.html - MVC views handle all UI rendering via HomeController
 

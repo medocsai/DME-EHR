@@ -83,7 +83,6 @@ public class UserManagementService : IUserManagementService
             LastName = u.LastName,
             Phone = u.Phone,
             Role = u.Role ?? 0,
-            ProviderId = u.ProviderId,
             IsActive = u.IsActive ?? false,
             LastLoginAt = u.LastLoginAt,
             CreatedAt = u.CreatedAt
@@ -117,7 +116,6 @@ public class UserManagementService : IUserManagementService
             LastName = user.LastName,
             Phone = user.Phone,
             Role = user.Role ?? 0,
-            ProviderId = user.ProviderId,
             IsActive = user.IsActive ?? false,
             LastLoginAt = user.LastLoginAt,
             CreatedAt = user.CreatedAt
@@ -144,14 +142,6 @@ public class UserManagementService : IUserManagementService
         if (createPolicyError != null)
             throw new InvalidOperationException(createPolicyError);
 
-        // Validate ProviderId if provided
-        if (dto.ProviderId.HasValue)
-        {
-            var provider = await _context.Providers.FindAsync(dto.ProviderId.Value);
-            if (provider == null || provider.TenantId != effectiveTenantId.Value)
-                throw new InvalidOperationException("Invalid provider selected");
-        }
-
         var user = new User
         {
             TenantId = effectiveTenantId.Value,
@@ -161,7 +151,6 @@ public class UserManagementService : IUserManagementService
             LastName = dto.LastName,
             Phone = dto.Phone,
             Role = dto.Role,
-            ProviderId = dto.ProviderId,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -191,7 +180,6 @@ public class UserManagementService : IUserManagementService
 
         // Always update ProviderId - allows clearing the provider association
         // ProviderId can be set to a value or null (to remove association)
-        user.ProviderId = dto.ProviderId;
 
         user.UpdatedAt = DateTime.UtcNow;
 

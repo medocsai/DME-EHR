@@ -185,20 +185,6 @@ public class TenantsController : ControllerBase
         }
     }
 
-    [HttpGet("{id}/stats")]
-    public async Task<ActionResult<DashboardStatsDto>> GetTenantStats(int id)
-    {
-        try
-        {
-            var stats = await _tenantService.GetTenantStatsAsync(id);
-            return Ok(stats);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[Tenants] GET /api/tenants/{Id}/stats FAILED: {Message}", id, ex.Message);
-            return this.ServerError(ex, $"Failed to load tenant stats");
-        }
-    }
 
     [HttpPost("{id}/logo")]
     [RequestSizeLimit(5 * 1024 * 1024)]

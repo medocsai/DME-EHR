@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using EHR.Data;
 using EHR.Models;
 using EHR.Models.Generated;
 using EHR.Helpers;
@@ -116,7 +115,6 @@ public class LocationService : ILocationService
                 IsActive = l.IsActive ?? true,
                 IsPrimary = l.IsPrimary ?? false,
                 TimeZoneId = l.TimeZoneId ?? TimezoneHelper.DefaultTimeZoneId,
-                PatientCount = l.Patients.Count(p => p.IsDeleted != true),
                 CreatedAt = l.CreatedAt,
                 EnableLongevity = l.EnableLongevity
             })
@@ -163,9 +161,6 @@ public class LocationService : ILocationService
     {
         var query = _context.Locations
             .Include(l => l.Tenant)
-            .Include(l => l.Patients)
-            .Include(l => l.Appointments)
-            .Include(l => l.ProviderSchedules)
             .Where(l => l.LocationId == locationId);
 
         // Tenant isolation - verify location belongs to user's tenant
@@ -198,9 +193,6 @@ public class LocationService : ILocationService
             TimeZoneAbbreviation = TimezoneHelper.GetTimezoneAbbreviation(timeZoneId),
             TimeZoneDisplayName = TimezoneHelper.GetTimezoneDisplayName(timeZoneId),
             UtcOffset = TimezoneHelper.GetUtcOffset(timeZoneId),
-            PatientCount = location.Patients.Count(p => p.IsDeleted != true),
-            ProviderCount = location.ProviderSchedules.Select(ps => ps.ProviderId).Distinct().Count(),
-            AppointmentCount = location.Appointments.Count,
             CreatedAt = location.CreatedAt,
             FacilityNpi = location.FacilityNpi,
             PlaceOfServiceCode = location.PlaceOfServiceCode,
@@ -344,7 +336,6 @@ public class LocationService : ILocationService
     public async Task<bool> DeactivateLocationAsync(int locationId)
     {
         var location = await _context.Locations
-            .Include(l => l.Patients)
             .FirstOrDefaultAsync(l => l.LocationId == locationId);
 
         if (location == null)
@@ -358,13 +349,6 @@ public class LocationService : ILocationService
         if (location.IsPrimary == true)
         {
             throw new InvalidOperationException("Cannot deactivate the primary location. Please set another location as primary first.");
-        }
-
-        // Cannot deactivate if there are active patients
-        var activePatientCount = location.Patients.Count(p => p.IsDeleted != true);
-        if (activePatientCount > 0)
-        {
-            throw new InvalidOperationException($"Cannot deactivate location. There are {activePatientCount} active patients assigned to this location. Please reassign or discharge patients first.");
         }
 
         location.IsActive = false;

@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using EHR.Data;
 using EHR.Models;
 using EHR.Models.Generated;
 using EHR.Services;

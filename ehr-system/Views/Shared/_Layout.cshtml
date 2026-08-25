@@ -258,14 +258,6 @@
                     <i class="bi bi-geo-alt"></i>
                     <span>Locations</span>
                 </a>
-                <a href="/Settings" class="nav-item requires-admin @(activePage == "settings" ? "active" : "")">
-                    <i class="bi bi-gear-fill"></i>
-                    <span>Settings</span>
-                </a>
-                <a href="/Documentation" class="nav-item @(activePage == "documentation" ? "active" : "")">
-                    <i class="bi bi-book"></i>
-                    <span>Documentation</span>
-                </a>
             </nav>
 
             <div class="sidebar-footer">
@@ -479,72 +471,28 @@
     <script src="~/js/modules/settings/SettingsModule.js?v=1776285000"></script>
     <script src="~/js/modules/settings/LongevityLocationTogglesModule.js?v=1777078000"></script>
     <script src="~/js/modules/users/UsersModule.js?v=1778613709"></script>
-    <script src="~/js/modules/templates/TemplatesModule.js?v=1776285000"></script>
     <script src="~/js/modules/tenants/TenantsModule.js?v=1776285000"></script>
     <!-- Patient Module Helpers -->
-    <script src="~/js/modules/patients/PatientUtilities.js?v=1776285000"></script>
-    <script src="~/js/modules/patients/PatientRenderer.js?v=1779131275"></script>
-    <script src="~/js/modules/patients/PatientConversationsModule.js?v=1777641200"></script>
-    <script src="~/js/modules/carenotes/CareNotesVoice.js?v=1777633411"></script>
-    <script src="~/js/modules/carenotes/CareNotesModule.js?v=1777633411"></script>
-    <script src="~/js/modules/patients/PatientClinicalManager.js?v=1777589261"></script>
-    <script src="~/js/modules/patients/PatientDocumentManager.js?v=1776285000"></script>
-    <script src="~/js/modules/patients/PatientInsuranceManager.js?v=1776285000"></script>
-    <script src="~/js/modules/patients/PatientFormHandler.js?v=1779131275"></script>
-    <script src="~/js/modules/patients/MedicalLienModule.js?v=1776285000"></script>
-    <script src="~/js/modules/patients/PatientAppointmentsNotesModule.js?v=1776708195"></script>
     <!-- Patient Module (Main) -->
-    <script src="~/js/modules/patients/PatientModule.js?v=1779131275"></script>
     <!-- Patient Intake (clinic side): QR button + Profile accordion -->
     <!-- Encounter integration is now via iframe (ClinicFrame.cshtml) — the old
          EncounterIntakeRightPanel.js right-drawer was deleted in Step 1.
          Spec: rules/technical/intake-on-clinical-note.md §3, §6. -->
     <script src="~/lib/qrcode/qrcode.min.js?v=1776982987"></script>
-    <script src="~/js/modules/intake/ProfileIntakeQrButton.js?v=1778523040"></script>
-    <script src="~/js/modules/intake/ProfileIntakeAccordion.js?v=1776982987"></script>
-    <script src="~/js/modules/intake/IntakeStatusIndicator.js?v=1777567982"></script>
-    <script src="~/js/modules/providers/ProviderModule.js?v=1776285000"></script>
-    <script src="~/js/modules/dashboard/DashboardModule.js?v=1778587367"></script>
-    <script src="~/js/modules/calendar/CalendarModule.js?v=1779131275"></script>
-    <script src="~/js/modules/schedule/ScheduleGridModule.js?v=1779131275"></script>
-    <script src="~/js/modules/appointments/AppointmentModule.js?v=1779131275"></script>
-    <script src="~/js/modules/clinicalnotes/ClinicalNotesModule.js?v=1776692330"></script>
-    <script src="~/js/modules/clinicalnotes/ClinicalNoteSignModule.js?v=1776692330"></script>
-    <script src="~/js/modules/clinicalnotes/AmendmentAddendumModule.js?v=1776715418"></script>
-    <script src="~/js/modules/billing/BillingModule.js?v=1776715418"></script>
-    <script src="~/js/modules/billing/ClaimFormModule.js?v=1776715418"></script>
-    <script src="~/js/modules/prescriptions/PrescriptionsModule.js?v=1776285000"></script>
     <script src="~/js/shared/constants/OrderConstants.js?v=1776285000"></script>
-    <script src="~/js/modules/orders/OrderPrintTemplate.js?v=1779131275"></script>
-    <script src="~/js/modules/orders/OrdersModule.js?v=1779131275"></script>
-    <script src="~/js/modules/encounters/MedocsVoiceService.js?v=1776285000"></script>
-    <script src="~/js/modules/encounters/MedocsVoiceUI.js?v=1776285000"></script>
-    <script src="~/js/modules/encounters/TelehealthScribeService.js?v=1776285000"></script>
-    <script src="~/js/modules/encounters/TelehealthScribeUI.js?v=1778626964"></script>
-    <script src="~/js/modules/encounters/UnifiedVoiceBar.js?v=1776285000"></script>
     <!-- Dx & CPT Codes picker (shared by encounter step + amendment modal) -->
-    <script src="~/js/modules/dxcpt/DxCptCodesComponent.js?v=1776715418"></script>
-    <script src="~/js/modules/encounters/EncounterWorkspaceModule.js?v=1778626964"></script>
     <!-- CareEpisode module removed for IM workflow (replaced by Encounters) -->
-    <script src="~/js/modules/reports/ReportsModule.js?v=1776285000"></script>
-    <script src="~/js/modules/consents/ConsentModule.js?v=1776285000"></script>
     <script src="~/js/modules/locations/LocationModule.js?v=1776982987"></script>
-    <script src="~/js/modules/unavailability/UnavailabilityModule.js?v=1776285000"></script>
 
     <!-- Recording Service & Scribe Module -->
     <script src="~/js/core/RecordingService.js?v=1776285000"></script>
-    <script src="~/js/modules/scribe/ScribeModule.js?v=1776285000"></script>
 
     <!-- Internal Messaging System -->
     <script src="~/js/core/MessagingSignalRService.js?v=1776285000"></script>
-    <script src="~/js/modules/messaging/PatientMentionHelper.js?v=1776285000"></script>
-    <script src="~/js/modules/messaging/MessagingModule.js?v=1776285000"></script>
 
     <!-- Patient-Provider Messaging (Provider Side) -->
-    <script src="~/js/modules/messaging/PatientMessagingProviderModule.js?v=1776285000"></script>
 
     <!-- MEDOCS AI Help Widget -->
-    <script src="~/js/modules/help/IMEHRHelpModule.js?v=1776285003"></script>
 
     @await RenderSectionAsync("Scripts", required: false)
 </body>
