@@ -1,5 +1,9 @@
 # MEDOCS DME — Claude Instructions
 
+> **Start here: [docs/HANDOFF.md](docs/HANDOFF.md)** — current state, what was
+> built and why, the traps, and the open decisions. This file is the day-to-day
+> operating detail.
+
 DME/HME (Durable Medical Equipment) platform, converted from the IMEHR EHR.
 Built as a **separate copy** of IMEHR so the live EHR is never touched.
 
