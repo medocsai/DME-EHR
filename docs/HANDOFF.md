@@ -262,7 +262,8 @@ development**. Deliberately not automated: rotating the encryption key means
 re-encrypting every encrypted row, rotating the JWT key logs everyone out. Env
 vars `Jwt__Key` and `Encryption__Key` already override without a code change.
 
-**2. Billing: how payments arrive.** Discussed, not started. See section 7.
+**2. Billing: how payments arrive.** ~~Open.~~ **Closed 2026-08-26.** All four
+questions decided. See `docs/BILLING-DECISIONS.md` and section 7 below.
 
 **3. CSP is `Content-Security-Policy-Report-Only`.** Switching it to enforcing
 needs a pass through the app watching for violations — browser work, not a code
@@ -338,23 +339,32 @@ The billing model question is **closed by the clinical removal**:
 `BillingClaims`, `Charges` and `Payments` are gone. DME payments get built on
 `DmeClaims` / `DmeClaimLines`. There is no second option left.
 
-### Still to close, in this order
+### Closed on 2026-08-26
 
-1. **How money enters.** Manual payment posting, 835/ERA file, or both.
-   Recommendation: manual posting first — it is the real workflow for a supplier
-   this size, it is testable, and 835 parsing is a large separate build the demo
-   already labels as simulated. Hammas raised manual payments independently and
-   he is right: a supplier takes money from the payer *and* from the customer
-   (copay, deductible, cash sale, non-covered rental). Both must land in one
-   model or the balance is wrong.
-2. **What "amount denied" means.** Billed amount of denied claims, or the portion
-   not paid? Billers use both and they are very different numbers.
-3. **"Monthly" by which date.** Posting date (cash received) or service date
-   (revenue earned).
-4. **How much of the money model.** Paid and denied only, or also allowed /
-   adjustment / patient responsibility. Leaning to including them, because
-   "denied" is meaningless without separating a denial from a contractual
-   write-off.
+All four. Full reasoning in **`docs/BILLING-DECISIONS.md`**, which is also the
+source text for the client documentation.
+
+1. **How money enters.** Manual posting now, payer and customer money in one
+   model. No 835 parser yet, we have no Office Ally account. Everything else is
+   built to completion and only the `Submit` button is blocked and labelled.
+2. **What "amount denied" means.** Line level. Paid is zero and the line carries
+   a denial reason code. The tile sums the billed charge of those lines, so
+   contractual write-offs and patient responsibility are excluded.
+3. **"Monthly" by which date.** Posting date, the same date for all three tiles,
+   stated on the screen so it reconciles against the bank statement.
+4. **How much of the money model.** Full adjudication set, only two amounts
+   stored per line (`AllowedAmount`, `PaidAmount`). Adjustments live as X12 CAS
+   rows (group, reason code, amount), so adjustment total, patient
+   responsibility, denied status, claim balance and the denial-code tile are all
+   computed. Nothing is written back to `DmeClaims`. COB is out of scope.
+
+Standing rule from decision 2: **every money tile and money column carries a
+short definition on screen.**
+
+### Next, in order
+
+Schema spec, then mockups approved and saved in the repo, then migration, then
+build and verify by execution.
 
 ### Other client asks, untouched
 
