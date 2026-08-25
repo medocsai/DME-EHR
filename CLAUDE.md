@@ -4,8 +4,8 @@
 > built and why, the traps, and the open decisions. This file is the day-to-day
 > operating detail.
 
-DME/HME (Durable Medical Equipment) platform, converted from the IMEHR EHR.
-Built as a **separate copy** of IMEHR so the live EHR is never touched.
+DME/HME (Durable Medical Equipment) platform. **Standalone application** — the
+clinical EHR it was originally copied from was removed on 2026-08-25.
 
 ## Publish & Deploy
 - **Publish path:** `D:\Professional Work\Servers\Medocs\DME Publish`
