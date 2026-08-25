@@ -45,11 +45,8 @@ public partial class Location
     /// </summary>
     public bool EnableLongevity { get; set; }
 
-    public virtual ICollection<Appointment> Appointments { get; set; } = new List<Appointment>();
 
-    public virtual ICollection<Patient> Patients { get; set; } = new List<Patient>();
 
-    public virtual ICollection<ProviderSchedule> ProviderSchedules { get; set; } = new List<ProviderSchedule>();
 
     public string PlaceOfServiceCode { get; set; }
 
@@ -60,7 +57,6 @@ public partial class Location
     /// Null = payments are blocked at this location until ClinicAdmin connects an account.
     /// Multiple locations within the same tenant can share the same connected account.
     /// </summary>
-    public int? StripeConnectAccountId { get; set; }
 
     /// <summary>
     /// Clinic-facing online payment fee percentage (e.g., 3.90 = 3.9%).
@@ -86,13 +82,9 @@ public partial class Location
     /// </summary>
     public int? CardPresentFeeFlatCents { get; set; }
 
-    public virtual StripeConnectAccount StripeConnectAccount { get; set; }
 
     public virtual Tenant Tenant { get; set; }
 
-    public virtual LocationKioskSettings KioskSettings { get; set; }
 
-    public virtual ICollection<ConsentFormTemplate> ConsentFormTemplates { get; set; } = new List<ConsentFormTemplate>();
 
-    public virtual ICollection<CareEpisodeConsent> CareEpisodeConsents { get; set; } = new List<CareEpisodeConsent>();
 }

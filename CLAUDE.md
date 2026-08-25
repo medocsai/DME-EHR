@@ -94,11 +94,18 @@ caller tenant and RLS BLOCKs cross-tenant writes, so an in-app version would
 have to punch a hole through the isolation. Order/claim numbering needs no
 seeding.
 
+### The database (22 tables, nothing unused)
+DME owns 16 tables plus `HcpcsCodes`; the platform is `Users`, `Tenants`,
+`Locations`, `AuditLogs`, `TrustedDevices`. The clinical EHR this product was
+copied from was removed on 2026-08-25: 78 tables, 634 patient records and 1,745
+clinical claims that DME never read. Do not reintroduce them.
+
 ### Migrations (run in this order on a fresh database)
 1. `2026-06-19_DME_Core_Schema.sql`
 2. `2026-08-25_DME_Tenant_Isolation.sql`
 3. `2026-08-25_DME_Single_Source_Of_Truth.sql`
 4. `2026-08-25_DME_Customer_PHI_Encryption.sql`
+5. `2026-08-25_Drop_Clinical_Schema.sql` (only on a database forked from IMEHR)
 Then `POST /Dme/BackfillPhi` once as an admin. Verified end to end on a scratch
 database. Note `ALTER SECURITY POLICY` and any batch naming a dropped column are
 validated at COMPILE time, so `IF NOT EXISTS` guards do not protect them: use
@@ -133,7 +140,8 @@ validated at COMPILE time, so `IF NOT EXISTS` guards do not protect them: use
   session cookie is issued against the same expiry.
 
 ### Tests
-`dotnet test ehr-system/EHR.Tests` — **304 passing, 1 skipped**. The DME suite is
+`dotnet test ehr-system/EHR.Tests` — **111 passing**. It was 304 before the
+clinical EHR was removed; 193 of those tested code that no longer exists. The DME suite is
 in `EHR.Tests/Dme/`. Four SecurityOverhaul test files are excluded in the csproj
 because they test `EHR.Services.Security`, which exists in IMEHR but was never
 copied into this fork.

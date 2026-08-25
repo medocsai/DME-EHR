@@ -21,7 +21,6 @@ public partial class User
 
     public int? Role { get; set; }
 
-    public int? ProviderId { get; set; }
 
     public bool? IsActive { get; set; }
 
@@ -48,7 +47,6 @@ public partial class User
 
     public DateTime? OtpResendCooldownUntil { get; set; }
 
-    public virtual Provider Provider { get; set; }
 
     public virtual Tenant Tenant { get; set; }
 }
