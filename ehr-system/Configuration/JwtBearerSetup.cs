@@ -30,7 +30,11 @@ public static class JwtBearerSetup
     /// </summary>
     public static void Configure(JwtBearerOptions options, IConfiguration config, bool tokenFromCookie)
     {
-        var jwtKey = config["Jwt:Key"] ?? "YourSecretKeyHere12345678901234567890";
+        var jwtKey = config["Jwt:Key"]
+            ?? throw new InvalidOperationException(
+                "Jwt:Key is not configured. Startup is guarded by SecretsGuard, so reaching " +
+                "this point means the guard was bypassed. There is deliberately no fallback: " +
+                "a default signing key lets anyone with the source mint a token for any user.");
         var key = Encoding.UTF8.GetBytes(jwtKey);
 
         options.RequireHttpsMetadata = false;

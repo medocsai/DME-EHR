@@ -370,7 +370,8 @@ public class KioskSetupAuthorizeAttribute : ActionFilterAttribute
         }
 
         var config = context.HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-        var jwtKey = config["Jwt:Key"] ?? "YourSecretKeyHere12345678901234567890";
+        var jwtKey = config["Jwt:Key"]
+            ?? throw new InvalidOperationException("Jwt:Key is not configured.");
         var issuer = config["Jwt:Issuer"] ?? "IMEHR";
         var audience = config["Jwt:Audience"] ?? "IMEHRUsers";
         var key = Encoding.UTF8.GetBytes(jwtKey);

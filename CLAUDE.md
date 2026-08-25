@@ -116,8 +116,24 @@ validated at COMPILE time, so `IF NOT EXISTS` guards do not protect them: use
   `[AllowAnonymous]` on sign-in, password reset and error only; `/Home/Tenants`
   and `/Home/MedicalLienTemplates` are role 0.
 
+### Secrets and session
+- **`Configuration/SecretsGuard.cs`** refuses to start outside Development when
+  `Jwt:Key` or `Encryption:Key` is missing, a known placeholder, or shorter than
+  32 bytes. The hardcoded `"YourSecretKeyHere..."` fallback is gone: a silent
+  fallback to a key printed in the source is worse than no key, because nothing
+  looks wrong.
+- **The keys currently in `appsettings.json` are in git history** and must be
+  treated as compromised and rotated. Override per environment with `Jwt__Key`
+  and `Encryption__Key`; ASP.NET Core layers env vars over appsettings. Rotating
+  the encryption key means re-encrypting every encrypted row; rotating the JWT
+  key logs everyone out. Both are ops decisions, deliberately not automated.
+- **`HIPAA:SessionTimeoutMinutes` is now enforced** (it was read by nothing).
+  It drives the access-token lifetime and therefore automatic logoff. Currently
+  15 minutes. `AuthService.SessionMinutes` is the single source, because the
+  session cookie is issued against the same expiry.
+
 ### Tests
-`dotnet test ehr-system/EHR.Tests` — **297 passing, 1 skipped**. The DME suite is
+`dotnet test ehr-system/EHR.Tests` — **304 passing, 1 skipped**. The DME suite is
 in `EHR.Tests/Dme/`. Four SecurityOverhaul test files are excluded in the csproj
 because they test `EHR.Services.Security`, which exists in IMEHR but was never
 copied into this fork.

@@ -264,6 +264,17 @@ builder.Services.AddHostedService<AuditLogRetentionBackgroundService>();
 // longer than 15 characters (the prefix-token cap). Safe to leave deployed.
 builder.Services.AddHostedService<EmailExactBackfillService>();
 
+// Refuse to start with missing or publicly-known secrets. Runs before anything
+// reads a key, so a misconfigured deployment fails loudly instead of quietly
+// signing tokens with a value that is printed in the source. See SecretsGuard.
+using (var secretsLoggerFactory = LoggerFactory.Create(b => b.AddConsole()))
+{
+    EHR.Configuration.SecretsGuard.Validate(
+        builder.Configuration,
+        builder.Environment,
+        secretsLoggerFactory.CreateLogger("SecretsGuard"));
+}
+
 // JWT Authentication
 // Two schemes, one set of rules (see Configuration/JwtBearerSetup.cs):
 //   Bearer        - the SPA, token in the Authorization header

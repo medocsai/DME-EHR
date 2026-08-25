@@ -49,6 +49,32 @@ public class AuthService : IAuthService
         _isDevelopment = env.IsDevelopment();
     }
 
+    /// <summary>
+    /// Access-token lifetime in minutes, from HIPAA:SessionTimeoutMinutes.
+    ///
+    /// This is also the automatic-logoff control: an unattended browser stops
+    /// being able to act once its token expires and nothing refreshes it. The
+    /// setting was already in appsettings.json, declaring 15 minutes, and was
+    /// read by nothing, so the documented control was decorative.
+    ///
+    /// Resolved in one place because the value is used both for the token and
+    /// for the TokenExpiry handed back to callers. The session cookie is issued
+    /// against that TokenExpiry, so if the two ever disagreed the cookie would
+    /// outlive the token it carries and users would get 401s on pages that
+    /// still looked logged in.
+    ///
+    /// A nonsensical configured value falls back to 30 rather than locking
+    /// everybody out of the product.
+    /// </summary>
+    private int SessionMinutes
+    {
+        get
+        {
+            var minutes = _config.GetValue("HIPAA:SessionTimeoutMinutes", 30);
+            return minutes < 1 ? 30 : minutes;
+        }
+    }
+
     public async Task<UserLoginResponseDto?> LoginAsync(UserLoginDto loginDto)
     {
         // Find all active users with matching email across all tenants
@@ -588,7 +614,7 @@ public class AuthService : IAuthService
             ProviderId = selectedUser.ProviderId,
             Token = token,
             RefreshToken = refreshToken,
-            TokenExpiry = DateTime.UtcNow.AddMinutes(30),
+            TokenExpiry = DateTime.UtcNow.AddMinutes(SessionMinutes),
             RequiresTenantSelection = false,
             LocationId = defaultLocation?.LocationId,
             LocationName = defaultLocation?.Name,
@@ -671,7 +697,7 @@ public class AuthService : IAuthService
             ProviderId = user.ProviderId,
             Token = newToken,
             RefreshToken = newRefreshToken,
-            TokenExpiry = DateTime.UtcNow.AddMinutes(30),
+            TokenExpiry = DateTime.UtcNow.AddMinutes(SessionMinutes),
             LocationId = defaultLocation?.LocationId,
             LocationName = defaultLocation?.Name,
             TimeZoneId = defaultTimeZoneId,
@@ -777,15 +803,25 @@ public class AuthService : IAuthService
             claims.Add(new System.Security.Claims.Claim("LocationName", location.Name));
         }
 
-        // 30-minute access-token lifetime — clients refresh via the rotating
-        // refresh token (RefreshTokenAsync) before this expires. Short-lived
-        // access tokens bound the value of a stolen JWT to at most 30 minutes
-        // even if the per-user TokenVersion (D1) is not bumped in time.
+        // Access-token lifetime in minutes. Clients refresh via the rotating
+        // refresh token (RefreshTokenAsync) before this expires. A short-lived
+        // access token bounds the value of a stolen JWT even if the per-user
+        // TokenVersion is not bumped in time, and it is also what caps an idle
+        // session: an unattended browser stops being able to act once the token
+        // expires and nothing refreshes it.
+        //
+        // Driven by HIPAA:SessionTimeoutMinutes, which was sitting in
+        // appsettings.json being read by nothing, so the documented control was
+        // decorative. A nonsensical value falls back rather than locking
+        // everybody out of the product.
+        var sessionMinutes = _config.GetValue("HIPAA:SessionTimeoutMinutes", 30);
+        if (sessionMinutes < 1) sessionMinutes = 30;
+
         var token = new JwtSecurityToken(
             issuer: _config["Jwt:Issuer"],
             audience: _config["Jwt:Audience"],
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(30),
+            expires: DateTime.UtcNow.AddMinutes(SessionMinutes),
             signingCredentials: credentials
         );
 

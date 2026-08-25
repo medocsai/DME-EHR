@@ -31,3 +31,14 @@ node_modules/
 ## Temp
 .DS_Store
 Thumbs.db
+
+## Real secrets must never be committed.
+## appsettings.json is tracked and currently CONTAINS the JWT signing key, the
+## PHI encryption key and the SMTP password. Those are in git history and must be
+## treated as compromised and rotated. Until then, override them per environment
+## with env vars (Jwt__Key, Encryption__Key) or one of the files below, which git
+## will not pick up.
+appsettings.Production.json
+appsettings.Staging.json
+ehr-system/appsettings.Production.json
+ehr-system/appsettings.Staging.json

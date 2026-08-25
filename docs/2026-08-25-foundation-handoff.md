@@ -292,3 +292,33 @@ on real claims.
   authorization or are intentionally anonymous (patient portal has its own auth
   scheme, Stripe webhook is signature-verified, kiosk and telehealth are
   token-gated).
+
+### Secrets and session (third pass)
+
+- **The JWT signing key had a hardcoded fallback** in two places:
+  `config["Jwt:Key"] ?? "YourSecretKeyHere12345678901234567890"`. A deployment
+  with a missing or misspelled setting would not fail. It would start, sign
+  tokens with a string printed in the source, and look completely healthy, and
+  anyone who had read the repository could mint a Super Admin token for any
+  tenant. The fallback is removed and `SecretsGuard` refuses startup outside
+  Development on a missing, placeholder, or too-short key.
+
+- **The real keys are committed.** `appsettings.json` is tracked and contains the
+  JWT signing key, the PHI encryption key and the SMTP password. They are in git
+  history, so they must be treated as compromised and **rotated**. That is an
+  operational job with real consequences and is deliberately not automated:
+  rotating the encryption key means re-encrypting every encrypted row, and
+  rotating the JWT key logs everyone out. Environment-specific settings files are
+  now gitignored, and env vars (`Jwt__Key`, `Encryption__Key`) override
+  appsettings without any code change.
+
+- **`HIPAA:SessionTimeoutMinutes` was decorative.** It sat in configuration
+  declaring 15 minutes and was read by nothing; the token lifetime was hardcoded
+  to 30. It now drives both the token and the `TokenExpiry` the session cookie is
+  issued against, resolved in one place so the cookie can never outlive the token
+  it carries. Verified: the cookie now expires exactly 15 minutes after login.
+
+**Still open, and yours to decide:** rotate the three committed secrets, and the
+fork question. The CSP is also still `Content-Security-Policy-Report-Only`;
+switching it to enforcing needs a pass through the app watching for violations,
+which is a browser-testing job rather than a code change.
