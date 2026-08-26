@@ -20,6 +20,13 @@ public interface IAuthService
     Task<bool> LogoutAsync(int userId);
     Task<bool> ChangePasswordAsync(int userId, ChangePasswordDto dto);
     string GenerateToken(User user, Tenant? tenant, Location? location = null);
+    /// <summary>
+    /// How long a freshly issued token and its mirrored session cookie live,
+    /// from HIPAA:SessionTimeoutMinutes. Exposed because ANYTHING that issues a
+    /// session cookie has to use the same number: a cookie that outlived its
+    /// token would leave a page looking signed in and 401ing on every action.
+    /// </summary>
+    int SessionTimeoutMinutes { get; }
 }
 
 public class AuthService : IAuthService
@@ -72,6 +79,45 @@ public class AuthService : IAuthService
             var minutes = _config.GetValue("HIPAA:SessionTimeoutMinutes", 30);
             return minutes < 1 ? 30 : minutes;
         }
+    }
+
+    /// <inheritdoc />
+    public int SessionTimeoutMinutes => SessionMinutes;
+
+    /// <summary>
+    /// The branches this user may sign in to, in the order the app should offer
+    /// them.
+    ///
+    /// WHY THIS IS NOT JUST "the tenant's locations"
+    /// A restricted user is granted specific branches in dbo.UserLocations, and
+    /// the DME screens honour that. Handing them a default branch outside their
+    /// grants produced a session that was signed in, looked normal, and showed
+    /// no customers, orders or claims at all, with nothing on screen to explain
+    /// why. The default has to come from the same set the screens filter by.
+    ///
+    /// Roles 0 and 1 bypass branch scoping, so they get everything the tenant
+    /// has. That split is documented in Services/DmeLocationScope.cs and is the
+    /// same one applied everywhere else.
+    /// </summary>
+    private async Task<List<Location>> LocationsForUserAsync(int tenantId, User user)
+    {
+        var all = await _context.Locations
+            .Where(l => l.TenantId == tenantId && l.IsActive == true)
+            .OrderByDescending(l => l.IsPrimary)
+            .ThenBy(l => l.Name)
+            .ToListAsync();
+
+        const int SuperAdminRole = 0, ClinicAdminRole = 1;
+        if (user.Role is SuperAdminRole or ClinicAdminRole) return all;
+
+        var granted = await _context.Database
+            .SqlQuery<int>($"SELECT LocationId FROM dbo.UserLocations WHERE UserId = {user.UserId}")
+            .ToListAsync();
+
+        // No grants means no branches, which is the same answer the screens
+        // give. Returning everything here would contradict them and hand the
+        // least configured user the widest default.
+        return all.Where(l => granted.Contains(l.LocationId)).ToList();
     }
 
     public async Task<UserLoginResponseDto?> LoginAsync(UserLoginDto loginDto)
@@ -549,11 +595,7 @@ public class AuthService : IAuthService
 
         if (tenant != null)
         {
-            var locations = await _context.Locations
-                .Where(l => l.TenantId == tenant.TenantId && l.IsActive == true)
-                .OrderByDescending(l => l.IsPrimary)
-                .ThenBy(l => l.Name)
-                .ToListAsync();
+            var locations = await LocationsForUserAsync(tenant.TenantId, selectedUser);
 
             if (locations.Any())
             {
@@ -646,11 +688,7 @@ public class AuthService : IAuthService
 
         if (tenant != null)
         {
-            var locations = await _context.Locations
-                .Where(l => l.TenantId == tenant.TenantId && l.IsActive == true)
-                .OrderByDescending(l => l.IsPrimary)
-                .ThenBy(l => l.Name)
-                .ToListAsync();
+            var locations = await LocationsForUserAsync(tenant.TenantId, user);
 
             if (locations.Any())
             {

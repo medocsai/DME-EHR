@@ -1,13 +1,24 @@
 @using EHR.Helpers
 @{
     ViewData["ActivePage"] = "customers";
-    var payers = (List<Dictionary<string, object?>>)ViewBag.Payers;
-    var icd = ((string code, string desc)[])ViewBag.Icd;
+    var locations = (List<Dictionary<string, object?>>)ViewBag.Locations;
+    var currentLocationId = (int?)ViewBag.CurrentLocationId;
+    // Falls back to the primary branch when the user is viewing all of them,
+    // because "all locations" is not somewhere a customer can be filed.
+    var defaultLocationId = currentLocationId
+        ?? (locations.Count > 0 ? F.I(locations[0]["LocationId"]) : 0);
 }
 
 <div class="dme-wrap">
     <a href="/Dme/Customers" class="dme-muted" style="font-size:13px;text-decoration:none"><i class="bi bi-arrow-left"></i> Customers</a>
     <div class="dme-head" style="margin-top:6px"><div><h1>New Customer</h1><div class="dme-sub">DME customer record</div></div></div>
+
+    @if (TempData["CustomerError"] != null)
+    {
+        <div class="dme-banner" style="background:#fdecea;color:#8a1c13">
+            <i class="bi bi-exclamation-triangle"></i> @TempData["CustomerError"]
+        </div>
+    }
 
     <form method="post" action="/Dme/CreateCustomer">
         @Html.AntiForgeryToken()
@@ -17,9 +28,36 @@
                     <div class="dme-card-head"><h2>Basic Info</h2></div>
                     <div class="dme-card-body">
                         <div class="row g-3">
+                            @*
+                                The branch is the ONE place a location is stored for a person.
+                                Orders, rentals, claims and payments all derive theirs from here,
+                                so this field is the only one that has to be right.
+                            *@
+                            <div class="col-12">
+                                <label class="form-label">Location <span style="color:#d6453f">*</span></label>
+                                <select name="locationId" class="form-select" required>
+                                    @foreach (var l in locations)
+                                    {
+                                        <option value="@F.I(l["LocationId"])" selected="@(F.I(l["LocationId"]) == defaultLocationId)">
+                                            @F.S(l["Name"])@(F.B(l["IsPrimary"]) ? " (primary)" : "")
+                                        </option>
+                                    }
+                                </select>
+                                <div class="form-text" style="font-size:11px">
+                                    Which branch this customer belongs to. Their orders, rentals, claims and
+                                    payments all follow it.
+                                </div>
+                            </div>
                             <div class="col-md-6"><label class="form-label">First Name <span style="color:#d6453f">*</span></label><input name="firstName" class="form-control" required /></div>
                             <div class="col-md-6"><label class="form-label">Last Name <span style="color:#d6453f">*</span></label><input name="lastName" class="form-control" required /></div>
-                            <div class="col-md-5"><label class="form-label">Date of Birth</label><input type="date" name="dob" class="form-control" /></div>
+                            <div class="col-md-5">
+                                <label class="form-label">Date of Birth</label>
+                                @* Plain text, not type="date": Chrome refuses a paste into the
+                                   native date control, and a DOB is usually copied off a referral
+                                   rather than typed. Helpers/DateInput.cs reads it server side. *@
+                                <input name="dob" class="form-control js-dob" placeholder="mm/dd/yyyy" autocomplete="bday" />
+                                <div class="form-text" style="font-size:11px">Type or paste. mm/dd/yyyy</div>
+                            </div>
                             <div class="col-md-4"><label class="form-label">Gender</label><select name="gender" class="form-select"><option value=""></option><option>Male</option><option>Female</option><option>Other</option></select></div>
                             <div class="col-md-3"><label class="form-label">SSN <span class="dme-muted" style="font-size:11px">(optional)</span></label><input name="ssnLast4" class="form-control" placeholder="last 4" maxlength="4" /></div>
                             <div class="col-md-3"><label class="form-label">Height (in)</label><input type="number" name="heightInches" class="form-control" /></div>
@@ -50,10 +88,20 @@
                     <div class="dme-card-body">
                         <div class="dme-banner"><i class="bi bi-shield-check"></i> Primary insurance is required to bill 3rd-party for DME.</div>
                         <div class="row g-3">
-                            <div class="col-12"><label class="form-label">Payer</label>
-                                <select name="insPayer" class="form-select"><option value="">Select payer…</option>
-                                    @foreach (var p in payers) { <option value="@F.S(p["Name"])">@F.S(p["Name"]) (@F.S(p["PayerCode"]))</option> }
-                                </select>
+                            @* Payer: a typeahead over Office Ally's national list, not a
+                               <select>. 4,017 options in the markup is a 400KB page and
+                               unusable with a mouse. The visible box is a search field; the
+                               hidden field carries the catalog id, which is the only thing
+                               the server trusts. See Services/DmePayerCatalog.cs. *@
+                            <div class="col-12">
+                                <label class="form-label">Payer</label>
+                                <div class="dme-typeahead">
+                                    <input type="text" id="payerSearch" class="form-control" autocomplete="off"
+                                           placeholder="Search insurance by name or Payer ID…" />
+                                    <input type="hidden" name="insPayerId" id="insPayerId" value="0" />
+                                    <div id="payerResults" class="dme-typeahead-list" hidden></div>
+                                </div>
+                                <div id="payerChosen" class="form-text" style="font-size:11px" hidden></div>
                             </div>
                             <div class="col-md-6"><label class="form-label">Member ID</label><input name="insMemberId" class="form-control" /></div>
                             <div class="col-md-6"><label class="form-label">Group #</label><input name="insGroup" class="form-control" /></div>
@@ -71,11 +119,18 @@
                     <div class="dme-card-head"><h2>Diagnosis (ICD-10)</h2></div>
                     <div class="dme-card-body">
                         <div class="dme-banner"><i class="bi bi-clipboard2-pulse"></i> ICD-10 diagnosis is required for DME insurance billing.</div>
+                        @* The whole CMS ICD-10-CM code set, searched as you type.
+                           74,719 options cannot be a <select>. The hidden field
+                           carries the code, which is all the server trusts, and it
+                           re-reads the description from the catalog. *@
                         <label class="form-label">Primary diagnosis</label>
-                        <select name="dxCode" class="form-select">
-                            <option value="">Select…</option>
-                            @foreach (var d in icd) { <option value="@d.code">@d.code — @d.desc</option> }
-                        </select>
+                        <div class="dme-typeahead">
+                            <input type="text" id="dxSearch" class="form-control" autocomplete="off"
+                                   placeholder="Search by condition or ICD-10 code…" />
+                            <input type="hidden" name="dxCode" id="dxCode" value="" />
+                            <div id="dxResults" class="dme-typeahead-list" hidden></div>
+                        </div>
+                        <div id="dxChosen" class="form-text" style="font-size:11px" hidden></div>
                     </div>
                 </div>
                 <div class="dme-card">
@@ -105,6 +160,45 @@
 </div>
 
 <script>
+    // Date of birth: show the operator what was understood, in mm/dd/yyyy, the
+    // moment they leave the field. Purely cosmetic feedback, the server parses
+    // the raw text either way (Helpers/DateInput.cs holds the one format list).
+    (function () {
+        var dob = document.querySelector('.js-dob');
+        if (!dob) return;
+        dob.addEventListener('blur', function () {
+            var v = dob.value.trim();
+            var iso = v.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);
+            if (iso) dob.value = ('0' + iso[2]).slice(-2) + '/' + ('0' + iso[3]).slice(-2) + '/' + iso[1];
+        });
+    })();
+
+    // Payer: Office Ally's 4,017. The hidden insPayerId is the only thing
+    // posted; the server reads the name and Payer ID back out of the catalog.
+    dmeTypeahead({
+        input: '#payerSearch', hidden: '#insPayerId', results: '#payerResults', chosen: '#payerChosen',
+        url: '/Lookups/Payers',
+        emptyValue: '0',
+        value: function (p) { return p.id; },
+        label: function (p) { return p.name; },
+        side:  function (p) { return p.code; },
+        note:  function (p) { return 'Payer ID ' + p.code; },
+        empty: 'No payer matches that. Check the spelling, or the Payer ID on the card.'
+    });
+
+    // Diagnosis: the whole CMS ICD-10-CM code set. The code is posted and the
+    // description is read from the catalog, so a mistyped code files nothing
+    // rather than a diagnosis with no wording.
+    dmeTypeahead({
+        input: '#dxSearch', hidden: '#dxCode', results: '#dxResults', chosen: '#dxChosen',
+        url: '/Lookups/Icd',
+        value: function (d) { return d.code; },
+        label: function (d) { return d.name; },
+        side:  function (d) { return d.code; },
+        note:  function (d) { return 'ICD-10 ' + d.code; },
+        empty: 'No diagnosis matches that. Try a condition, or the ICD-10 code.'
+    });
+
     document.getElementById('validateBtn').addEventListener('click', function () {
         var r = document.getElementById('eligResult');
         r.innerHTML = '<span class="spinner-border spinner-border-sm text-success"></span> Checking eligibility…';

@@ -86,6 +86,35 @@ builder.Services.AddScoped<EHR.Helpers.IDmeDb, EHR.Helpers.DmeDb>();
 // only dependency already is one.
 builder.Services.AddSingleton<EHR.Helpers.DmeCustomerPhi>();
 
+// DME payment posting. Scoped because it holds the request-scoped DmeDb, and a
+// service of its own because the posting rules will have a second caller: an
+// 835/ERA parser posts exactly what a biller types. See Services/DmePaymentService.cs.
+builder.Services.AddScoped<IDmePaymentService, DmePaymentService>();
+
+// DME clearinghouse credentials. Scoped for the same reason, and separate from
+// the payment service because handling a credential (encrypt at rest, never
+// return it, never log it, start in test mode) is its own job with its own
+// rules. See Services/DmeSftpAccountService.cs.
+builder.Services.AddScoped<IDmeSftpAccountService, DmeSftpAccountService>();
+
+// Which branches the caller may see, from dbo.UserLocations. Scoped so the
+// resolved set lives exactly as long as the request whose identity it
+// describes. DmeDb turns it into the predicate every DME read carries.
+builder.Services.AddScoped<IDmeLocationScope, DmeLocationScope>();
+
+// The Office Ally payer catalog. Scoped because it holds the request-scoped
+// DmeDb, even though the table it reads is global and has no tenant column.
+// See Services/DmePayerCatalog.cs for why it is not tenant data.
+builder.Services.AddScoped<IDmePayerCatalog, DmePayerCatalog>();
+
+// The CMS ICD-10-CM diagnosis catalog. Global for the same reason: a national
+// code set is not tenant data. See Services/DmeIcdCatalog.cs.
+builder.Services.AddScoped<IDmeIcdCatalog, DmeIcdCatalog>();
+
+// The CMS national HCPCS Level II list. NOT the supplier's item master, which
+// stays tenant scoped in dbo.HcpcsCodes. See Services/DmeHcpcsCatalog.cs.
+builder.Services.AddScoped<IDmeHcpcsCatalog, DmeHcpcsCatalog>();
+
 // Google Cloud Storage Services
 builder.Services.Configure<GoogleCloudStorageOptions>(
     builder.Configuration.GetSection("GoogleCloudStorage"));
@@ -368,6 +397,10 @@ app.UseRouting();
 
 app.UseAuthentication();
 app.UseTenantResolution();
+// After tenant resolution, so every source has been tried, and before the DME
+// controllers are constructed, because DmeDb throws on a missing tenant and the
+// caller would get an unexplained 500. See Middleware/DmeTenantContextMiddleware.cs.
+app.UseDmeTenantContext();
 app.UseAuthorization();
 app.UseRateLimiter();
 

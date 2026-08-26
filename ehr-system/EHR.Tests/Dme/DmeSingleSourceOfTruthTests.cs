@@ -70,6 +70,9 @@ public class DmeSingleSourceOfTruthTests
     [InlineData("vDmeClaims")]
     [InlineData("vDmeOrders")]
     [InlineData("vHcpcsCatalog")]
+    [InlineData("vDmePayments")]
+    [InlineData("vDmePaymentLines")]
+    [InlineData("vDmeClaimLines")]
     public void DmeCode_ReadsThroughTheViews(string view)
     {
         var used = DmeSourceFiles().Any(f => File.ReadAllText(f).Contains(view, StringComparison.OrdinalIgnoreCase));
@@ -100,7 +103,38 @@ public class DmeSingleSourceOfTruthTests
             "Deriving it by join would silently rewrite history on every past claim.");
     }
 
-    /// <summary>DME production source files (controllers + helpers).</summary>
+    /// <summary>
+    /// The claim's payment outcome is derived in vDmeClaims from the payments
+    /// posted against it. DmeClaims.Status owns the submission lifecycle only,
+    /// and the database now carries CK_DmeClaims_Status to enforce that.
+    ///
+    /// This is the source-side half of the same guard, because the failure it
+    /// prevents is not a constraint violation somebody notices: it is a well
+    /// meaning "let's just mark the claim paid while we are here", which gives
+    /// the same question two answers and lets them drift apart the first time a
+    /// payment is voided.
+    /// </summary>
+    [Theory]
+    [InlineData("paid")]
+    [InlineData("denied")]
+    [InlineData("partial")]
+    public void DmeCode_NeverStoresAPaymentOutcomeOnTheClaim(string outcome)
+    {
+        var offenders = DmeSourceFiles()
+            .Select(f => new { File = Path.GetFileName(f), Text = File.ReadAllText(f) })
+            .Where(x => Regex.IsMatch(x.Text,
+                $@"UPDATE\s+dbo\.DmeClaims\s+SET[^;""]*\bStatus\s*=\s*'{outcome}'",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline))
+            .Select(x => x.File)
+            .ToArray();
+
+        offenders.Should().BeEmpty(
+            $"'{outcome}' is a fact about the payments posted against the claim, not a workflow " +
+            "state anybody sets. vDmeClaims.PaymentStatus computes it, so a stored copy would be " +
+            $"a second answer to the same question. Offending files: {string.Join(", ", offenders)}");
+    }
+
+    /// <summary>DME production source files (controllers, helpers, services).</summary>
     private static string[] DmeSourceFiles()
     {
         var root = ProductionRoot();
@@ -109,6 +143,7 @@ public class DmeSingleSourceOfTruthTests
                 Path.Combine(root, "Controllers", "DmeController.cs"),
                 Path.Combine(root, "Controllers", "HcpcsController.cs"),
                 Path.Combine(root, "Helpers", "DmeDb.cs"),
+                Path.Combine(root, "Services", "DmePaymentService.cs"),
             }
             .Where(File.Exists)
             .ToArray();

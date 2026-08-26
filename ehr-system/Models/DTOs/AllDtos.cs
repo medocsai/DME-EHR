@@ -263,6 +263,12 @@ namespace EHR.Models
         public DateTime? LastLoginAt { get; set; }
         public DateTime? CreatedAt { get; set; }
 
+        /// <summary>
+        /// Branches this user may work in. Empty for Super Admin and Clinic
+        /// Admin, who are not scoped and see every branch of their tenant.
+        /// </summary>
+        public List<UserLocationDto> Locations { get; set; } = new();
+
         private static string GetRoleName(int role) => role switch
         {
             0 => "Super Admin",
@@ -274,6 +280,13 @@ namespace EHR.Models
         };
     }
 
+    /// <summary>One branch a user is granted, for the user list and edit form.</summary>
+    public class UserLocationDto
+    {
+        public int LocationId { get; set; }
+        public string Name { get; set; } = string.Empty;
+    }
+
     public class UserCreateDto
     {
         public int? TenantId { get; set; }
@@ -283,6 +296,14 @@ namespace EHR.Models
         public string LastName { get; set; } = string.Empty;
         public string Phone { get; set; }
         public int Role { get; set; }
+
+        /// <summary>
+        /// Branches this user may work in. Required for restricted roles (2 and
+        /// above): an empty set means they see nothing, so creating one without
+        /// a branch would make an account that cannot do anything.
+        /// Ignored for Super Admin and Clinic Admin, who are not scoped.
+        /// </summary>
+        public List<int> LocationIds { get; set; } = new();
     }
 
     public class UserUpdateDto
@@ -293,6 +314,13 @@ namespace EHR.Models
         public string Phone { get; set; }
         public int? Role { get; set; }
         public bool? IsActive { get; set; }
+
+        /// <summary>
+        /// Replacement branch list. Null leaves the existing grants untouched, so
+        /// a partial update that only changes a phone number does not silently
+        /// revoke every branch.
+        /// </summary>
+        public List<int> LocationIds { get; set; }
     }
 
     public class AdminResetPasswordDto

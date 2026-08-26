@@ -100,6 +100,49 @@ public class DmeAuthorizationContractTests
     }
 
     /// <summary>
+    /// Actions restricted beyond "logged in", and to whom.
+    ///
+    /// WHY THIS EXISTS
+    /// A role list is one string. Widening it is a one character edit that
+    /// breaks no build, fails no page and is invisible in review, and every one
+    /// of these actions guards something a normal user must not reach.
+    ///
+    /// Role 0 is Super Admin (Medocs). Role 1 is Clinic Admin (the customer's
+    /// own administrator).
+    /// </summary>
+    public static TheoryData<string, string, string> RestrictedActions => new()
+    {
+        // Medocs only. The clearinghouse credential is issued during an
+        // onboarding we run and is the key to filing claims as this supplier.
+        // A clinic admin has no occasion to touch it.
+        { nameof(DmeController.SaveSftpAccount), "0", "the clearinghouse credential is set up by Medocs, not by the customer" },
+        { nameof(DmeController.SetSftpActive),   "0", "taking a clearinghouse account in or out of service is a Medocs operation" },
+
+        // The customer's own administrator maintains these.
+        { nameof(DmeController.Settings),        "0,1", "the settings page holds the identity every claim is filed under" },
+        { nameof(DmeController.SaveSupplier),    "0,1", "a clinic admin maintains their own name, NPI and tax ID" },
+        { nameof(DmeController.BackfillPhi),     "0,1", "the backfill reads every customer's PHI into memory" },
+    };
+
+    [Theory]
+    [MemberData(nameof(RestrictedActions))]
+    public void RestrictedAction_AllowsExactlyTheIntendedRoles(string action, string expectedRoles, string why)
+    {
+        var method = typeof(DmeController).GetMethod(action);
+        method.Should().NotBeNull($"{action} is expected to exist on DmeController");
+
+        var authorize = method!
+            .GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true)
+            .Cast<AuthorizeAttribute>()
+            .FirstOrDefault(a => !string.IsNullOrEmpty(a.Roles));
+
+        authorize.Should().NotBeNull($"{action} must carry [Authorize(Roles = ...)] because {why}");
+        authorize!.Roles.Should().Be(expectedRoles,
+            $"{action} is restricted to role(s) {expectedRoles} because {why}. " +
+            "Widening this list is a one character edit that nothing else would catch.");
+    }
+
+    /// <summary>
     /// Public, non-inherited, non-special methods that MVC would route to.
     /// </summary>
     private static MethodInfo[] PublicActions(Type controller) => controller

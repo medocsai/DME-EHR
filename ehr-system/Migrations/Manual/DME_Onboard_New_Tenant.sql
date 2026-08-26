@@ -72,19 +72,19 @@ WHERE s.TenantId = @SourceTenantId
                   WHERE t.TenantId = @TargetTenantId AND t.Hcpcs = s.Hcpcs);
 PRINT CONCAT('Catalog items copied: ', @@ROWCOUNT);
 
-INSERT INTO dbo.DmePayers (Name,PayerCode,PayerType,TenantId)
-SELECT s.Name, s.PayerCode, s.PayerType, @TargetTenantId
-FROM dbo.DmePayers s
-WHERE s.TenantId = @SourceTenantId
-  AND NOT EXISTS (SELECT 1 FROM dbo.DmePayers t
-                  WHERE t.TenantId = @TargetTenantId AND t.Name = s.Name);
-PRINT CONCAT('Payers copied: ', @@ROWCOUNT);
+/* Payers are NOT copied any more, and that is not an omission.
+
+   dbo.DmePayers became Office Ally's national list on 2026-08-27: global, no
+   TenantId, outside the security policy, exactly like dbo.DmeCarcCodes. A new
+   supplier gets all 4,017 payers the moment it exists. Copying a national list
+   per tenant was thousands of duplicates of a fact none of them owns.
+   See Migrations/Manual/2026-08-27_DME_Payer_Catalog.sql. */
 
 /* Order and claim numbering needs no seeding: DmeDb.NextNumber creates a
    tenant's counter on first use. */
 
 SELECT @TargetTenantId AS TenantId,
        (SELECT COUNT(*) FROM dbo.HcpcsCodes WHERE TenantId = @TargetTenantId) AS CatalogItems,
-       (SELECT COUNT(*) FROM dbo.DmePayers  WHERE TenantId = @TargetTenantId) AS Payers,
+       (SELECT COUNT(*) FROM dbo.DmePayers) AS Payers_GlobalCatalog,
        (SELECT COUNT(*) FROM dbo.DmeDoctors WHERE TenantId = @TargetTenantId) AS Doctors_NotCopiedByDesign;
 GO

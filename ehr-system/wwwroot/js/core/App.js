@@ -217,10 +217,14 @@ const App = (() => {
                     filterSelect.appendChild(option);
                 });
 
-                // Restore previous selection
+                // Restore previous selection, and re-sync the cookie with it.
+                // localStorage never expires and the cookie does, so after the
+                // cookie lapses the dropdown would still show a clinic while the
+                // server-rendered pages had forgotten which one.
                 const savedClinicId = localStorage.getItem('selectedClinicId');
                 if (savedClinicId) {
                     filterSelect.value = savedClinicId;
+                    this._writeClinicCookie(savedClinicId);
                 }
 
                 // Bind change event
@@ -231,6 +235,11 @@ const App = (() => {
                     } else {
                         localStorage.removeItem('selectedClinicId');
                     }
+                    // The cookie is what the SERVER reads. localStorage and the
+                    // event only reach the SPA modules; the DME screens are
+                    // rendered server side and never see either, which is why
+                    // switching clinic used to do nothing to them.
+                    this._writeClinicCookie(clinicId);
                     // Emit event for modules to reload
                     this.events.emit('clinic:changed', { clinicId });
                     // Reload page to refresh all data
@@ -239,6 +248,35 @@ const App = (() => {
             } catch (error) {
                 console.error('[App] Error loading clinic filter:', error);
             }
+        },
+
+        /**
+         * Write (or clear) the clinic the server should scope to.
+         *
+         * WHY A COOKIE AND NOT A HEADER
+         * A header can be attached to a fetch call. It cannot be attached to a
+         * browser navigating to a Razor page, which is what every DME screen is.
+         * The cookie travels with both.
+         *
+         * WHY IT IS SAFE THAT THIS IS NOT HttpOnly
+         * It carries a selection, not a credential, and the server only consults
+         * it when the caller's token carries NO TenantId claim. That is Super
+         * Admin and nobody else: a clinic admin's claim always wins, so setting
+         * this cookie by hand gains them nothing. See
+         * Middleware/TenantResolutionMiddleware.cs.
+         *
+         * @param {string} clinicId Tenant id, or empty to clear the selection
+         * @private
+         */
+        _writeClinicCookie(clinicId) {
+            // SameSite=Lax so it survives ordinary navigation but is not sent
+            // on cross-site requests. Session cookie on purpose: closing the
+            // browser should not leave a Super Admin silently pinned to a
+            // clinic they picked days ago.
+            const base = 'medocs_clinic=; path=/; SameSite=Lax';
+            document.cookie = clinicId
+                ? `medocs_clinic=${encodeURIComponent(clinicId)}; path=/; SameSite=Lax`
+                : `${base}; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
         },
 
         /**

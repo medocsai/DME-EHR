@@ -136,8 +136,12 @@
                         </div>
                         <div class="col-md-6 new-clinic-admin">
                             <label class="form-label">Admin Password *</label>
-                            <input type="password" class="form-control" name="AdminPassword" required minlength="8" autocomplete="off">
-                            <small class="text-muted">Minimum 8 characters</small>
+                            @* 12, matching Helpers/PasswordPolicy.cs. The field said 8 while the
+                               server enforced nothing at all here, so the number in front of the
+                               user has to move with the policy or it becomes a lie the moment the
+                               server starts checking. *@
+                            <input type="password" class="form-control" name="AdminPassword" required minlength="12" maxlength="64" autocomplete="new-password">
+                            <small class="text-muted">Minimum 12 characters</small>
                         </div>
                     </div>
                 </div>
@@ -171,12 +175,12 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">New Password *</label>
-                        <input type="password" class="form-control" name="NewPassword" required minlength="8" autocomplete="new-password">
-                        <small class="text-muted">Minimum 8 characters</small>
+                        <input type="password" class="form-control" name="NewPassword" required minlength="12" maxlength="64" autocomplete="new-password">
+                        <small class="text-muted">Minimum 12 characters</small>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Confirm New Password *</label>
-                        <input type="password" class="form-control" name="ConfirmPassword" required minlength="8" autocomplete="new-password">
+                        <input type="password" class="form-control" name="ConfirmPassword" required minlength="12" maxlength="64" autocomplete="new-password">
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -237,12 +241,31 @@
                         <div class="col-md-6 new-user-password">
                             <label class="form-label">Password *</label>
                             <div class="input-group">
-                                <input type="password" class="form-control" name="Password" id="newUserPassword" minlength="8" autocomplete="off">
+                                <input type="password" class="form-control" name="Password" id="newUserPassword" minlength="12" maxlength="64" autocomplete="off">
                                 <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('newUserPassword', this)">
                                     <i class="bi bi-eye"></i>
                                 </button>
                             </div>
-                            <small class="text-muted">Minimum 8 characters</small>
+                            <small class="text-muted">Minimum 12 characters</small>
+                        </div>
+                        @*
+                            Which branches this user may work in.
+
+                            Hidden for Clinic Admin, who is not scoped and sees every
+                            branch of the supplier. Required for everyone else, because a
+                            restricted user with no grant sees no customers, orders or
+                            claims at all: an account that signs in and does nothing.
+                            UsersModule shows and hides it on the role selection.
+                        *@
+                        <div class="col-12" id="userLocationsBlock">
+                            <label class="form-label">Locations *</label>
+                            <div id="userLocationsList" class="border rounded p-2" style="max-height:160px;overflow-y:auto">
+                                <div class="text-muted small">Loading locations...</div>
+                            </div>
+                            <small class="text-muted">
+                                Which branches this person works in. They see only the customers,
+                                orders and stock of the branches ticked here.
+                            </small>
                         </div>
                         <div class="col-12">
                             <hr class="my-2">
@@ -297,12 +320,12 @@
                     <p>Reset password for: <strong id="resetPasswordUserName"></strong></p>
                     <div class="mb-3">
                         <label class="form-label">New Password *</label>
-                        <input type="password" class="form-control" name="NewPassword" required minlength="8" autocomplete="off">
-                        <small class="text-muted">Minimum 8 characters</small>
+                        <input type="password" class="form-control" name="NewPassword" required minlength="12" maxlength="64" autocomplete="off">
+                        <small class="text-muted">Minimum 12 characters</small>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Confirm New Password *</label>
-                        <input type="password" class="form-control" name="ConfirmPassword" required minlength="8" autocomplete="off">
+                        <input type="password" class="form-control" name="ConfirmPassword" required minlength="12" maxlength="64" autocomplete="off">
                     </div>
                 </div>
                 <div class="modal-footer">

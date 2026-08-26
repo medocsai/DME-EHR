@@ -1,8 +1,12 @@
 @using EHR.Helpers
+@using EHR.Services
 @{
     ViewData["ActivePage"] = "dashboard";
     var rentals = (List<Dictionary<string, object?>>)ViewBag.Rentals;
     var orders = (List<Dictionary<string, object?>>)ViewBag.Orders;
+    var money = (MonthlyMoney)ViewBag.Money;
+    var months = (List<DateTime>)ViewBag.MonthOptions;
+    var monthLabel = money.MonthStart.ToString("MMMM yyyy");
 }
 
 <div class="dme-wrap">
@@ -11,6 +15,72 @@
         <div class="d-flex gap-2">
             <a href="/Dme/Customers" class="dme-btn dme-btn-light"><i class="bi bi-people"></i> Customers</a>
             <a href="/Dme/NewOrder" class="dme-btn dme-btn-primary"><i class="bi bi-box-seam"></i> New Order</a>
+        </div>
+    </div>
+
+    @*
+        The three monthly money figures. Every tile carries a one line
+        definition, because a number an accountant has to guess at is a number
+        they will read wrong. All three are by POSTING date and describe the
+        same set of postings, so they can be compared against each other and
+        against a bank statement for the month.
+    *@
+    <div class="dme-card" style="margin-bottom:18px">
+        <div class="dme-card-head">
+            <div>
+                <h2>Money this month</h2>
+                <div class="dme-sub" style="margin-top:2px">
+                    Insurance and customer payments posted in @monthLabel. Counted by the date the
+                    payment was posted, which is when you received it, not when the equipment was delivered.
+                </div>
+            </div>
+            <form method="get" action="/Dme/Dashboard">
+                <select name="month" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+                    @foreach (var m in months)
+                    {
+                        <option value="@m.ToString("yyyy-MM")" selected="@(m == money.MonthStart)">@m.ToString("MMMM yyyy")</option>
+                    }
+                </select>
+            </form>
+        </div>
+        <div class="dme-card-body">
+            <div class="dme-kpis" style="grid-template-columns:repeat(3,1fr);margin-bottom:0">
+                <div class="dme-kpi">
+                    <div class="k-label">Amount paid</div>
+                    <div class="k-value" style="color:#0f6e56">@F.Money(money.AmountPaid)</div>
+                    <div class="k-foot">Money received from payers and customers and applied to claims.</div>
+                    @if (money.Unapplied > 0)
+                    {
+                        <div class="k-foot" style="color:#854f0b;font-weight:600">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            @F.Money(money.Unapplied) received but not yet applied to any claim
+                            (<a href="/Dme/Payments">review</a>)
+                        </div>
+                    }
+                </div>
+                <div class="dme-kpi">
+                    <div class="k-label">Amount denied</div>
+                    <div class="k-value" style="color:@(money.AmountDenied > 0 ? "#a32d2d" : "inherit")">@F.Money(money.AmountDenied)</div>
+                    <div class="k-foot">
+                        Billed value of the @money.DeniedLineCount claim line(s) the payer refused.
+                        Contractual discounts and patient balances are not counted here.
+                    </div>
+                </div>
+                <div class="dme-kpi">
+                    <div class="k-label">Most frequent denial code</div>
+                    <div class="k-value">@(money.TopDenialCode ?? "—")</div>
+                    <div class="k-foot">
+                        @if (money.TopDenialCode == null)
+                        {
+                            <text>No denials posted in @monthLabel.</text>
+                        }
+                        else
+                        {
+                            <text>@money.TopDenialDescription (@money.TopDenialCount time(s))</text>
+                        }
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

@@ -76,6 +76,35 @@ public class TenantResolutionMiddleware
             }
         }
 
+        // 5. From the clinic the Super Admin picked in the header switcher.
+        //
+        // WHY THIS EXISTS
+        // The switcher used to write only localStorage and raise a JavaScript
+        // event, which the SPA modules listen for. Every DME screen is a server
+        // rendered Razor page and sees neither, so switching clinic did nothing
+        // to them and the only way in was a ?tenantId= link.
+        //
+        // WHY IT IS LAST
+        // It is a sticky preference and must lose to anything more specific. A
+        // link that names a tenant (step 4) is an explicit instruction for THIS
+        // request; a cookie is what was chosen at some point in the past.
+        // Reversing them would mean clicking through to clinic B and being shown
+        // clinic A because the cookie still said so.
+        //
+        // WHY IT GRANTS NOTHING
+        // Every step here is guarded on tenantId still being null, and step 1
+        // fills it from the token whenever the caller HAS a tenant. So this is
+        // only ever reached by an identity with no TenantId claim, which is
+        // Super Admin. A clinic admin who forges this cookie changes nothing:
+        // their claim already won three steps ago.
+        if (tenantId == null && context.Request.Cookies.TryGetValue("medocs_clinic", out var cookieTenantId))
+        {
+            if (int.TryParse(cookieTenantId, out var tid))
+            {
+                tenantId = tid;
+            }
+        }
+
         // Set tenant context
         tenantProvider.TenantId = tenantId;
         tenantProvider.TenantSubdomain = subdomain;

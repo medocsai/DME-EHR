@@ -1,9 +1,15 @@
-# MEDOCS DME — Billing and Payments: Closed Decisions
+# MEDOCS DME Billing and Payments: Closed Decisions
 
 **Date closed:** 2026-08-26
 **Closed by:** Hammas (CTO), in session with the PM
 **Supersedes:** `HANDOFF.md` section 7 "Still to close"
-**Status:** all four decisions closed. No code written yet. Spec and mockups next.
+**Status:** decisions 1 to 4 closed and **built the same day**; decision 5 (where
+the clearinghouse credentials live) closed and built the same evening. Migrations
+`2026-08-26_DME_Payments_And_Denials.sql` and `2026-08-26_DME_Supplier_And_Sftp.sql`,
+`Services/DmePaymentService.cs`, `Services/DmeSftpAccountService.cs`,
+`/Dme/Payments`, `/Dme/PostPayment/{id}`, `/Dme/Settings`, the three dashboard tiles.
+151 tests passing, 83 end-to-end checks passing. See section 7 below for what
+changed between the decision and the implementation.
 
 This file is the decision record. It carries the reasoning, not just the
 conclusion, so the next session inherits the argument. It is also the source text
@@ -25,7 +31,7 @@ readout on top of it.
 
 ---
 
-## Decision 1 — How money enters the system
+## Decision 1: How money enters the system
 
 **Decided: manual payment posting, built now. No 835/ERA parser yet.**
 
@@ -58,7 +64,7 @@ for the client, not an engineering gap.
 
 ---
 
-## Decision 2 — What "amount denied" means
+## Decision 2: What "amount denied" means
 
 **Decided: line level. A claim line is denied when paid is zero and it carries a
 denial reason code. Amount denied is the sum of the billed charge on those
@@ -85,7 +91,7 @@ anyone. This applies to all three tiles and to the billing reports, not only to
 
 ---
 
-## Decision 3 — "Monthly" by which date
+## Decision 3: "Monthly" by which date
 
 **Decided: posting date. The same date drives all three tiles. The screen says
 so, in plain words.**
@@ -112,7 +118,7 @@ stated on the screen, not only in this document.
 
 ---
 
-## Decision 4 — How much of the money model
+## Decision 4: How much of the money model
 
 **Decided: the full adjudication set, but only two amounts are stored.**
 
@@ -142,7 +148,7 @@ per reason the payer moved money:
 | Most frequent denial code (tile) | count over the same reason code rows |
 | Claim paid to date | sum of `PaidAmount` across its payment lines |
 | Claim balance | billed charge minus paid minus adjustments minus patient responsibility |
-| Claim status (paid / partial / denied) | computed in the view |
+| Claim payment status (unpaid / partial / part-denied / denied / patient-due / paid) | computed in `vDmeClaims` |
 
 **Nothing is written back to `DmeClaims`.** No stored totals, no stored status, no
 stored paid-to-date. This is the same rule the foundation already applied when
@@ -215,11 +221,164 @@ rental delivered in June that pays in August appears in August.
 
 ---
 
-## Next steps, in order
+## Decision 5: Where the clearinghouse credentials live
 
-1. Schema spec: `DmePayments`, `DmePaymentLines`, `DmePaymentLineAdjustments`,
-   plus the views that compute claim paid, balance and status.
-2. Mockups for the posting screen and the three dashboard tiles. Approved before
-   implementation, saved in the repo.
-3. Migration, written to run on a fresh database in the documented order.
-4. Build, verify by execution, extend `scripts/verify-dme-foundation.sh`.
+**Decided 2026-08-26. Tenant scoped, hanging off a supplier profile. DME does
+not get locations.**
+
+### The question as asked
+
+RehabDox holds the Office Ally SFTP login per location. Does DME need locations
+to match, or is one credential per tenant enough?
+
+### What RehabDox actually does
+
+It is not location based. `OfficeAllySftpAccounts` is owned by the **tenant**,
+and `Locations.OfficeAllySftpAccountId` is a nullable pointer. Many locations can
+share one account. The pointer exists because Office Ally issues one account per
+**billing entity**, and in that product a billing entity is "a tenant, or a
+location with its own NPI".
+
+### Why DME is different
+
+**No DME table carries a `LocationId`.** Customers, orders, rentals, claims,
+inventory and payments are scoped by tenant and nothing else. There is no second
+entity for a credential to belong to, so a location pointer would point at
+nothing.
+
+Making DME location aware means adding the column to those tables, putting a
+location picker on the order screen, and rethinking the tenant isolation story
+around it. That is a large change, for a client with one supplier and no
+clearinghouse account to test any of it against.
+
+### What was built instead
+
+`DmeSftpAccounts` is tenant owned and belongs to `DmeSupplierProfile`, not to the
+tenant directly. Medicare DMEPOS does require each location that furnishes
+equipment to be separately enrolled and accredited, so a supplier genuinely can
+end up with two billing identities. When that day comes it is a second profile
+row and a pointer column, not a rewrite.
+
+### The bigger half of the same problem
+
+The credential turned out to be the small half. The CMS-1500 billing provider was
+a **hardcoded string in the Razor view**:
+
+```
+33 Billing provider   Lakeview Medical Supply  NPI 1980000000
+```
+
+Every claim this product produced carried an NPI belonging to nobody, and DME had
+nowhere to store the real one. A clearinghouse login is worthless while that is
+true: it would faithfully upload a claim billed under a provider that does not
+exist. So the supplier identity was built first and the credential second.
+
+### The single source of truth test, run before adding the table
+
+| Field of a billing provider | Where it already lives |
+|---|---|
+| legal name, address, city, state, ZIP, phone | `dbo.Tenants` |
+| Tax ID (box 25) | `dbo.Tenants` |
+| NPI (box 33a) | `dbo.Tenants` |
+| PTAN / supplier number | nowhere |
+| Taxonomy code (box 33b) | nowhere |
+| Accepts assignment (box 27) | nowhere |
+
+Six of nine already had a home. A `DmeBillingProvider` table holding all nine
+would have been six duplicated columns waiting to disagree with `Tenants`. Only
+the three with no home are stored, in `DmeSupplierProfile`, keyed on `TenantId`.
+`vDmeBillingProvider` joins the rest.
+
+### The trap that came with it
+
+`dbo.Tenants` is the platform registry and is **not** covered by the row level
+security policy that protects every DME table. An `UPDATE dbo.Tenants` without an
+explicit `WHERE TenantId=@TenantId` renames every tenant on the server and
+nothing reports an error. A test enforces that clause on every such statement in
+`DmeController`.
+
+### Credential handling
+
+- Username and password are **both** AES-GCM ciphertext. A username is half a
+  credential.
+- Neither ever reaches a screen: `vDmeSftpAccounts` does not expose the columns,
+  and a test fails if any screen reads the base table.
+- Neither reaches the audit log, which is kept for six years. The audit records
+  that a credential was set, not what it is.
+- `IsTestMode` defaults to true. Test versus live belongs to the account, not the
+  deployment, so a newly entered account cannot transmit a live claim by
+  accident.
+- An account is taken out of service, never deleted: the row is the record of
+  what past claims were submitted under.
+- There is deliberately **no decrypt path and no connection test**. Nothing
+  transmits yet, and a decrypt method with no caller is an unguarded way to read
+  a password that exists only to look finished. Both arrive with the 837 sender.
+
+### What is still blocked, and it is only this
+
+Building and transmitting the 837 file. It needs a live account to test against.
+`/Dme/Submit` is honest about it: the button says **"Mark as submitted"**,
+because that is what it does.
+
+---
+
+## 7. What the implementation added to these decisions
+
+Three things the decisions did not cover, decided while building and recorded
+here so the reasoning survives.
+
+### `part-denied` as a sixth payment status
+
+Decision 2 defined denial at line level. It did not say what a CLAIM reads as
+when one of its lines is refused and the rest pay.
+
+The first implementation had five statuses and such a claim came out as **paid**,
+because every line was either paid or written off and the balance was zero. That
+is arithmetically true and operationally useless: the refused line would never be
+appealed, and appeal windows expire. `part-denied` is now tested before `paid`.
+
+This was caught by loading the page, not by a test. A partial denial is the
+ordinary case in DME, not an edge case.
+
+### The tiles count applied money, not receipts
+
+`DmePayments.Amount` is the face value of the check. The payment LINES are what
+was allocated to claims. They are different numbers whenever a biller posts a
+check and does not fully allocate it, which is the commonest posting mistake
+there is.
+
+The tiles count applied money, because "amount paid" has to pair with "amount
+denied", which is line level. The gap is therefore reported next to it:
+`/Dme/Payments` has an Unapplied figure and the dashboard footnotes it whenever
+it is non-zero. The alternative, counting receipts, would have made the tile
+agree with the bank while disagreeing with every claim.
+
+### A payment is voided, never edited
+
+Not stated in decision 1. RehabDox reverses a posting by storing the prior values
+alongside it. Here the payment is immutable and a mistake is voided, which is
+what a biller does on paper.
+
+The whole reversal is one `WHERE IsVoided = 0` in the views. There is no
+subtraction to get wrong, and the original entry survives for the audit trail. A
+void requires a reason, and the UPDATE is guarded on `VoidedAt IS NULL` so two
+people clicking Void produce one reversal and one "already voided".
+
+---
+
+## Verification
+
+```bash
+cd ehr-system && dotnet run --urls http://localhost:5077
+bash scripts/verify-dme-foundation.sh
+```
+
+83 checks. Section 9 covers the payment cycle end to end: a real remittance
+posted through the form, the patient balance clearing when the customer pays
+cash, a zero dollar denial, a contractual write-off NOT counted as a denial, the
+dashboard tiles matching the database to the cent, the server refusing an
+over-applied and a future-dated posting, and a void taking every derived number
+back with it.
+
+`dotnet test ehr-system/EHR.Tests`: 151 passing. `DmePaymentPostingTests` pins
+the rules and the atomicity of the write; its guards were mutation tested.

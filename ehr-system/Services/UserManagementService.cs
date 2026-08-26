@@ -73,6 +73,11 @@ public class UserManagementService : IUserManagementService
 
         var users = await query.OrderBy(u => u.LastName).ThenBy(u => u.FirstName).ToListAsync();
 
+        // One query for every user's grants rather than one per user. The list
+        // is small, but a per-row lookup here is the classic way a user screen
+        // becomes slow the month a customer hires ten people.
+        var grants = await LoadLocationGrantsAsync(users.Select(u => u.UserId).ToList());
+
         return users.Select(u => new UserListDto
         {
             UserId = u.UserId,
@@ -85,8 +90,49 @@ public class UserManagementService : IUserManagementService
             Role = u.Role ?? 0,
             IsActive = u.IsActive ?? false,
             LastLoginAt = u.LastLoginAt,
-            CreatedAt = u.CreatedAt
+            CreatedAt = u.CreatedAt,
+            Locations = grants.TryGetValue(u.UserId, out var mine) ? mine : new List<UserLocationDto>()
         }).ToList();
+    }
+
+    /// <summary>
+    /// Every branch grant for the given users, keyed by user.
+    ///
+    /// Reads dbo.vUserLocations. Raw SQL for the same reason the writes are:
+    /// the grant table is deliberately not in the generated EF model.
+    /// </summary>
+    private async Task<Dictionary<int, List<UserLocationDto>>> LoadLocationGrantsAsync(List<int> userIds)
+    {
+        var byUser = new Dictionary<int, List<UserLocationDto>>();
+        if (userIds.Count == 0) return byUser;
+
+        // Ids are ints already parsed as ints and read from the database, so
+        // there is nothing from the request in this string.
+        var ids = string.Join(",", userIds);
+
+        var conn = _context.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            $"SELECT UserId, LocationId, LocationName FROM dbo.vUserLocations " +
+            $"WHERE UserId IN ({ids}) AND LocationActive = 1 ORDER BY LocationName";
+
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var userId = reader.GetInt32(0);
+            if (!byUser.TryGetValue(userId, out var list))
+                byUser[userId] = list = new List<UserLocationDto>();
+
+            list.Add(new UserLocationDto
+            {
+                LocationId = reader.GetInt32(1),
+                Name = reader.GetString(2)
+            });
+        }
+
+        return byUser;
     }
 
     public async Task<UserListDto?> GetUserByIdAsync(int userId)
@@ -158,7 +204,60 @@ public class UserManagementService : IUserManagementService
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
 
+        await ReplaceLocationGrantsAsync(user, dto.LocationIds);
+
         return user;
+    }
+
+    /// <summary>
+    /// Replace which branches a user may work in.
+    ///
+    /// WHY IT LIVES HERE
+    /// "Manage users" includes "which depots they work at". Splitting it into
+    /// its own service would mean two places that both have to remember the
+    /// rule below.
+    ///
+    /// THE RULE
+    /// A restricted role with no grants sees NOTHING (see
+    /// Services/DmeLocationScope.cs), so creating one without a branch produces
+    /// an account that can sign in and do nothing, and nothing on screen would
+    /// say why. Refuse instead.
+    ///
+    /// Roles 0 and 1 bypass scoping, so grants are meaningless for them and any
+    /// supplied list is ignored rather than written and left to rot.
+    ///
+    /// WHY RAW SQL
+    /// dbo.UserLocations is not in the generated EF model, and adding it there
+    /// would mean regenerating a model this product otherwise leaves alone.
+    /// Every value below is a bound parameter.
+    /// </summary>
+    private async Task ReplaceLocationGrantsAsync(User user, List<int> locationIds)
+    {
+        const int SuperAdminRole = 0, ClinicAdminRole = 1;
+        if (user.Role is SuperAdminRole or ClinicAdminRole) return;
+        if (locationIds == null) return;   // null means "leave grants alone"
+
+        // Only branches of this user's own tenant. A posted id from another
+        // supplier is dropped rather than trusted: the grant table has no
+        // TenantId of its own to protect it.
+        var valid = await _context.Locations
+            .Where(l => l.TenantId == user.TenantId && l.IsActive == true && locationIds.Contains(l.LocationId))
+            .Select(l => l.LocationId)
+            .ToListAsync();
+
+        if (valid.Count == 0)
+            throw new InvalidOperationException(
+                "Assign at least one location. A user with none can sign in but sees no customers, " +
+                "orders or claims at all.");
+
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"DELETE FROM dbo.UserLocations WHERE UserId = {user.UserId}");
+
+        foreach (var locationId in valid)
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"INSERT INTO dbo.UserLocations (UserId, LocationId) VALUES ({user.UserId}, {locationId})");
+        }
     }
 
     public async Task<User?> UpdateUserAsync(int userId, UserUpdateDto dto)
@@ -184,6 +283,10 @@ public class UserManagementService : IUserManagementService
         user.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
+
+        // Null leaves the existing grants alone, so an update that only changes
+        // a phone number cannot silently revoke every branch.
+        await ReplaceLocationGrantsAsync(user, dto.LocationIds);
 
         return user;
     }

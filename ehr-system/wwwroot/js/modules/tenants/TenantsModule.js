@@ -148,6 +148,15 @@ class TenantsModule {
                         <button class="btn btn-outline-secondary" onclick="tenantsModule.edit(${t.TenantId})" title="Edit">
                             <i class="bi bi-pencil"></i>
                         </button>
+                        <!--
+                            Super Admin belongs to no tenant, so the DME screens have no tenant
+                            context of their own to work from and ?tenantId= is how one is chosen.
+                            This link is what makes that discoverable: without it the only route
+                            in is typing the query string by hand.
+                        -->
+                        <a class="btn btn-outline-info" href="/Dme/Settings?tenantId=${t.TenantId}" title="DME billing settings">
+                            <i class="bi bi-gear"></i>
+                        </a>
                         ${t.Status === 1 ? `
                             <button class="btn btn-outline-warning" onclick="tenantsModule.toggleStatus(${t.TenantId}, '${StringUtils.escape(t.Name)}', 2)" title="Suspend Clinic">
                                 <i class="bi bi-pause-circle"></i>

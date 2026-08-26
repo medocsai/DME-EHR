@@ -6,28 +6,45 @@
     var cust = (Dictionary<string, object?>?)ViewBag.Cust;
     var diagnoses = (List<Dictionary<string, object?>>)ViewBag.Diagnoses;
     var ins = (Dictionary<string, object?>?)ViewBag.PrimaryIns;
+    var prov = (Dictionary<string, object?>?)ViewBag.Provider;
     string dx = string.Join("   ", diagnoses.Select(d => F.S(d["IcdCode"])));
+    bool providerReady = prov != null && F.B(prov["IsComplete"]);
 }
 
 <div class="dme-wrap">
     <div class="dme-head dme-no-print">
         <div><a href="/Dme/Billing" class="dme-muted" style="font-size:13px;text-decoration:none"><i class="bi bi-arrow-left"></i> Billing</a>
-            <h1 style="margin-top:6px">CMS-1500 — @F.S(claim["ClaimNumber"])</h1></div>
+            <h1 style="margin-top:6px">CMS-1500 · @F.S(claim["ClaimNumber"])</h1></div>
         <div class="d-flex gap-2">
             <button onclick="window.print()" class="dme-btn dme-btn-light"><i class="bi bi-printer"></i> Print</button>
             @if (F.S(claim["Status"]) == "ready")
             {
+                @* Called "Mark as submitted" because that is what it does. It
+                   changes the claim's state and writes an audit row; it does not
+                   transmit anything, and a button labelled "Submit to
+                   clearinghouse" that transmits nothing is worse than no button. *@
                 <form method="post" action="/Dme/Submit" style="display:inline">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="id" value="@F.I(claim["ClaimId"])" />
-                    <button class="dme-btn dme-btn-primary" type="submit"><i class="bi bi-send"></i> Submit to clearinghouse</button>
+                    <button class="dme-btn dme-btn-primary" type="submit" disabled="@(!providerReady)">
+                        <i class="bi bi-send"></i> Mark as submitted
+                    </button>
                 </form>
             }
         </div>
     </div>
 
+    @if (!providerReady)
+    {
+        <div class="dme-banner dme-no-print" style="background:#fdecea;color:#8a1c13">
+            <i class="bi bi-exclamation-triangle"></i>
+            This form has no billing provider. A claim cannot be filed until the supplier's
+            name, NPI and tax ID are set. <a href="/Dme/Settings" class="ms-1">Open settings</a>
+        </div>
+    }
+
     <div class="cms1500" style="max-width:760px">
-        <div class="cms-row" style="background:#eef3fb"><div class="cms-cell" style="font-weight:700">HEALTH INSURANCE CLAIM FORM — CMS-1500 (facsimile)</div><div class="cms-cell" style="flex:.5">@F.S(claim["ClaimNumber"])</div></div>
+        <div class="cms-row" style="background:#eef3fb"><div class="cms-cell" style="font-weight:700">HEALTH INSURANCE CLAIM FORM · CMS-1500 (facsimile)</div><div class="cms-cell" style="flex:.5">@F.S(claim["ClaimNumber"])</div></div>
         <div class="cms-row">
             <div class="cms-cell" style="flex:2"><div class="cms-lbl">1 Payer</div>@F.S(claim["PayerName"])</div>
             <div class="cms-cell"><div class="cms-lbl">1a Insured ID</div>@(ins == null ? "" : F.S(ins["MemberId"]))</div>
@@ -36,6 +53,17 @@
             <div class="cms-cell" style="flex:1.5"><div class="cms-lbl">2 Patient name</div>@(cust == null ? "" : F.S(cust["LastName"]) + ", " + F.S(cust["FirstName"]))</div>
             <div class="cms-cell"><div class="cms-lbl">3 DOB</div>@(cust == null ? "" : F.Date(cust["Dob"]))</div>
             <div class="cms-cell" style="flex:1.8"><div class="cms-lbl">5 Address</div>@(cust == null ? "" : F.S(cust["AddressLine1"]) + ", " + F.S(cust["City"]) + " " + F.S(cust["State"]))</div>
+        </div>
+        @*
+            Box 17 is the ordering physician. On a professional claim it is often
+            optional; on DMEPOS it is mandatory, because the entire claim rests
+            on a physician having ordered the equipment. The form was rendering
+            no box 17 at all. The data was there and unused: the claim's order
+            carries the doctor, and vDmeClaims now joins it.
+        *@
+        <div class="cms-row">
+            <div class="cms-cell" style="flex:2"><div class="cms-lbl">17 Ordering provider</div>@(string.IsNullOrEmpty(F.S(claim["OrderingDoctorName"])) ? "—" : F.S(claim["OrderingDoctorName"]))</div>
+            <div class="cms-cell"><div class="cms-lbl">17b NPI</div>@(string.IsNullOrEmpty(F.S(claim["OrderingDoctorNpi"])) ? "—" : F.S(claim["OrderingDoctorNpi"]))</div>
         </div>
         <div class="cms-row">
             <div class="cms-cell" style="flex:3"><div class="cms-lbl">21 Diagnosis (ICD-10)</div>@(string.IsNullOrEmpty(dx) ? "—" : dx)</div>
@@ -54,10 +82,49 @@
                 <div class="cms-cell" style="flex:.5"><div class="cms-lbl">G Units</div>@F.I(l["Units"])</div>
             </div>
         }
+        @*
+            Boxes 25, 27, 32 and 33 all describe the supplier, and every one of
+            them used to be absent or invented. They come from the supplier
+            record now, so correcting the address once fixes every claim form
+            rather than every claim form created after the correction.
+
+            Box 24J (rendering provider) is deliberately blank: a DME supplier
+            bills as the entity in box 33, so there is no separate rendering
+            provider to name.
+        *@
         <div class="cms-row">
+            <div class="cms-cell"><div class="cms-lbl">25 Federal Tax ID</div>@(prov == null ? "—" : F.S(prov["TaxId"]))</div>
+            <div class="cms-cell"><div class="cms-lbl">27 Accepts assignment</div>@(prov != null && F.B(prov["AcceptsAssignment"]) ? "YES" : "NO")</div>
             <div class="cms-cell"><div class="cms-lbl">28 Total charge</div>@F.Money(claim["Total"])</div>
-            <div class="cms-cell" style="flex:2.5"><div class="cms-lbl">33 Billing provider</div>Lakeview Medical Supply · NPI 1980000000</div>
+            <div class="cms-cell"><div class="cms-lbl">29 Amount paid</div>@F.Money(claim["PaidTotal"])</div>
+            <div class="cms-cell"><div class="cms-lbl">30 Balance due</div>@F.Money(claim["Balance"])</div>
+        </div>
+        <div class="cms-row">
+            <div class="cms-cell" style="flex:2">
+                <div class="cms-lbl">32 Service facility</div>
+                Patient residence (POS 12)
+            </div>
+            <div class="cms-cell" style="flex:3">
+                <div class="cms-lbl">33 Billing provider</div>
+                @if (prov == null)
+                {
+                    <span style="color:#a32d2d">Not set</span>
+                }
+                else
+                {
+                    <text>@F.S(prov["BillingName"])</text>
+                    <div style="font-size:9.5px;color:#555">
+                        @F.S(prov["Address"]) @F.S(prov["City"]) @F.S(prov["State"]) @F.S(prov["ZipCode"])
+                        @if (!string.IsNullOrEmpty(F.S(prov["Phone"]))) { <text>· @F.S(prov["Phone"])</text> }
+                    </div>
+                    <div style="font-size:9.5px;color:#555">
+                        33a NPI @(string.IsNullOrEmpty(F.S(prov["Npi"])) ? "not set" : F.S(prov["Npi"]))
+                        @if (!string.IsNullOrEmpty(F.S(prov["TaxonomyCode"]))) { <text>· 33b @F.S(prov["TaxonomyCode"])</text> }
+                        @if (!string.IsNullOrEmpty(F.S(prov["Ptan"]))) { <text>· PTAN @F.S(prov["Ptan"])</text> }
+                    </div>
+                }
+            </div>
         </div>
     </div>
-    <div class="dme-muted dme-no-print" style="font-size:11.5px;margin-top:10px">Readable facsimile for demo. Production renders the official red-ink form / 837P EDI.</div>
+    <div class="dme-muted dme-no-print" style="font-size:11.5px;margin-top:10px">Readable facsimile. Production renders the official red-ink form and the 837P EDI file.</div>
 </div>

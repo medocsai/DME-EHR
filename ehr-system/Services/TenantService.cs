@@ -62,6 +62,27 @@ public class TenantService : ITenantService
     
     public async Task<Tenant> CreateTenantAsync(TenantCreateDto dto)
     {
+        // The password policy is applied HERE, before anything is written.
+        //
+        // WHY THIS GUARD EXISTS
+        // Creating a clinic also creates its first Clinic Admin, which makes
+        // this a place a staff password is set. It was missed when the policy
+        // was rolled out to the other four, so this route quietly allowed a
+        // weaker password than any other route in the product, and it is the
+        // route that creates an ADMINISTRATOR.
+        //
+        // WHY IT IS FIRST
+        // The tenant row, its location and its admin user are added across two
+        // SaveChanges calls. Failing after the tenant exists would leave a
+        // clinic with no administrator and no obvious way to notice.
+        //
+        // InvalidOperationException on purpose: TenantsController already turns
+        // it into a 400 carrying this message, so the Super Admin sees what is
+        // wrong instead of a 500.
+        var passwordError = EHR.Helpers.PasswordPolicy.Validate(dto.AdminPassword, dto.AdminEmail);
+        if (passwordError != null)
+            throw new InvalidOperationException(passwordError);
+
         // Auto-generate subdomain from clinic name if not provided
         var subdomain = !string.IsNullOrWhiteSpace(dto.Subdomain)
             ? dto.Subdomain.ToLower()

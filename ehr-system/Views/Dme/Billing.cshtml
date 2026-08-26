@@ -3,32 +3,84 @@
 @{ ViewData["ActivePage"] = "billing"; var filter = (string)(ViewBag.Filter ?? ""); }
 
 <div class="dme-wrap">
-    <div class="dme-head"><div><h1>Billing</h1><div class="dme-sub">DME claims · CMS-1500</div></div></div>
+    <div class="dme-head">
+        <div><h1>Billing</h1><div class="dme-sub">DME claims · CMS-1500 · payment posting</div></div>
+        <a href="/Dme/Payments" class="dme-btn dme-btn-light"><i class="bi bi-cash-stack"></i> Payments</a>
+    </div>
 
-    <div class="dme-banner"><i class="bi bi-info-circle"></i> Electronic submission (837) and remittance posting (835/ERA) are <b class="ms-1">&nbsp;simulated</b>&nbsp; in this demo. The screens show the real biller workflow.</div>
+    @if (TempData["BillingError"] != null)
+    {
+        <div class="dme-banner" style="background:#fdecea;color:#8a1c13">
+            <i class="bi bi-exclamation-triangle"></i> @TempData["BillingError"]
+            <a href="/Dme/Settings" class="ms-1">Open settings</a>
+        </div>
+    }
 
-    <div class="dme-kpis" style="grid-template-columns:repeat(3,1fr)">
-        <a class="dme-kpi" href="/Dme/Billing" style="text-decoration:none;color:inherit;@(filter == "" ? "border:1.5px solid #2f6bdf" : "")"><div class="k-label">All claims</div><div class="k-value">@Model.Count</div></a>
-        <a class="dme-kpi" href="/Dme/Billing?status=ready" style="text-decoration:none;color:inherit;@(filter == "ready" ? "border:1.5px solid #2f6bdf" : "")"><div class="k-label">Ready to bill</div><div class="k-value">@F.Money(ViewBag.ReadyTotal)</div></a>
-        <a class="dme-kpi" href="/Dme/Billing?status=submitted" style="text-decoration:none;color:inherit;@(filter == "submitted" ? "border:1.5px solid #2f6bdf" : "")"><div class="k-label">Submitted</div><div class="k-value">@F.Money(ViewBag.SubmittedTotal)</div></a>
+    @*
+        The banner reads the actual state rather than asserting a fixed sentence,
+        so it stops being a warning by itself the day the account is entered.
+    *@
+    @if (!(bool)ViewBag.SupplierComplete)
+    {
+        <div class="dme-banner" style="background:#fdecea;color:#8a1c13">
+            <i class="bi bi-exclamation-triangle"></i>
+            No billing provider is set, so no claim can be filed. Add the supplier name, NPI and tax ID.
+            <a href="/Dme/Settings" class="ms-1">Open settings</a>
+        </div>
+    }
+    else
+    {
+        <div class="dme-banner">
+            <i class="bi bi-info-circle"></i>
+            Billing as <b class="ms-1">&nbsp;@ViewBag.SupplierName</b>.
+            @if ((bool)ViewBag.HasClearinghouseAccount)
+            {
+                <text>&nbsp;A clearinghouse account is on file; transmitting the 837 file is not built yet, so claims are marked submitted here and payments posted by hand from the remittance.</text>
+            }
+            else
+            {
+                <text>&nbsp;No clearinghouse account yet, so claims are marked submitted here and payments are posted by hand from the remittance, which is the real biller workflow.</text>
+            }
+        </div>
+    }
+
+    <div class="dme-kpis" style="grid-template-columns:repeat(5,1fr)">
+        <a class="dme-kpi" href="/Dme/Billing" style="text-decoration:none;color:inherit;@(filter == "" ? "border:1.5px solid #2f6bdf" : "")"><div class="k-label">All claims</div><div class="k-value">@Model.Count</div><div class="k-foot">every claim raised</div></a>
+        <a class="dme-kpi" href="/Dme/Billing?status=ready" style="text-decoration:none;color:inherit;@(filter == "ready" ? "border:1.5px solid #2f6bdf" : "")"><div class="k-label">Ready to bill</div><div class="k-value">@F.Money(ViewBag.ReadyTotal)</div><div class="k-foot">raised, not yet submitted</div></a>
+        <a class="dme-kpi" href="/Dme/Billing?status=submitted" style="text-decoration:none;color:inherit;@(filter == "submitted" ? "border:1.5px solid #2f6bdf" : "")"><div class="k-label">Submitted</div><div class="k-value">@F.Money(ViewBag.SubmittedTotal)</div><div class="k-foot">with the payer</div></a>
+        <div class="dme-kpi"><div class="k-label">Outstanding</div><div class="k-value">@F.Money(ViewBag.OutstandingTotal)</div><div class="k-foot">billed, not yet collected or written off</div></div>
+        <a class="dme-kpi" href="/Dme/Billing?status=denied" style="text-decoration:none;color:inherit;@(filter == "denied" ? "border:1.5px solid #2f6bdf" : "")"><div class="k-label">Denied</div><div class="k-value" style="color:@(F.Dec(ViewBag.DeniedTotal) > 0 ? "#a32d2d" : "inherit")">@F.Money(ViewBag.DeniedTotal)</div><div class="k-foot">@ViewBag.DeniedCount claim(s) with a refused line</div></a>
     </div>
 
     <div class="dme-card">
-        <div class="dme-card-head"><h2>Claims</h2></div>
+        <div class="dme-card-head">
+            <div>
+                <h2>Claims</h2>
+                <div class="dme-sub" style="margin-top:2px">
+                    Paid is everything received against the claim, from the payer and the customer.
+                    Outstanding is what is billed but not yet collected, written off, or handed to the patient.
+                </div>
+            </div>
+        </div>
         <table class="dme-table">
-            <thead><tr><th>Claim</th><th>Customer</th><th>Payer</th><th>Service date</th><th>Total</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Claim</th><th>Customer</th><th>Payer</th><th>Service date</th><th>Billed</th><th>Paid</th><th>Outstanding</th><th>Submission</th><th>Payment</th><th></th></tr></thead>
             <tbody>
                 @foreach (var c in Model)
                 {
+                    var balance = F.Dec(c["Balance"]);
                     <tr>
                         <td class="dme-mono"><strong>@F.S(c["ClaimNumber"])</strong></td>
                         <td>@F.S(c["CustomerName"])</td>
                         <td>@F.S(c["PayerName"])</td>
                         <td>@F.Date(c["ServiceDate"])</td>
                         <td class="dme-mono">@F.Money(c["Total"])</td>
+                        <td class="dme-mono">@F.Money(c["PaidTotal"])</td>
+                        <td class="dme-mono @(balance > 0 ? "" : "dme-muted")">@F.Money(balance)</td>
                         <td>@Html.Raw(F.StatusChip(c["Status"]))</td>
+                        <td>@Html.Raw(F.StatusChip(c["PaymentStatus"]))</td>
                         <td style="text-align:right; white-space:nowrap">
                             <a href="/Dme/Cms/@F.I(c["ClaimId"])" class="dme-btn dme-btn-light dme-btn-sm">CMS-1500</a>
+                            <a href="/Dme/PostPayment/@F.I(c["ClaimId"])" class="dme-btn dme-btn-light dme-btn-sm">Post payment</a>
                             @if (F.S(c["Status"]) == "ready")
                             {
                                 <form method="post" action="/Dme/Submit" style="display:inline">
@@ -42,7 +94,7 @@
                 }
                 @if (Model.Count == 0)
                 {
-                    <tr><td colspan="7" class="dme-empty">No claims.</td></tr>
+                    <tr><td colspan="10" class="dme-empty">No claims.</td></tr>
                 }
             </tbody>
         </table>

@@ -22,7 +22,15 @@
     <!-- Custom Styles -->
     <link href="~/css/styles.css?v=1779131275" rel="stylesheet">
     <!-- DME design system -->
-    <link href="~/css/dme.css?v=2" rel="stylesheet">
+    <link href="~/css/dme.css?v=4" rel="stylesheet">
+
+    @* DME reference-data pickers: payers, ICD-10, HCPCS, all lists too long for
+       a <select>. Loaded HERE rather than with the other scripts at the end of
+       the body, because the DME views call dmeTypeahead() from an inline script
+       inside their own markup. An inline script runs during parsing, so a tag
+       at the end of the body defines the function AFTER the call that needs it,
+       and both pickers silently do nothing. *@
+    <script src="~/js/dme/Typeahead.js?v=2"></script>
 
     @await RenderSectionAsync("Styles", required: false)
 </head>
@@ -238,6 +246,14 @@
                     <i class="bi bi-receipt"></i>
                     <span>Billing</span>
                 </a>
+                <a href="/Dme/Payments" class="nav-item @(activePage == "payments" ? "active" : "")">
+                    <i class="bi bi-cash-stack"></i>
+                    <span>Payments</span>
+                </a>
+                <a href="/Dme/Settings" class="nav-item requires-admin @(activePage == "settings" ? "active" : "")">
+                    <i class="bi bi-gear"></i>
+                    <span>Settings</span>
+                </a>
                 <a href="/UserManagement" class="nav-item requires-admin @(activePage == "users" ? "active" : "")">
                     <i class="bi bi-people-fill"></i>
                     <span>User Management</span>
@@ -358,6 +374,35 @@
         </div>
     </div>
 
+    @*
+        Location switcher.
+
+        Lives in the LAYOUT, not in a page partial, because the control that
+        opens it is in the sidebar and therefore on every screen. It was lost in
+        the 2026-08-25 modal cleanup (15 modals trimmed to 6), which left
+        LocationModule.openSwitcher() looking for an element that no longer
+        existed: clicking the location in the sidebar silently did nothing.
+
+        LocationModule fills #locationSwitcherList and handles the clicks through
+        a delegated document listener, so this markup is all it needs.
+    *@
+    <div class="modal fade" id="locationSwitcherModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-geo-alt-fill me-2"></i>Switch location</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Choose a branch to work in, or all of them to see the whole business.
+                    </p>
+                    <div id="locationSwitcherList" class="location-switcher-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- All Modals -->
     @await RenderSectionAsync("Modals", required: false)
 
@@ -438,7 +483,7 @@
     <script src="~/js/core/ApiService.js?v=1776285000"></script>
     <script src="~/js/core/StateManager.js?v=1776285000"></script>
     <script src="~/js/core/AuthService.js?v=1776375986"></script>
-    <script src="~/js/core/App.js?v=1776285002"></script>
+    <script src="~/js/core/App.js?v=1776285003"></script>
     <script src="~/js/shared/ui/FileViewerModal.js?v=1776285000"></script>
     <script src="~/js/shared/ui/HistoryActionModal.js?v=1777095224"></script>
     <script src="~/js/core/GlobalBridge.js?v=1778060324"></script>
@@ -450,8 +495,8 @@
     <script src="~/js/modules/auth/AuthModule.js?v=1776375986"></script>
     <script src="~/js/modules/settings/SettingsModule.js?v=1776285000"></script>
     <script src="~/js/modules/settings/LongevityLocationTogglesModule.js?v=1777078000"></script>
-    <script src="~/js/modules/users/UsersModule.js?v=1778613709"></script>
-    <script src="~/js/modules/tenants/TenantsModule.js?v=1776285000"></script>
+    <script src="~/js/modules/users/UsersModule.js?v=1778613712"></script>
+    <script src="~/js/modules/tenants/TenantsModule.js?v=1776285001"></script>
     <!-- Patient Module Helpers -->
     <!-- Patient Module (Main) -->
     <!-- Patient Intake (clinic side): QR button + Profile accordion -->
@@ -462,7 +507,7 @@
     <script src="~/js/shared/constants/OrderConstants.js?v=1776285000"></script>
     <!-- Dx & CPT Codes picker (shared by encounter step + amendment modal) -->
     <!-- CareEpisode module removed for IM workflow (replaced by Encounters) -->
-    <script src="~/js/modules/locations/LocationModule.js?v=1776982987"></script>
+    <script src="~/js/modules/locations/LocationModule.js?v=1776982990"></script>
 
     <!-- Recording Service & Scribe Module -->
     <script src="~/js/core/RecordingService.js?v=1776285000"></script>

@@ -22,17 +22,20 @@ public class LocationsController : ControllerBase
     private readonly IAuthService _authService;
     private readonly ITenantProvider _tenantProvider;
     private readonly EhrDbContext _context;
+    private readonly IDmeLocationScope _locationScope;
 
     public LocationsController(
         ILocationService locationService,
         IAuthService authService,
         ITenantProvider tenantProvider,
-        EhrDbContext context)
+        EhrDbContext context,
+        IDmeLocationScope locationScope)
     {
         _locationService = locationService;
         _authService = authService;
         _tenantProvider = tenantProvider;
         _context = context;
+        _locationScope = locationScope;
     }
 
     /// <summary>
@@ -48,10 +51,26 @@ public class LocationsController : ControllerBase
     /// <summary>
     /// Get locations for dropdown selection (simplified list)
     /// </summary>
+    /// <summary>
+    /// Branches for the header switcher, narrowed to the ones this caller is
+    /// granted.
+    ///
+    /// Offering a branch the user cannot open would make the switcher a list of
+    /// things that refuse to work. Filtered here rather than inside
+    /// LocationService because that service is shared with the platform screens,
+    /// and this is the DME grant model.
+    /// </summary>
     [HttpGet("dropdown")]
     public async Task<ActionResult<List<LocationDropdownDto>>> GetLocationsForDropdown()
     {
         var locations = await _locationService.GetLocationsForDropdownAsync();
+
+        if (!_locationScope.IsUnrestricted)
+        {
+            var allowed = _locationScope.AllowedLocationIds;
+            locations = locations.Where(l => allowed.Contains(l.LocationId)).ToList();
+        }
+
         return Ok(locations);
     }
 
@@ -235,8 +254,54 @@ public class LocationsController : ControllerBase
     [HttpPost("switch")]
     public async Task<ActionResult<SwitchLocationResponseDto>> SwitchLocation([FromBody] SwitchLocationDto dto)
     {
+        // LocationId 0 means "all locations": a token with no LocationId claim,
+        // which every screen reads as the whole business.
+        //
+        // This grants nothing new. A user who can switch to each branch one at a
+        // time can already see every row in the tenant, so refusing them the
+        // combined view would hide nothing and only make the owner's roll-up
+        // impossible. The TENANT is the boundary, and it is unchanged here.
+        if (dto.LocationId == 0)
+        {
+            var userIdForAll = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdForAll == null || !int.TryParse(userIdForAll.Value, out var uidAll))
+                return Unauthorized();
+
+            var userForAll = await _context.Users.Include(u => u.Tenant)
+                .FirstOrDefaultAsync(u => u.UserId == uidAll);
+            if (userForAll == null) return Unauthorized();
+
+            var allToken = _authService.GenerateToken(userForAll, userForAll.Tenant, location: null);
+            EHR.Helpers.SessionCookie.Issue(Response, allToken,
+                DateTime.UtcNow.AddMinutes(_authService.SessionTimeoutMinutes), Request.IsHttps);
+
+            return Ok(new SwitchLocationResponseDto
+            {
+                Success = true,
+                LocationId = 0,
+                LocationName = "All locations",
+                Message = "Now showing all locations",
+                Token = allToken,
+                TimeZoneId = TimezoneHelper.DefaultTimeZoneId,
+                TimeZoneAbbreviation = TimezoneHelper.GetTimezoneAbbreviation(TimezoneHelper.DefaultTimeZoneId)
+            });
+        }
+
         // Validate that the location exists and belongs to the user's tenant
         var isValid = await _locationService.ValidateLocationAccessAsync(dto.LocationId);
+
+        // And that this user is GRANTED it. The tenant check above only proves
+        // the branch belongs to the same supplier, which is not the same
+        // question: a driver at one depot must not be able to switch to another
+        // by posting its id. The screens are filtered anyway, so this is defence
+        // in depth, but it is also the difference between a refusal and a silently
+        // empty product.
+        if (isValid && !_locationScope.IsUnrestricted
+            && !_locationScope.AllowedLocationIds.Contains(dto.LocationId))
+        {
+            isValid = false;
+        }
+
         if (!isValid)
         {
             return BadRequest(new SwitchLocationResponseDto
@@ -275,6 +340,22 @@ public class LocationsController : ControllerBase
 
         // Generate a new token with the updated location
         var newToken = _authService.GenerateToken(user, user.Tenant, location);
+
+        // Mirror it into the session cookie as well.
+        //
+        // WHY THIS IS HERE
+        // The SPA takes the token from this response and uses it for its own
+        // fetch calls, so switching branch worked for the SPA screens and did
+        // NOTHING for the server-rendered ones: a browser navigating to a Razor
+        // page sends no Authorization header, so those pages read the session
+        // cookie, which still carried the old LocationId claim. Every DME screen
+        // is server rendered, so every DME screen ignored the switch.
+        //
+        // Re-issuing the cookie here is the whole fix, and it keeps the branch
+        // inside the SIGNED token rather than inventing a second cookie that a
+        // user could edit.
+        EHR.Helpers.SessionCookie.Issue(Response, newToken,
+            DateTime.UtcNow.AddMinutes(_authService.SessionTimeoutMinutes), Request.IsHttps);
 
         // Log the location switch
         _context.AuditLogs.Add(new AuditLog

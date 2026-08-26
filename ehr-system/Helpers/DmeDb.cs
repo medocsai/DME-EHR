@@ -41,6 +41,53 @@ public interface IDmeDb
     /// <summary>Tenant this instance is bound to for the current request.</summary>
     int TenantId { get; }
 
+    /// <summary>
+    /// Branch the caller is currently looking at, or NULL for all of them.
+    ///
+    /// UNLIKE TenantId, THIS IS NOT A SECURITY BOUNDARY and is deliberately not
+    /// enforced by row level security. The tenant is the wall. A location is a
+    /// working filter inside it, and the owner of a multi-branch supplier needs
+    /// to switch it off to see the whole business. Enforcing it in the database
+    /// would mean punching a hole through the isolation to allow that.
+    ///
+    /// So a missing location shows everything, which is why it can be null and
+    /// why TenantId cannot.
+    /// </summary>
+    int? LocationId { get; }
+
+    /// <summary>
+    /// The complete branch predicate for this request, ready to drop into a
+    /// WHERE clause. Combines two separate things so no caller has to remember
+    /// both:
+    ///
+    ///   what the caller CHOSE   the branch switcher, or all of them
+    ///   what the caller MAY see dbo.UserLocations, for restricted roles
+    ///
+    /// The second is the one that must never be forgotten, which is exactly why
+    /// it is not left to each query to remember. For a restricted caller with no
+    /// grants it renders `1=0`: no rows, deliberately, rather than the whole
+    /// tenant.
+    ///
+    /// Use it as: "SELECT * FROM dbo.vDmeOrders WHERE " + _db.LocationScope()
+    ///
+    /// <paramref name="column"/> qualifies the column when the query joins and
+    /// the name would otherwise be ambiguous, for example "c.LocationId". It is
+    /// a parameter rather than a string replacement on the result, because the
+    /// predicate also contains @LocationId and a blind replace would rewrite the
+    /// PARAMETER name too and produce nonsense that still compiles as SQL.
+    /// </summary>
+    string LocationScope(string column = "LocationId");
+
+    /// <summary>
+    /// Only the "may see" half, without the branch the caller happens to be
+    /// viewing.
+    ///
+    /// This is for lists of branches themselves: the switcher and the New
+    /// Customer picker. Applying the chosen half there would reduce the list to
+    /// the one branch already selected, which makes switching impossible.
+    /// </summary>
+    string LocationGrants(string column = "LocationId");
+
     List<Dictionary<string, object?>> Query(string sql, object? prms = null);
     Dictionary<string, object?>? QueryOne(string sql, object? prms = null);
     int Execute(string sql, object? prms = null);
@@ -53,6 +100,7 @@ public sealed class DmeDb : IDmeDb
 {
     private readonly string _connectionString;
     private readonly int _tenantId;
+    private readonly int? _locationId;
 
     /// <summary>
     /// Seed value for a tenant's first sequence number. Chosen so generated
@@ -61,10 +109,26 @@ public sealed class DmeDb : IDmeDb
     /// </summary>
     private const int SequenceSeed = 1000;
 
-    public DmeDb(IConfiguration config, ITenantProvider tenantProvider)
+    private readonly IDmeLocationScope? _scope;
+
+    public DmeDb(IConfiguration config, ITenantProvider tenantProvider, ILocationProvider locationProvider,
+                 IDmeLocationScope? scope = null)
     {
+        // Optional so the existing constructor tests, which are about the tenant
+        // guard, do not have to build a scope they never exercise. In the app it
+        // is always supplied by DI; a null one means "unrestricted", which is
+        // the same answer an owner gets and cannot widen anyone in production.
+        _scope = scope;
+
         _connectionString = config.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("DefaultConnection is not configured.");
+
+        // No throw here, unlike the tenant below. A null location legitimately
+        // means "all branches", and TenantResolutionMiddleware has already
+        // checked that any location it did resolve belongs to this tenant and is
+        // active, so a stale or foreign id arrives here as null rather than as
+        // somebody else's branch.
+        _locationId = locationProvider.LocationId;
 
         // No tenant means we cannot scope the query, and the RLS policy would
         // fall through to showing every tenant's rows. Fail loudly instead.
@@ -77,6 +141,50 @@ public sealed class DmeDb : IDmeDb
     }
 
     public int TenantId => _tenantId;
+
+    /// <inheritdoc />
+    public int? LocationId => _locationId;
+
+    /// <inheritdoc />
+    public string LocationScope(string column = "LocationId")
+    {
+        // What the caller CHOSE. Null is the all-branches view, so the chosen
+        // half imposes nothing.
+        var chosen = _locationId.HasValue
+            ? $"{column} = @LocationId"
+            : "1=1";
+
+        // What the caller MAY see. An unrestricted caller (Super Admin, Clinic
+        // Admin) is not narrowed at all.
+        if (_scope == null || _scope.IsUnrestricted)
+            return $"({chosen})";
+
+        var allowed = _scope.AllowedLocationIds;
+
+        // THE IMPORTANT LINE. No grants means no rows, not every row. The
+        // tempting shape here is to skip the filter when the set is empty,
+        // which silently hands the whole tenant to precisely the caller the
+        // grants were meant to contain.
+        if (allowed.Count == 0)
+            return "(1=0)";
+
+        // Values are ints read out of the database, never strings from the
+        // request, so there is nothing here to inject. A parameter list would
+        // need one placeholder per grant and buys nothing.
+        var ids = string.Join(",", allowed);
+        return $"({chosen} AND {column} IN ({ids}))";
+    }
+
+    /// <inheritdoc />
+    public string LocationGrants(string column = "LocationId")
+    {
+        if (_scope == null || _scope.IsUnrestricted) return "(1=1)";
+
+        var allowed = _scope.AllowedLocationIds;
+        if (allowed.Count == 0) return "(1=0)";
+
+        return $"({column} IN ({string.Join(",", allowed)}))";
+    }
 
     public List<Dictionary<string, object?>> Query(string sql, object? prms = null)
     {
@@ -193,6 +301,13 @@ public sealed class DmeDb : IDmeDb
 
         if (!cmd.Parameters.Contains("@TenantId"))
             cmd.Parameters.AddWithValue("@TenantId", _tenantId);
+
+        // @LocationId is always present so a query can write
+        //     AND (@LocationId IS NULL OR LocationId = @LocationId)
+        // and get "this branch" or "all branches" from the same statement, with
+        // no string building and no second query.
+        if (!cmd.Parameters.Contains("@LocationId"))
+            cmd.Parameters.AddWithValue("@LocationId", (object?)_locationId ?? DBNull.Value);
     }
 }
 
@@ -235,7 +350,25 @@ public static class F
         ["billed"] = ("teal", "Billed"), ["active"] = ("green", "Active"), ["ready"] = ("amber", "Ready to bill"),
         ["submitted"] = ("blue", "Submitted"), ["paid"] = ("green", "Paid"), ["rented"] = ("blue", "On rent"),
         ["sold"] = ("gray", "Sold"), ["in-stock"] = ("gray", "In stock"), ["ended"] = ("gray", "Ended"),
-        ["maintenance"] = ("amber", "Maintenance"), ["recalled"] = ("red", "Recalled"), ["denied"] = ("red", "Denied")
+        ["maintenance"] = ("amber", "Maintenance"), ["recalled"] = ("red", "Recalled"), ["denied"] = ("red", "Denied"),
+        // Payment outcomes. Derived in vDmeClaims from the payments posted, so
+        // these chips can never disagree with the money behind them.
+        ["unpaid"] = ("gray", "Awaiting payment"), ["partial"] = ("amber", "Part paid"),
+        ["part-denied"] = ("red", "Part denied"),
+        ["patient-due"] = ("teal", "Patient owes"), ["voided"] = ("gray", "Voided")
+    };
+
+    /// <summary>
+    /// How a payment arrived, written the way a person writes it. The database
+    /// stores the X12-ish lowercase token; this is presentation only.
+    /// </summary>
+    public static string PayMethod(object? method) => S(method) switch
+    {
+        "check" => "Check",
+        "eft" => "EFT",
+        "card" => "Card",
+        "cash" => "Cash",
+        _ => "Other"
     };
 
     /// <summary>HTML status chip (use with @Html.Raw).</summary>

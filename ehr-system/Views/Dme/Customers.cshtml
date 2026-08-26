@@ -20,7 +20,7 @@
     <div class="dme-card">
         <table class="dme-table">
             <thead>
-                <tr><th>Customer</th><th>Account</th><th>Age / DOB</th><th>Phone</th><th>Primary insurance</th><th>Status</th></tr>
+                <tr><th>Customer</th><th>Account</th><th>Age / DOB</th><th>Phone</th><th>Location</th><th>Primary insurance</th><th>Status</th></tr>
             </thead>
             <tbody>
                 @foreach (var c in Model)
@@ -30,13 +30,14 @@
                         <td class="dme-mono dme-muted">@F.S(c["AccountNo"])</td>
                         <td>@F.Age(c["Dob"]) <span class="dme-muted">· @F.Date(c["Dob"])</span></td>
                         <td class="dme-muted">@F.S(c["Phone"])</td>
+                        <td class="dme-muted">@F.S(c["LocationName"])</td>
                         <td>@(c["PrimaryPayer"] == null ? "—" : F.S(c["PrimaryPayer"]))</td>
                         <td><span class="dme-chip green">Active</span></td>
                     </tr>
                 }
                 @if (Model.Count == 0)
                 {
-                    <tr><td colspan="6" class="dme-empty"><i class="bi bi-people"></i><div>No customers match.</div></td></tr>
+                    <tr><td colspan="7" class="dme-empty"><i class="bi bi-people"></i><div>No customers match.</div></td></tr>
                 }
             </tbody>
         </table>

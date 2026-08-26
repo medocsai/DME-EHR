@@ -1,0 +1,81 @@
+@model List<Dictionary<string, object?>>
+@using EHR.Helpers
+@{ ViewData["ActivePage"] = "payments"; }
+
+<div class="dme-wrap">
+    <div class="dme-head">
+        <div><h1>Payments</h1><div class="dme-sub">Every receipt posted, from payers and from customers</div></div>
+        <a href="/Dme/Billing" class="dme-btn dme-btn-light"><i class="bi bi-receipt"></i> Billing</a>
+    </div>
+
+    @if (TempData["PaymentResult"] != null)
+    {
+        <div class="dme-banner" style="background:#e1f5ee;color:#0f6e56"><i class="bi bi-check-circle"></i> @TempData["PaymentResult"]</div>
+    }
+    @if (TempData["PaymentError"] != null)
+    {
+        <div class="dme-banner" style="background:#fdecea;color:#8a1c13"><i class="bi bi-exclamation-triangle"></i> @TempData["PaymentError"]</div>
+    }
+
+    <div class="dme-kpis" style="grid-template-columns:repeat(3,1fr)">
+        <div class="dme-kpi"><div class="k-label">Received</div><div class="k-value">@F.Money(ViewBag.Received)</div><div class="k-foot">face value of every receipt, voided ones excluded</div></div>
+        <div class="dme-kpi"><div class="k-label">Applied to claims</div><div class="k-value">@F.Money(ViewBag.Applied)</div><div class="k-foot">allocated to a claim line, this is what the dashboard counts</div></div>
+        <div class="dme-kpi"><div class="k-label">Unapplied</div><div class="k-value" style="color:@(F.Dec(ViewBag.Unapplied) > 0 ? "#854f0b" : "inherit")">@F.Money(ViewBag.Unapplied)</div><div class="k-foot">received but not yet allocated, so not yet counted as paid</div></div>
+    </div>
+
+    <div class="dme-card">
+        <div class="dme-card-head"><h2>Receipts</h2></div>
+        <table class="dme-table">
+            <thead><tr><th>Payment</th><th>Posted</th><th>From</th><th>Method</th><th>Reference</th><th>Received</th><th>Applied</th><th>Unapplied</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var p in Model)
+                {
+                    var voided = F.B(p["IsVoided"]);
+                    var unapplied = F.Dec(p["UnappliedAmount"]);
+                    <tr style="@(voided ? "opacity:.55" : "")">
+                        <td class="dme-mono"><strong>@F.S(p["PaymentNumber"])</strong>
+                            @if (voided) { <div>@Html.Raw(F.StatusChip("voided"))</div> }
+                        </td>
+                        <td>@F.Date(p["PostedDate"])</td>
+                        <td>
+                            @if (F.S(p["Source"]) == "payer")
+                            {
+                                <text>@F.S(p["PayerName"])</text><div class="dme-muted" style="font-size:12px">Insurance payer</div>
+                            }
+                            else
+                            {
+                                <text>@F.S(p["CustomerName"])</text><div class="dme-muted" style="font-size:12px">Customer</div>
+                            }
+                        </td>
+                        <td class="dme-muted">@F.PayMethod(p["Method"])</td>
+                        <td class="dme-mono dme-muted">@(string.IsNullOrEmpty(F.S(p["ReferenceNumber"])) ? "—" : F.S(p["ReferenceNumber"]))</td>
+                        <td class="dme-mono">@F.Money(p["Amount"])</td>
+                        <td class="dme-mono">@F.Money(p["AppliedAmount"])</td>
+                        <td class="dme-mono @(unapplied > 0 && !voided ? "" : "dme-muted")" style="@(unapplied > 0 && !voided ? "color:#854f0b;font-weight:700" : "")">@F.Money(unapplied)</td>
+                        <td style="text-align:right;white-space:nowrap">
+                            @if (!voided)
+                            {
+                                @* A void needs a reason: it is the only record of why the money moved back. *@
+                                <form method="post" action="/Dme/VoidPayment" style="display:inline"
+                                      onsubmit="var r = prompt('Why is @F.S(p["PaymentNumber"]) being voided?'); if (!r) { return false; } this.reason.value = r; return true;">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@F.I(p["PaymentId"])" />
+                                    <input type="hidden" name="reason" value="" />
+                                    <button class="dme-btn dme-btn-light dme-btn-sm" type="submit">Void</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <span class="dme-muted" style="font-size:12px">@F.S(p["VoidReason"])</span>
+                            }
+                        </td>
+                    </tr>
+                }
+                @if (Model.Count == 0)
+                {
+                    <tr><td colspan="9" class="dme-empty">No payments posted yet. Open a claim from Billing and post the remittance against it.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

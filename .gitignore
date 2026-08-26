@@ -42,3 +42,7 @@ appsettings.Production.json
 appsettings.Staging.json
 ehr-system/appsettings.Production.json
 ehr-system/appsettings.Staging.json
+
+# Cookie jars written by ehr-system/scripts/verify-dme-foundation.sh
+cookies.txt
+restricted-cookies.txt

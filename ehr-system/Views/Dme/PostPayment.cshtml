@@ -1,0 +1,286 @@
+@using EHR.Helpers
+@{
+    ViewData["ActivePage"] = "billing";
+    var claim = (Dictionary<string, object?>)ViewBag.Claim;
+    var lines = (List<Dictionary<string, object?>>)ViewBag.Lines;
+    var carc = (List<Dictionary<string, object?>>)ViewBag.Carc;
+    var history = (List<Dictionary<string, object?>>)ViewBag.History;
+    var claimId = F.I(claim["ClaimId"]);
+}
+
+<div class="dme-wrap">
+    <a href="/Dme/Billing" class="dme-muted" style="font-size:13px;text-decoration:none"><i class="bi bi-arrow-left"></i> Billing</a>
+    <div class="dme-head" style="margin-top:6px">
+        <div>
+            <h1>Post payment</h1>
+            <div class="dme-sub">@F.S(claim["ClaimNumber"]) · @F.S(claim["CustomerName"]) · @F.S(claim["PayerName"])</div>
+        </div>
+        <a href="/Dme/Cms/@claimId" class="dme-btn dme-btn-light"><i class="bi bi-file-earmark-text"></i> CMS-1500</a>
+    </div>
+
+    @if (TempData["PaymentError"] != null)
+    {
+        <div class="dme-banner" style="background:#fdecea;color:#8a1c13"><i class="bi bi-exclamation-triangle"></i> @TempData["PaymentError"]</div>
+    }
+    @if (TempData["PaymentResult"] != null)
+    {
+        <div class="dme-banner" style="background:#e1f5ee;color:#0f6e56"><i class="bi bi-check-circle"></i> @TempData["PaymentResult"]</div>
+    }
+
+    @*
+        Where the claim stands. Every figure here is computed from the payments
+        posted against it, so it moves the moment a posting is saved or voided.
+    *@
+    <div class="dme-kpis" style="grid-template-columns:repeat(5,1fr)">
+        <div class="dme-kpi"><div class="k-label">Billed</div><div class="k-value" style="font-size:20px">@F.Money(claim["Total"])</div><div class="k-foot">what we charged</div></div>
+        <div class="dme-kpi"><div class="k-label">Paid</div><div class="k-value" style="font-size:20px">@F.Money(claim["PaidTotal"])</div><div class="k-foot">payer plus customer</div></div>
+        <div class="dme-kpi"><div class="k-label">Written off</div><div class="k-value" style="font-size:20px">@F.Money(claim["ContractualTotal"])</div><div class="k-foot">contractual, not collectable</div></div>
+        <div class="dme-kpi"><div class="k-label">Patient owes</div><div class="k-value" style="font-size:20px">@F.Money(claim["PatientBalance"])</div><div class="k-foot">deductible, coinsurance, copay</div></div>
+        <div class="dme-kpi"><div class="k-label">Payer owes</div><div class="k-value" style="font-size:20px">@F.Money(claim["InsuranceBalance"])</div><div class="k-foot">billed, not yet adjudicated</div></div>
+    </div>
+
+    <form method="post" action="/Dme/CreatePayment" id="payForm">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="claimId" value="@claimId" />
+
+        <div class="dme-card">
+            <div class="dme-card-head"><h2>The receipt</h2></div>
+            <div class="dme-card-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Money from</label>
+                        <select name="source" id="source" class="form-select">
+                            <option value="payer">Insurance payer</option>
+                            <option value="customer">Customer</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3" id="payerNameWrap">
+                        <label class="form-label">Payer</label>
+                        <input type="text" name="payerName" class="form-control" value="@F.S(claim["PayerName"])" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Posted date</label>
+                        <input type="date" name="postedDate" class="form-control" required
+                               value="@DateTime.Today.ToString("yyyy-MM-dd")" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                        <div class="form-text" style="font-size:11px">The date you received it. This is the month it counts in.</div>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Method</label>
+                        <select name="method" class="form-select">
+                            <option value="check">Check</option>
+                            <option value="eft">EFT</option>
+                            <option value="card">Card</option>
+                            <option value="cash">Cash</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Check / trace no.</label>
+                        <input type="text" name="referenceNumber" class="form-control" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Amount received</label>
+                        <input type="number" step="0.01" min="0" name="amount" id="amount" class="form-control" value="0.00" required />
+                        <div class="form-text" style="font-size:11px">
+                            Face value of the check. A denial arrives as a zero dollar remittance, which is valid.
+                        </div>
+                    </div>
+                    <div class="col-md-9">
+                        <label class="form-label">Note</label>
+                        <input type="text" name="note" class="form-control" placeholder="Optional" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dme-card">
+            <div class="dme-card-head">
+                <div>
+                    <h2>Adjudication, line by line</h2>
+                    <div class="dme-sub" style="margin-top:2px">
+                        Enter what the remittance says for each line. A line paid nothing that carries a
+                        CO or PI adjustment counts as <b>denied</b>. A line paid nothing because it all went
+                        to the patient's deductible carries a PR adjustment instead and is not a denial,
+                        because that money is still collectable from the customer.
+                    </div>
+                </div>
+            </div>
+            <div class="dme-card-body">
+                @for (int i = 0; i < lines.Count; i++)
+                {
+                    var l = lines[i];
+                    var charge = F.Dec(l["Charge"]);
+                    var already = F.Dec(l["PaidAmount"]);
+                    <div class="dme-line">
+                        <input type="hidden" name="claimLineId" value="@F.I(l["ClaimLineId"])" />
+                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                            <div>
+                                <strong class="dme-mono">@F.S(l["Hcpcs"])</strong>
+                                <span class="ms-1">@F.S(l["ItemName"])</span>
+                                @if (!string.IsNullOrEmpty(F.S(l["Modifier"])))
+                                {
+                                    <span class="dme-chip gray ms-1">@F.S(l["Modifier"])</span>
+                                }
+                                @if (F.B(l["IsDenied"]))
+                                {
+                                    <span class="dme-chip red ms-1">Denied @F.S(l["DenialCode"])</span>
+                                }
+                                <div class="dme-muted" style="font-size:12px">
+                                    Billed @F.Money(charge) · already paid @F.Money(already)
+                                    · written off @F.Money(l["ContractualAdjustment"])
+                                    · patient @F.Money(l["PatientResponsibility"])
+                                </div>
+                            </div>
+                            <div class="d-flex gap-2 align-items-end">
+                                <div style="width:120px">
+                                    <label class="form-label" style="font-size:11px">Allowed</label>
+                                    <input type="number" step="0.01" min="0" name="allowed" class="form-control form-control-sm" value="0.00" />
+                                </div>
+                                <div style="width:120px">
+                                    <label class="form-label" style="font-size:11px">Paid</label>
+                                    <input type="number" step="0.01" min="0" name="paid" class="form-control form-control-sm js-paid" value="0.00" />
+                                </div>
+                                <button type="button" class="dme-btn dme-btn-light dme-btn-sm js-add-adj" data-line="@i">
+                                    <i class="bi bi-plus-lg"></i> Adjustment
+                                </button>
+                            </div>
+                        </div>
+                        <div class="js-adj-rows" data-line="@i" style="margin-top:8px"></div>
+                    </div>
+                }
+                @if (lines.Count == 0)
+                {
+                    <div class="dme-empty">This claim has no lines, so there is nothing to pay against.</div>
+                }
+
+                <div class="d-flex justify-content-between align-items-center" style="margin-top:12px">
+                    <div class="dme-muted" style="font-size:12.5px">
+                        Applied so far: <strong class="dme-mono" id="appliedTotal">$0.00</strong>
+                        <span id="appliedWarn" style="color:#a32d2d;display:none">
+                            &nbsp;· more than the amount received
+                        </span>
+                    </div>
+                    <button type="submit" class="dme-btn dme-btn-primary" @(lines.Count == 0 ? "disabled" : "")>
+                        <i class="bi bi-check-lg"></i> Post payment
+                    </button>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    @if (history.Count > 0)
+    {
+        <div class="dme-card">
+            <div class="dme-card-head">
+                <div>
+                    <h2>Already posted against this claim</h2>
+                    <div class="dme-sub" style="margin-top:2px">A voided posting is shown but counts towards nothing.</div>
+                </div>
+            </div>
+            <table class="dme-table">
+                <thead><tr><th>Posted</th><th>Payment</th><th>Line</th><th>Allowed</th><th>Paid</th><th>Written off</th><th>Patient</th><th>Outcome</th></tr></thead>
+                <tbody>
+                    @foreach (var h in history)
+                    {
+                        var voided = F.B(h["IsVoided"]);
+                        <tr style="@(voided ? "opacity:.55" : "")">
+                            <td>@F.Date(h["PostedDate"])</td>
+                            <td class="dme-mono">@F.S(h["PaymentNumber"])</td>
+                            <td class="dme-mono">@F.S(h["Hcpcs"])</td>
+                            <td class="dme-mono">@F.Money(h["AllowedAmount"])</td>
+                            <td class="dme-mono">@F.Money(h["PaidAmount"])</td>
+                            <td class="dme-mono">@F.Money(h["ContractualAdjustment"])</td>
+                            <td class="dme-mono">@F.Money(h["PatientResponsibility"])</td>
+                            <td>
+                                @if (voided)
+                                {
+                                    @Html.Raw(F.StatusChip("voided"))
+                                }
+                                else if (F.B(h["IsDenied"]))
+                                {
+                                    <span class="dme-chip red">Denied @F.S(h["DenialCode"])</span>
+                                }
+                                else
+                                {
+                                    @Html.Raw(F.StatusChip("paid"))
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<script>
+    // The CARC list is rendered once and reused for every adjustment row, so a
+    // claim with ten lines does not ship ten copies of the code list.
+    const CARC_OPTIONS = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        carc.Select(c => new { code = F.S(c["Code"]), desc = F.S(c["Description"]) })));
+
+    const optionHtml = CARC_OPTIONS
+        .map(c => `<option value="${c.code}">${c.code} · ${c.desc}</option>`)
+        .join('');
+
+    // Adjustments post as a flat list with adjLine saying which claim line each
+    // one belongs to. That is the only shape a plain HTML form can express for
+    // a variable number of children per row, and the server re-groups them.
+    document.querySelectorAll('.js-add-adj').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const index = btn.dataset.line;
+            const host = document.querySelector(`.js-adj-rows[data-line="${index}"]`);
+            const row = document.createElement('div');
+            row.className = 'row g-2 align-items-end mb-2';
+            row.innerHTML = `
+                <input type="hidden" name="adjLine" value="${index}" />
+                <div class="col-auto" style="width:170px">
+                    <label class="form-label" style="font-size:11px">Group</label>
+                    <select name="adjGroup" class="form-select form-select-sm">
+                        <option value="CO">CO · contractual</option>
+                        <option value="PR">PR · patient</option>
+                        <option value="OA">OA · other</option>
+                        <option value="PI">PI · payer initiated</option>
+                    </select>
+                </div>
+                <div class="col">
+                    <label class="form-label" style="font-size:11px">Reason code</label>
+                    <select name="adjCode" class="form-select form-select-sm">${optionHtml}</select>
+                </div>
+                <div class="col-auto" style="width:130px">
+                    <label class="form-label" style="font-size:11px">Amount</label>
+                    <input type="number" step="0.01" name="adjAmount" class="form-control form-control-sm" value="0.00" />
+                </div>
+                <div class="col-auto">
+                    <button type="button" class="dme-btn dme-btn-light dme-btn-sm js-remove-adj"><i class="bi bi-x-lg"></i></button>
+                </div>`;
+            host.appendChild(row);
+        });
+    });
+
+    document.addEventListener('click', e => {
+        const remove = e.target.closest('.js-remove-adj');
+        if (remove) { remove.closest('.row').remove(); recalc(); }
+    });
+
+    // Running total against the amount received. This is a convenience only:
+    // the same rule is enforced in DmePaymentService, because a second client
+    // or a replayed form never runs this script.
+    function recalc() {
+        let applied = 0;
+        document.querySelectorAll('.js-paid').forEach(i => applied += parseFloat(i.value || '0'));
+        const received = parseFloat(document.getElementById('amount').value || '0');
+        document.getElementById('appliedTotal').textContent =
+            '$' + applied.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        document.getElementById('appliedWarn').style.display = applied > received + 0.001 ? 'inline' : 'none';
+    }
+    document.getElementById('payForm').addEventListener('input', recalc);
+
+    // A customer payment has no payer to name.
+    const source = document.getElementById('source');
+    source.addEventListener('change', () => {
+        document.getElementById('payerNameWrap').style.display = source.value === 'payer' ? '' : 'none';
+    });
+
+    recalc();
+</script>

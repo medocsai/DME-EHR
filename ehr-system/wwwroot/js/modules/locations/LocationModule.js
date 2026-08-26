@@ -104,32 +104,28 @@ class LocationModule {
             if (locations && locations.length > 0) {
                 this.availableLocations = locations;
 
-                // Update current location if it exists in the new list
-                if (this.currentLocation?.LocationId) {
-                    const updatedLocation = locations.find(l => l.LocationId === this.currentLocation.LocationId);
-                    if (updatedLocation) {
-                        // Update the name and other properties from fresh data
-                        this.currentLocation.Name = updatedLocation.Name;
-                        this.currentLocation.TimeZoneId = updatedLocation.TimeZoneId || this.currentLocation.TimeZoneId;
-                        this.currentLocation.TimeZoneAbbreviation = updatedLocation.TimeZoneAbbreviation || this.currentLocation.TimeZoneAbbreviation;
-                    } else {
-                        // Current location not found - use primary or first location
-                        const primary = locations.find(l => l.IsPrimary) || locations[0];
-                        this.currentLocation = {
-                            LocationId: primary.LocationId,
-                            Name: primary.Name,
-                            TimeZoneId: primary.TimeZoneId || 'America/Chicago',
-                            TimeZoneAbbreviation: primary.TimeZoneAbbreviation || 'CT'
-                        };
-                    }
+                // WHICH branch is active comes from the TOKEN, not from
+                // localStorage and not from a "pick the primary" default.
+                //
+                // The token is what the server actually filters by, so anything
+                // else here is a second source of truth for the same fact. It
+                // had already gone wrong: this block treated a falsy LocationId
+                // as "none set" and snapped to the primary branch, which meant
+                // the all-locations selection (id 0) was silently overwritten
+                // on the next refresh. The header then said "Main Office" while
+                // the server was returning every branch.
+                const claimed = this._activeLocationIdFromToken();
+
+                if (claimed === null) {
+                    this.currentLocation = { LocationId: 0, Name: 'All locations' };
                 } else {
-                    // No current location - set to primary or first
-                    const primary = locations.find(l => l.IsPrimary) || locations[0];
+                    const match = locations.find(l => l.LocationId === claimed);
+                    const chosen = match || locations.find(l => l.IsPrimary) || locations[0];
                     this.currentLocation = {
-                        LocationId: primary.LocationId,
-                        Name: primary.Name,
-                        TimeZoneId: primary.TimeZoneId || 'America/Chicago',
-                        TimeZoneAbbreviation: primary.TimeZoneAbbreviation || 'CT'
+                        LocationId: chosen.LocationId,
+                        Name: chosen.Name,
+                        TimeZoneId: chosen.TimeZoneId || 'America/Chicago',
+                        TimeZoneAbbreviation: chosen.TimeZoneAbbreviation || 'CT'
                     };
                 }
 
@@ -161,6 +157,39 @@ class LocationModule {
             };
         }
         return { timeZoneId: 'America/Chicago', abbreviation: 'CT' };
+    }
+
+    /**
+     * The branch the SERVER is currently scoping to, read from the auth token.
+     *
+     * Returns null when the token carries no LocationId claim, which is the
+     * all-locations selection. That is a real answer, not a missing one: the
+     * server reads the absent claim exactly the same way.
+     *
+     * @returns {number|null} location id, or null for all locations
+     * @private
+     */
+    _activeLocationIdFromToken() {
+        try {
+            const token = (window.App && window.App.auth && window.App.auth.getToken())
+                || localStorage.getItem('authToken');
+            if (!token) return null;
+
+            const payload = JSON.parse(atob(
+                token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+
+            const raw = payload.LocationId;
+            if (raw === undefined || raw === null || raw === '') return null;
+
+            const id = parseInt(raw, 10);
+            return Number.isNaN(id) || id === 0 ? null : id;
+        } catch (e) {
+            // An unreadable token is not a reason to invent a branch. All
+            // locations is the honest fallback: it shows everything the user is
+            // entitled to rather than silently hiding another branch's work.
+            console.warn('[LocationModule] Could not read the location claim:', e);
+            return null;
+        }
     }
 
     /**
@@ -197,7 +226,29 @@ class LocationModule {
                 return;
             }
 
-            listContainer.innerHTML = this.availableLocations.map(loc => `
+            // "All locations" is offered whenever there is more than one branch.
+            //
+            // It is not a permission: a user who can switch to each branch one
+            // at a time can already see everything, so withholding the combined
+            // view would be theatre. It is what the owner of a multi-branch
+            // supplier opens the product for.
+            const allLocations = this.availableLocations.length > 1 ? `
+                <div class="location-item ${!this.currentLocation?.LocationId ? 'active' : ''}"
+                     data-action="switch-location" data-location-id="0" data-location-name="All locations">
+                    <div class="location-item-icon">
+                        <i class="bi bi-diagram-3-fill"></i>
+                    </div>
+                    <div class="location-item-info">
+                        <div class="location-item-name">All locations</div>
+                        <span class="badge badge-primary-location">Whole business</span>
+                    </div>
+                    <div class="location-item-badge">
+                        <i class="bi bi-check-circle-fill check-icon"></i>
+                    </div>
+                </div>
+            ` : '';
+
+            listContainer.innerHTML = allLocations + this.availableLocations.map(loc => `
                 <div class="location-item ${this.currentLocation?.LocationId === loc.LocationId ? 'active' : ''}"
                      data-action="switch-location" data-location-id="${loc.LocationId}" data-location-name="${this._escape(loc.Name)}">
                     <div class="location-item-icon">
@@ -599,6 +650,15 @@ class LocationModule {
     _updateLocationDisplay() {
         const locationName = document.getElementById('currentLocationName');
         if (!locationName) return;
+
+        // "All locations" is a real selection, not a missing one, so it must not
+        // fall through to the branch-defaulting below. Without this the header
+        // would silently snap back to the primary branch while the server was
+        // still showing the whole business.
+        if (this.currentLocation && !this.currentLocation.LocationId) {
+            locationName.textContent = 'All locations';
+            return;
+        }
 
         if (this.currentLocation?.Name) {
             locationName.textContent = this.currentLocation.Name;

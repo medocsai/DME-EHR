@@ -11,7 +11,95 @@
                 @Model.Count items · HCPCS Level II · purchase / rental pricing
             </div>
         </div>
-        <span style="background:#eaf1fd;color:#1f4fb0;font-weight:700;font-size:12px;padding:5px 12px;border-radius:999px;">DME</span>
+        <div class="d-flex align-items-center gap-2">
+            <span style="background:#eaf1fd;color:#1f4fb0;font-weight:700;font-size:12px;padding:5px 12px;border-radius:999px;">DME</span>
+            <button type="button" class="dme-btn dme-btn-primary dme-btn-sm" id="addItemToggle">
+                <i class="bi bi-plus-lg"></i> Add item
+            </button>
+        </div>
+    </div>
+
+    @if (ViewBag.ItemError != null)
+    {
+        <div class="alert alert-danger" style="font-size:13px">@ViewBag.ItemError</div>
+    }
+    @if (ViewBag.ItemAdded != null)
+    {
+        <div class="alert alert-success" style="font-size:13px">@ViewBag.ItemAdded</div>
+    }
+
+    @* Add an item to THIS supplier's catalog by naming a code from the CMS
+       national list of 8,623. The catalog used to hold 22 items with no way to
+       add a 23rd, which is what the client reported. What is saved here is the
+       supplier's own fact: their name for the item, their price, their terms. *@
+    <div class="dme-card" id="addItemCard" style="display:none;">
+        <div class="dme-card-head"><h2>Add an item to your catalog</h2></div>
+        <div class="dme-card-body">
+            <form method="post" action="/Hcpcs/AddItem">
+                @Html.AntiForgeryToken()
+                <div class="row g-3">
+                    <div class="col-md-8">
+                        <label class="form-label">HCPCS code</label>
+                        <div class="dme-typeahead">
+                            <input type="text" id="hcpcsSearch" class="form-control" autocomplete="off"
+                                   placeholder="Search the national list by description or code…" />
+                            <input type="hidden" name="hcpcs" id="hcpcsCode" value="" />
+                            <div id="hcpcsResults" class="dme-typeahead-list" hidden></div>
+                        </div>
+                        <div id="hcpcsChosen" class="form-text" style="font-size:11px" hidden></div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Category</label>
+                        <input name="category" class="form-control" placeholder="e.g. Respiratory" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Your name for it</label>
+                        <input name="name" id="hcpcsName" class="form-control"
+                               placeholder="Defaults to the CMS short description" />
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Purchase price ($)</label>
+                        <input type="number" step="0.01" name="purchasePrice" class="form-control" value="0" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Monthly rate ($)</label>
+                        <input type="number" step="0.01" name="monthlyRate" class="form-control" value="0" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Rental cap (months)</label>
+                        <input type="number" name="cappedRentalMonths" class="form-control" value="0" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Reorder point</label>
+                        <input type="number" name="reorderPoint" class="form-control" value="0" />
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">Modifiers</label>
+                        <input name="modifiers" class="form-control" placeholder="e.g. RR, KX" />
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end gap-3 pb-2">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="purchasable" value="true" id="chkBuy" checked />
+                            <label class="form-check-label" for="chkBuy">Sold</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="rentable" value="true" id="chkRent" />
+                            <label class="form-check-label" for="chkRent">Rented</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="isSerialized" value="true" id="chkSer" />
+                            <label class="form-check-label" for="chkSer">Serialized</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                    <button type="button" class="dme-btn dme-btn-light" id="addItemCancel">Cancel</button>
+                    <button type="submit" class="dme-btn dme-btn-primary"><i class="bi bi-check-lg"></i> Add to catalog</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <div style="background:#fff;border:1px solid #e6e9ef;border-radius:14px;box-shadow:0 1px 2px rgba(20,30,50,.05),0 8px 24px rgba(20,30,50,.05);overflow:hidden;">
@@ -71,6 +159,39 @@
     </div>
 
     <div style="color:#9aa3af;font-size:12px;margin-top:10px;">
-        <i class="bi bi-info-circle"></i> Backed by the <code>HcpcsCodes</code> table in the DME database. Phase 1 adds payer fee schedules and ties items into orders &amp; inventory.
+        <i class="bi bi-info-circle"></i> Your catalog: what you stock, at your prices. Codes and their official
+        wording come from the CMS national HCPCS Level II list, refreshed quarterly.
     </div>
 </div>
+
+<script>
+    (function () {
+        var card = document.getElementById('addItemCard');
+        document.getElementById('addItemToggle').addEventListener('click', function () {
+            card.style.display = card.style.display === 'none' ? '' : 'none';
+            if (card.style.display === '') document.getElementById('hcpcsSearch').focus();
+        });
+        document.getElementById('addItemCancel').addEventListener('click', function () {
+            card.style.display = 'none';
+        });
+    })();
+
+    // The national list. Only the code is posted; the server checks it is real
+    // and still billable before anything is filed.
+    dmeTypeahead({
+        input: '#hcpcsSearch', hidden: '#hcpcsCode', results: '#hcpcsResults', chosen: '#hcpcsChosen',
+        url: '/Lookups/Hcpcs',
+        value: function (h) { return h.code; },
+        label: function (h) { return h.name; },
+        side:  function (h) { return h.code + (h.retired ? ' · retired' : (h.noPay ? ' · Medicare N/A' : '')); },
+        note:  function (h) {
+            // Pre-fill the item name with CMS's short description, which the
+            // supplier is then free to overwrite with what they call it.
+            var nameBox = document.getElementById('hcpcsName');
+            if (nameBox && !nameBox.value) nameBox.value = h.shortName;
+            return h.code + (h.retired ? ' — retired, cannot be billed'
+                                       : (h.noPay ? ' — Medicare does not pay for this' : ''));
+        },
+        empty: 'No HCPCS code matches that.'
+    });
+</script>

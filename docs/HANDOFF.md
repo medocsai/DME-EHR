@@ -1,12 +1,54 @@
 # MEDOCS DME — Handoff
 
-**Last updated:** 2026-08-25
-**Branch:** `foundation/security-and-ssot` (7 commits ahead of `DME-EHR`)
-**Status:** foundation complete and verified. No client feature work started.
+**Last updated:** 2026-08-26 (end of session)
+**Branch:** `foundation/security-and-ssot`
+**Working tree:** DIRTY. 49 files, nothing committed. That is deliberate: the PM
+does not commit, Hammas reviews first.
 
 Read this first. It is the current state of the product and the open decisions.
 `CLAUDE.md` holds the day-to-day operating detail (how to run, where things live,
-the traps). This document holds the story and the decisions.
+the traps). `docs/OPEN-THREADS.md` is the parking lot: every thread raised, open
+or closed. This document holds the story and the decisions.
+
+---
+
+## 0. Picking this up cold
+
+**The product is in a good state.** Everything asked for is built, tested and
+verified by execution. Nothing is half finished.
+
+```
+cd ehr-system && dotnet run --urls http://localhost:5077
+dotnet test ehr-system/EHR.Tests                       # 286 passing
+bash ehr-system/scripts/verify-dme-foundation.sh       # 142 checks, needs the app running
+```
+
+Logins on this machine:
+
+| Who | Email | Password |
+|---|---|---|
+| Clinic Admin | `admin@md.com` | `DemoPass@2026` |
+| Super Admin | `contact@medocs.ai` | `MedocsSuper@2026` |
+| Front Desk, one branch only | `lisa.henderson@demo.clinic` | `MedocsSuper@2026` |
+
+OTP in Development is always `123456`. The last two passwords were set locally
+this session; the deployed environment is untouched.
+
+**Client feedback arrived 2026-08-27.** Seven items, all captured in
+`docs/CLIENT-REQUESTS-2026-08-27.md`. **Five are closed**: paste into the
+customer form, and the three "list is not exhaustive" complaints, which became
+Office Ally's 4,017 payers, CMS's 74,719 ICD-10-CM codes and CMS's 8,623 HCPCS
+codes. A sixth was already built and only needs a deploy. **Two are open:** O2
+(proof-of-delivery attachments, parked by Hammas, approach written up) and I1
+(drop-shipping, which needs a conversation with the client before a spec). Read
+that file before starting anything on their feedback.
+
+**One thing to do before new work:** click through `/UserManagement` once. The
+Chrome extension went offline before the new branch-grant form could be exercised
+by hand. It is covered by tests and by HTTP checks, but nobody has looked at it.
+
+**Blocked on the client, not on us:** the Office Ally account. It is the only
+thing standing between here and a complete billing cycle.
 
 ---
 
@@ -29,19 +71,20 @@ them. The constraint is in `CLAUDE.md` and it is absolute.
 
 | | Before this work | Now |
 |---|---|---|
-| Database tables | 100 | **22** |
+| Database tables | 100 | **31** |
 | Controllers | 68 | **7** |
-| Services | 74 | **9** |
+| Services | 74 | **11** |
 | EF entities | 88 | **6** |
 | DTO types | 289 | **26** |
 | Enums | 48 | **3** |
-| Migration files | 46 | **6** |
-| Tests | 304 red-then-green | **111 passing** |
+| Migration files | 46 | **10** |
+| Tests | 304 red-then-green | **205 passing** |
 
-Roughly 175,000 lines removed. The product does the same thing it did before.
+Roughly 175,000 lines removed. The product does what it did before, plus the
+money-coming-back half of the billing cycle, which it never had.
 
-**Build:** clean. **Tests:** 111 passing, 0 failing, 0 skipped.
-**End to end:** `bash ehr-system/scripts/verify-dme-foundation.sh` → 39 checks,
+**Build:** clean. **Tests:** 205 passing, 0 failing, 0 skipped.
+**End to end:** `bash ehr-system/scripts/verify-dme-foundation.sh` → 113 checks,
 0 failures against a running app.
 
 ---
@@ -227,10 +270,17 @@ cd ehr-system && dotnet run --urls http://localhost:5077
 bash scripts/verify-dme-foundation.sh
 ```
 
-39 checks: anonymous access refused, cookie flags, authenticated pages, PHI
+113 checks: anonymous access refused, cookie flags, authenticated pages, PHI
 ciphertext at rest and readable in the app, blind-index search, tenant isolation
-both directions, derived values, audit trail. It restores the one claim it
-changes.
+both directions, derived values, audit trail, and the whole payment cycle. It
+restores the one claim it changes, and section 9 creates its own claim and
+payments and deletes them, so it is safe to re-run on any database.
+
+That last point cost a round trip. Section 9 originally asserted against the
+seeded demo claims, which meant its expected numbers depended on how much demo
+data happened to be in the database: it passed on a fresh copy and failed on a
+used one. A verification whose result depends on prior state is not a
+verification.
 
 Fresh database from the repo:
 
@@ -240,10 +290,16 @@ Fresh database from the repo:
 3. 2026-08-25_DME_Single_Source_Of_Truth.sql
 4. 2026-08-25_DME_Customer_PHI_Encryption.sql
 5. 2026-08-25_Drop_Clinical_Schema.sql   (only on a database forked from IMEHR)
+6. 2026-08-26_DME_Payments_And_Denials.sql
+7. 2026-08-26_DME_Supplier_And_Sftp.sql
+8. 2026-08-26_DME_Locations.sql
+9. 2026-08-26_DME_User_Locations.sql
 ```
 
-Then `POST /Dme/BackfillPhi` once as an admin. Verified end to end on a scratch
-database.
+Then `POST /Dme/BackfillPhi` once as an admin. The full chain was re-verified on a
+scratch database on 2026-08-26: 23 DME tables, 9 views, 21 covered by row level
+security, the demo remittance and denial computing correctly. Note sqlcmd on this
+machine rejects a forward-slash path after `-i`; use backslashes.
 
 New tenant: create it at `/Home/Tenants`, then run
 `Migrations/Manual/DME_Onboard_New_Tenant.sql` by hand. It is a script and not a
@@ -253,7 +309,7 @@ through the isolation. It was written as an endpoint first and thrown away.
 
 ---
 
-## 6. Open decisions — yours, not mine
+## 6. Open decisions: yours, not mine
 
 **1. Rotate the three committed secrets.** `appsettings.json` is tracked and
 holds the JWT signing key, the PHI encryption key and the SMTP password. They are
@@ -263,15 +319,37 @@ re-encrypting every encrypted row, rotating the JWT key logs everyone out. Env
 vars `Jwt__Key` and `Encryption__Key` already override without a code change.
 
 **2. Billing: how payments arrive.** ~~Open.~~ **Closed 2026-08-26.** All four
-questions decided. See `docs/BILLING-DECISIONS.md` and section 7 below.
+questions decided, and built. See `docs/BILLING-DECISIONS.md` and section 7.
 
 **3. CSP is `Content-Security-Policy-Report-Only`.** Switching it to enforcing
 needs a pass through the app watching for violations — browser work, not a code
 change.
 
+**4. Open the clearinghouse account.** Office Ally, or whichever the client
+prefers. Everything on our side is built: the supplier identity, the credential
+store, the settings screen. Two things wait on it, and only these two:
+
+- **Building and transmitting the 837 file.** The X12 generator is a real piece
+  of work and it cannot be verified without a live account to send test files to.
+  Roughly half of RehabDox's Office Ally folder is pure X12 with no table
+  dependency and lifts across nearly untouched; the assembler has to be rewritten
+  for DME either way.
+- **835/ERA ingestion**, so remittances post themselves instead of by hand. It
+  writes the same tables the manual posting screen already writes, so it is a
+  second writer and needs no schema change.
+
+Manual payment posting is not a placeholder for either. It stays, because a
+supplier takes paper checks and counter cash regardless.
+
+**5. The deployed Super Admin password.** Unknown, and untouched. Two passwords
+were set on the LOCAL database this session (`contact@medocs.ai` and one Front
+Desk account, both listed in section 0) so the product could actually be driven
+and verified as those roles. Nothing was done to any server. If you need Super
+Admin on the deployed environment, it needs its own reset there.
+
 ---
 
-## 7. The next piece of work: payments and denials
+## 7. The 2026-08-26 session, in full
 
 The client (Dr. Roland Okwen, rottamllc) asked for three numbers on the
 dashboard, monthly: **amount paid**, **amount denied**, **most frequent denial
@@ -361,10 +439,119 @@ source text for the client documentation.
 Standing rule from decision 2: **every money tile and money column carries a
 short definition on screen.**
 
-### Next, in order
+### Built on 2026-08-26, same day the decisions closed
 
-Schema spec, then mockups approved and saved in the repo, then migration, then
-build and verify by execution.
+Migration `2026-08-26_DME_Payments_And_Denials.sql`, service
+`Services/DmePaymentService.cs`, screens `/Dme/Payments` and
+`/Dme/PostPayment/{id}`, the three dashboard tiles, and the money columns on
+Billing. Operating detail is in `CLAUDE.md`.
+
+What it does:
+
+- A biller opens a claim from Billing, presses **Post payment**, and types the
+  remittance line by line: allowed, paid, and the CAS adjustments off the EOB.
+  Customer cash, copays and deductibles post through the same screen.
+- The dashboard shows amount paid, amount denied and the most frequent denial
+  code for a chosen month, each with its definition printed underneath it.
+- A mistake is **voided**, never edited. The views exclude voided rows, so the
+  reversal is one WHERE clause rather than reversal arithmetic, and the original
+  entry survives for the audit trail.
+
+Three things worth knowing before touching it:
+
+1. **`DmeClaims.Status` is now constrained to `ready` | `submitted`.** The
+   payment outcome (`paid`, `denied`, `part-denied`, `patient-due`, `partial`)
+   is computed in `vDmeClaims.PaymentStatus`. `CK_DmeClaims_Status` is what stops
+   somebody storing it again next month.
+2. **A partly denied claim settles to a zero balance.** It was reading as `paid`,
+   which would have meant the refused line was never appealed and the appeal
+   window quietly expired. `part-denied` is tested before `paid` in the view for
+   exactly that reason. This was caught by loading the page, not by a test.
+3. **The tiles count applied money, not receipts.** A check posted but not
+   allocated to lines makes the paid tile read low, so `/Dme/Payments` reports
+   `UnappliedAmount` and the dashboard footnotes it when it is non-zero.
+
+Still not done, and it is the one thing that cannot be: **837 submission needs a
+clearinghouse account.**
+
+### Supplier identity and clearinghouse credentials, same day
+
+Asked next: where do the SFTP details live, tenant or location, since RehabDox
+looks location based? Full reasoning in `docs/BILLING-DECISIONS.md`, decision 5.
+
+**Tenant scoped.** RehabDox is not actually location based: its
+`OfficeAllySftpAccounts` is tenant owned and `Locations` only points at it. DME
+has no location dimension at all, since not one DME table carries a `LocationId`,
+so there is nothing for a pointer to point at. Adding one would mean touching
+orders, claims, delivery, inventory and the isolation story, for a client with
+one supplier and no account to test against.
+
+Answering it turned up the bigger half. **The CMS-1500 billing provider was a
+hardcoded string in the Razor view**, so every claim this product had ever
+produced carried an NPI belonging to nobody, and there was nowhere to put the
+real one. A clearinghouse login is worthless while that is true. Built:
+
+- `DmeSupplierProfile` holds only `Ptan`, `TaxonomyCode` and `AcceptsAssignment`.
+  The other six billing-provider fields already lived on `Tenants`, so copying
+  them would have been six columns waiting to disagree. `vDmeBillingProvider`
+  joins them and computes `IsComplete`.
+- `DmeSftpAccounts`, both halves of the credential AES-GCM encrypted, exposed to
+  screens only through `vDmeSftpAccounts`, which does not carry the columns.
+  Test mode by default; taken out of service, never deleted.
+- `/Dme/Settings`, admin only, where all of it is entered.
+- CMS-1500 boxes 25, 27, 29, 30, 32 and 33 now read the supplier record, and
+  **box 17 / 17b, the ordering physician, was missing entirely** although it is
+  mandatory on DMEPOS. It is derived by join in `vDmeClaims`.
+- A claim cannot be marked submitted while the supplier has no name, NPI or tax
+  ID.
+
+Two traps worth knowing:
+
+1. **`dbo.Tenants` is not in the RLS policy.** It is the platform registry, so an
+   `UPDATE dbo.Tenants` without `WHERE TenantId=@TenantId` renames every tenant
+   on the server and nothing errors. A test enforces the clause.
+2. **There is deliberately no decrypt path and no connection test.** Nothing
+   transmits yet, and a decrypt method with no caller is an unguarded way to read
+   a password that exists only to look finished. Both arrive with the 837 sender.
+
+`/Dme/Submit` says **"Mark as submitted"**, because that is what it does.
+
+### Super admin, same session
+
+Role 0 belongs to no tenant, which is why the DME screens needed telling which
+supplier they were looking at.
+
+- **The clinic switcher now drives the server-rendered screens.** It writes a
+  `medocs_clinic` cookie that `TenantResolutionMiddleware` reads LAST. It used to
+  write only localStorage and raise a JS event, which the SPA sees and Razor
+  pages do not, so switching clinic did nothing to the DME product.
+- **The cookie grants nothing.** Every resolution step is guarded on the tenant
+  still being unknown, and step 1 fills it from the token, so the cookie is only
+  ever reached by an identity with no TenantId claim. Mutation tested.
+- **No clinic chosen is a redirect, not a 500.** `DmeTenantContextMiddleware`
+  sends them to `/Home/Tenants`, because `DmeDb` throws on a missing tenant and
+  is built by DI before any action runs.
+- **Creating a clinic now enforces the password policy.** `TenantService` was a
+  fifth place a staff password is set and had no check at all, while the form
+  advertised 8 against a policy of 12. Writing the test found three more fields
+  saying 8; all of them now read the number out of `PasswordPolicy`.
+
+### Branches, same session
+
+One supplier, many depots. **The tenant is the security boundary; the branch is a
+working filter inside it.** Full reasoning in `docs/OPEN-THREADS.md` threads 2
+and 2b, including the RehabDox data that settled it.
+
+- **`LocationId` is stored on exactly three tables** and a test enforces it:
+  `DmeCustomers`, plus `DmeStockMovements` and `DmeSerializedUnits` because stock
+  is physical. Everything else derives it by join.
+- **Location is never in row level security.** If it were, the owner's
+  all-branches roll-up would need a hole punched through tenant isolation.
+- **`dbo.UserLocations` restricts who sees which branch.** Roles 0 and 1 bypass
+  it; 2 and up are confined to their grants. **An empty grant set sees nothing**,
+  not everything, and a test scans for the fail-open shape.
+- The migration backfilled all 27 restricted users with every branch, so nobody
+  lost access on the day it ran.
 
 ### Other client asks, untouched
 

@@ -5,6 +5,9 @@
     var units = (List<Dictionary<string, object?>>)ViewBag.Units;
     int low = catalog.Count(x => F.I(x["OnHand"]) <= F.I(x["ReorderPoint"]));
     int rented = units.Count(u => F.S(u["Status"]) == "rented");
+    // StockHere is only computed when a single branch is being viewed; it is
+    // NULL for the all-locations roll-up, where "here" has no meaning.
+    bool showsBranchStock = ViewBag.CurrentLocationId != null;
 }
 
 <div class="dme-wrap">
@@ -21,25 +24,48 @@
         <div class="dme-card">
             <div class="dme-card-head"><h2>Serialized units</h2></div>
             <table class="dme-table">
-                <thead><tr><th>Item</th><th>Serial</th><th>Status</th><th>In service</th></tr></thead>
+                <thead><tr><th>Item</th><th>Serial</th><th>Location</th><th>Status</th><th>In service</th></tr></thead>
                 <tbody>
                     @foreach (var u in units)
                     {
                         <tr>
                             <td>@F.S(u["ItemName"]) <span class="dme-muted dme-mono">@F.S(u["Hcpcs"])</span></td>
                             <td class="dme-mono">@F.S(u["SerialNumber"])</td>
+                            @* A serialised unit carries its own location: it sits at a depot,
+                               and the ones still in stock belong to no customer at all. *@
+                            <td class="dme-muted">@F.S(u["LocationName"])</td>
                             <td>@Html.Raw(F.StatusChip(u["Status"]))</td>
                             <td class="dme-muted">@F.Date(u["InServiceDate"])</td>
                         </tr>
                     }
-                    @if (units.Count == 0) { <tr><td colspan="4" class="dme-empty">No serialized units.</td></tr> }
+                    @if (units.Count == 0) { <tr><td colspan="5" class="dme-empty">No serialized units.</td></tr> }
                 </tbody>
             </table>
         </div>
         <div class="dme-card">
-            <div class="dme-card-head"><h2>Stock levels</h2></div>
+            <div class="dme-card-head">
+                <div>
+                    <h2>Stock levels</h2>
+                    @*
+                        Two different questions, so two columns. "Company" is what the
+                        business owns across every branch; "here" is what this depot can
+                        physically hand over today. A single number would answer neither
+                        when a wheelchair is 200 miles away.
+                    *@
+                    <div class="dme-sub" style="margin-top:2px">
+                        @(showsBranchStock
+                            ? "Company holds, and what this location physically holds."
+                            : "Across every location. Switch to a location to see what each one holds.")
+                    </div>
+                </div>
+            </div>
             <table class="dme-table">
-                <thead><tr><th>HCPCS</th><th>Item</th><th>On hand</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th>HCPCS</th><th>Item</th><th>Company</th>
+                        @if (showsBranchStock) { <th>Here</th> }
+                    </tr>
+                </thead>
                 <tbody>
                     @foreach (var x in catalog)
                     {
@@ -48,6 +74,11 @@
                             <td class="dme-mono">@F.S(x["Hcpcs"])</td>
                             <td>@F.S(x["Name"])</td>
                             <td class="dme-mono">@F.I(x["OnHand"]) @if (l) { <span class="dme-chip amber">reorder</span> }</td>
+                            @if (showsBranchStock)
+                            {
+                                var here = F.I(x["StockHere"]);
+                                <td class="dme-mono @(here <= 0 ? "dme-muted" : "")">@here</td>
+                            }
                         </tr>
                     }
                 </tbody>

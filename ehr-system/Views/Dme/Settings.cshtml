@@ -1,0 +1,239 @@
+@using EHR.Helpers
+@{
+    ViewData["ActivePage"] = "settings";
+    var prov = (Dictionary<string, object?>?)ViewBag.Provider;
+    var accounts = (List<Dictionary<string, object?>>)ViewBag.SftpAccounts;
+    bool isSuperAdmin = (bool)ViewBag.IsSuperAdmin;
+    bool complete = prov != null && F.B(prov["IsComplete"]);
+    string P(string col) => prov == null ? "" : F.S(prov[col]);
+}
+
+<div class="dme-wrap">
+    <div class="dme-head">
+        <div><h1>Settings</h1><div class="dme-sub">Who you bill as, and how claims reach the clearinghouse</div></div>
+    </div>
+
+    @if (TempData["SettingsResult"] != null)
+    {
+        <div class="dme-banner" style="background:#e1f5ee;color:#0f6e56"><i class="bi bi-check-circle"></i> @TempData["SettingsResult"]</div>
+    }
+    @if (TempData["SettingsError"] != null)
+    {
+        <div class="dme-banner" style="background:#fdecea;color:#8a1c13"><i class="bi bi-exclamation-triangle"></i> @TempData["SettingsError"]</div>
+    }
+
+    @if (!complete)
+    {
+        <div class="dme-banner" style="background:#faeeda;color:#854f0b">
+            <i class="bi bi-exclamation-triangle"></i>
+            Claims cannot be submitted yet. The billing name, NPI and federal tax ID are what identify
+            you to a payer, and all three are required before a claim can be filed.
+        </div>
+    }
+
+    <div class="dme-card">
+        <div class="dme-card-head">
+            <div>
+                <h2>Supplier identity</h2>
+                <div class="dme-sub" style="margin-top:2px">
+                    This is CMS-1500 boxes 25, 27 and 33. It appears on every claim you file, and on
+                    every claim already filed: the form reads these fields rather than keeping a copy,
+                    so correcting a detail here corrects every claim form at once.
+                </div>
+            </div>
+        </div>
+        <div class="dme-card-body">
+            <form method="post" action="/Dme/SaveSupplier">
+                @Html.AntiForgeryToken()
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Billing name <span style="color:#d6453f">*</span></label>
+                        <input type="text" name="billingName" class="form-control" required value="@P("BillingName")" />
+                        <div class="form-text" style="font-size:11px">Box 33. The legal name your NPI is registered under.</div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">NPI <span style="color:#d6453f">*</span></label>
+                        <input type="text" name="npi" class="form-control dme-mono" maxlength="10" value="@P("Npi")" />
+                        <div class="form-text" style="font-size:11px">Box 33a. Ten digits.</div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Federal tax ID <span style="color:#d6453f">*</span></label>
+                        <input type="text" name="taxId" class="form-control dme-mono" value="@P("TaxId")" />
+                        <div class="form-text" style="font-size:11px">Box 25. EIN or SSN.</div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">PTAN / supplier number</label>
+                        <input type="text" name="ptan" class="form-control dme-mono" value="@P("Ptan")" />
+                        <div class="form-text" style="font-size:11px">Issued by Medicare when your DMEPOS location was enrolled.</div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Taxonomy code</label>
+                        <input type="text" name="taxonomyCode" class="form-control dme-mono" value="@P("TaxonomyCode")" />
+                        <div class="form-text" style="font-size:11px">Box 33b. DME suppliers are usually 332B00000X.</div>
+                    </div>
+                    <div class="col-md-6 d-flex align-items-center">
+                        <div class="form-check" style="margin-top:22px">
+                            <input class="form-check-input" type="checkbox" name="acceptsAssignment" value="true" id="assign"
+                                   checked="@(prov != null && F.B(prov["AcceptsAssignment"]))" />
+                            <label class="form-check-label" for="assign">
+                                Accepts assignment (box 27)
+                                <div class="dme-muted" style="font-size:11px">You bill the payer directly and accept their allowed amount.</div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">Address</label>
+                        <input type="text" name="address" class="form-control" value="@P("Address")" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">City</label>
+                        <input type="text" name="city" class="form-control" value="@P("City")" />
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label">State</label>
+                        <input type="text" name="state" class="form-control" maxlength="2" value="@P("State")" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">ZIP</label>
+                        <input type="text" name="zipCode" class="form-control" value="@P("ZipCode")" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Phone</label>
+                        <input type="text" name="phone" class="form-control" value="@P("Phone")" />
+                    </div>
+                </div>
+                <div class="d-flex justify-content-end" style="margin-top:14px">
+                    <button type="submit" class="dme-btn dme-btn-primary"><i class="bi bi-check-lg"></i> Save supplier details</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+@*
+    The clearinghouse section is super admin only. The credential is issued
+    during an onboarding Medocs runs, and it is the key to filing claims as this
+    supplier, so a clinic admin has no occasion to touch it. The section is not
+    merely hidden: the controller does not load the accounts either.
+*@
+@if (!isSuperAdmin)
+{
+    <div class="dme-card">
+        <div class="dme-card-head"><h2>Clearinghouse connection</h2></div>
+        <div class="dme-card-body">
+            <div class="dme-muted" style="font-size:13px">
+                <i class="bi bi-lock"></i>
+                Your clearinghouse connection is set up and maintained by Medocs. Contact support
+                if you have opened a new clearinghouse account or your credentials have changed.
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="dme-card">
+        <div class="dme-card-head">
+            <div>
+                <h2>Clearinghouse connection <span class="dme-chip blue">Medocs only</span></h2>
+                <div class="dme-sub" style="margin-top:2px">
+                    The SFTP login the clearinghouse issues. It belongs to the supplier above, not to
+                    a user, so one account covers everyone who bills here.
+                </div>
+            </div>
+        </div>
+        <div class="dme-card-body">
+            <div class="dme-banner" style="background:#eef1f5;color:#5b6776">
+                <i class="bi bi-info-circle"></i>
+                <span>
+                    Storing these does not yet send anything. Building and transmitting the 837 file is
+                    separate work that needs a live account to test against. Entering the details now
+                    means nothing is waiting on you when the account arrives.
+                </span>
+            </div>
+
+            <table class="dme-table" style="margin-bottom:14px">
+                <thead><tr><th>Account</th><th>Host</th><th>Port</th><th>Credentials</th><th>Mode</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var a in accounts)
+                    {
+                        <tr style="@(F.B(a["IsActive"]) ? "" : "opacity:.55")">
+                            <td><strong>@F.S(a["Label"])</strong></td>
+                            <td class="dme-mono">@F.S(a["Host"])</td>
+                            <td class="dme-mono">@F.I(a["Port"])</td>
+                            @* Never the values, only whether they exist. The list reads a view that
+                               does not expose the encrypted columns at all. *@
+                            <td>@(F.B(a["HasCredentials"]) ? Html.Raw("<span class=\"dme-chip green\">Stored</span>") : Html.Raw("<span class=\"dme-chip red\">Missing</span>"))</td>
+                            <td>@(F.B(a["IsTestMode"]) ? Html.Raw("<span class=\"dme-chip amber\">Test</span>") : Html.Raw("<span class=\"dme-chip blue\">Live</span>"))</td>
+                            <td>@(F.B(a["IsActive"]) ? Html.Raw("<span class=\"dme-chip green\">In service</span>") : Html.Raw("<span class=\"dme-chip gray\">Out of service</span>"))</td>
+                            <td style="text-align:right;white-space:nowrap">
+                                <form method="post" action="/Dme/SetSftpActive" style="display:inline">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@F.I(a["SftpAccountId"])" />
+                                    <input type="hidden" name="isActive" value="@(F.B(a["IsActive"]) ? "false" : "true")" />
+                                    <button class="dme-btn dme-btn-light dme-btn-sm" type="submit">
+                                        @(F.B(a["IsActive"]) ? "Take out of service" : "Put in service")
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                    @if (accounts.Count == 0)
+                    {
+                        <tr><td colspan="7" class="dme-empty">No clearinghouse account yet.</td></tr>
+                    }
+                </tbody>
+            </table>
+
+            <form method="post" action="/Dme/SaveSftpAccount">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="sftpAccountId" value="0" />
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Account name <span style="color:#d6453f">*</span></label>
+                        <input type="text" name="label" class="form-control" placeholder="Office Ally" required />
+                        <div class="form-text" style="font-size:11px">Your own label. The username is encrypted and cannot be shown back.</div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">SFTP host <span style="color:#d6453f">*</span></label>
+                        <input type="text" name="host" class="form-control dme-mono" placeholder="ftp10.officeally.com" required />
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label">Port</label>
+                        <input type="number" name="port" class="form-control dme-mono" value="22" required />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Username <span style="color:#d6453f">*</span></label>
+                        <input type="text" name="username" class="form-control" autocomplete="off" required />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Password <span style="color:#d6453f">*</span></label>
+                        <input type="password" name="password" class="form-control" autocomplete="new-password" required />
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center" style="margin-top:14px">
+                    <div class="d-flex gap-4">
+                        <div class="form-check">
+                            @* Checked by default, and that is the safety property. Test versus live
+                               belongs to the account rather than to the deployment, so a newly entered
+                               account cannot transmit a real claim by accident. *@
+                            <input class="form-check-input" type="checkbox" name="isTestMode" value="true" id="test" checked />
+                            <label class="form-check-label" for="test">Test mode</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="isActive" value="true" id="active" checked />
+                            <label class="form-check-label" for="active">In service</label>
+                        </div>
+                    </div>
+                    <button type="submit" class="dme-btn dme-btn-primary"><i class="bi bi-plus-lg"></i> Add account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="dme-muted" style="font-size:11.5px">
+        Usernames and passwords are encrypted before they are stored and are never shown again,
+        never returned to the browser and never written to a log. To change one, add the account again.
+    </div>
+}
+</div>

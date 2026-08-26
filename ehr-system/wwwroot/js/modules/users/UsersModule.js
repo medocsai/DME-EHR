@@ -94,6 +94,14 @@ class UsersModule {
             providerSelect.addEventListener('change', this._handleProviderSelectChange);
         }
 
+        // Role change shows or hides the branch checklist, because Clinic Admin
+        // is not scoped by it and a required field they cannot see would block
+        // the form with no explanation.
+        const roleSelect = document.getElementById('userRoleSelect');
+        if (roleSelect) {
+            roleSelect.addEventListener('change', () => this._toggleLocationBlock());
+        }
+
         // Table action buttons via event delegation
         if (this.tableBody) {
             this.tableBody.addEventListener('click', this._handleTableClick);
@@ -179,10 +187,21 @@ class UsersModule {
                 queryParam = '?activeOnly=';
             }
 
-            // Load users and providers in parallel
+            // Load users and providers in parallel.
+            //
+            // The provider fetch is allowed to FAIL. /api/providers is a
+            // clinical endpoint that no longer exists in DME: it went with the
+            // rest of the clinical schema on 2026-08-25, and this call was left
+            // behind. Inside a Promise.all its 404 rejected the whole thing, so
+            // load() threw, init() never completed and the User Management
+            // screen sat on its loading overlay forever.
+            //
+            // An empty provider list is the correct answer for a DME install
+            // anyway. Removing the provider UI properly is a separate cleanup;
+            // see docs/OPEN-THREADS.md.
             const [users, providers] = await Promise.all([
                 this._apiGet(`/users${queryParam}`),
-                this._apiGet('/providers?activeOnly=false')
+                this._apiGet('/providers?activeOnly=false').catch(() => [])
             ]);
 
             this.users = users || [];
@@ -240,7 +259,7 @@ class UsersModule {
         if (!this.users.length) {
             this.tableBody.innerHTML = `
                 <tr>
-                    <td colspan="7" class="text-center text-muted py-4">No users found</td>
+                    <td colspan="8" class="text-center text-muted py-4">No users found</td>
                 </tr>
             `;
             return;
@@ -292,7 +311,15 @@ class UsersModule {
                 <td>${escapedEmail}</td>
                 <td><span class="badge bg-secondary">${this.roleNames[user.Role] || 'User'}</span></td>
                 <td>${providerDisplay}</td>
-                <td>${this._escape(user.TenantName || '-')}</td>
+                <td>${this._escape(user.TenantName || "-")}</td>
+                <!-- Which branches this person can work in. Clinic Admin and Super
+                     Admin are not scoped, so they show "All" rather than a list
+                     of every branch, which would say the same thing at length. -->
+                <td>${user.Role < 2
+                    ? '<span class="badge bg-light text-dark">All</span>'
+                    : (user.Locations && user.Locations.length
+                        ? user.Locations.map(l => `<span class="badge bg-light text-dark me-1">${this._escape(l.Name)}</span>`).join("")
+                        : '<span class="badge bg-danger">None</span>')}</td>
                 <td>
                     <span class="badge ${user.IsActive ? 'bg-success' : 'bg-secondary'}">
                         ${user.IsActive ? 'Active' : 'Inactive'}
@@ -310,7 +337,7 @@ class UsersModule {
     async openAddModal() {
         try {
             // Load fresh providers
-            this.providers = await this._apiGet('/providers?activeOnly=true') || [];
+            this.providers = await this._apiGet('/providers?activeOnly=true').catch(() => []) || [];
 
             if (!this.userForm) return;
 
@@ -327,12 +354,64 @@ class UsersModule {
 
             document.querySelector('#userModal .modal-title').textContent = 'Add New User';
 
+            await this._populateLocationChecklist([]);
+
             const modal = new bootstrap.Modal(this.userModal);
             modal.show();
         } catch (error) {
             console.error('[UsersModule] Failed to open add modal:', error);
             this._showError('Failed to load providers');
         }
+    }
+
+    /**
+     * Fill the branch checklist and tick the ones this user already has.
+     *
+     * A restricted user with no branch sees no customers, orders or claims at
+     * all, so this is not an optional extra on the form: it is the difference
+     * between an account that works and one that silently shows nothing.
+     *
+     * Hidden for Clinic Admin, who is not scoped.
+     *
+     * @param {number[]} selectedIds branches already granted
+     * @private
+     */
+    async _populateLocationChecklist(selectedIds) {
+        const list = document.getElementById('userLocationsList');
+        if (!list) return;
+
+        try {
+            const locations = await this._apiGet('/locations/dropdown') || [];
+
+            list.innerHTML = locations.length === 0
+                ? '<div class="text-muted small">No locations yet. Add one under Locations first.</div>'
+                : locations.map(l => `
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="${l.LocationId}"
+                               id="userLoc${l.LocationId}" ${selectedIds.includes(l.LocationId) ? 'checked' : ''}>
+                        <label class="form-check-label" for="userLoc${l.LocationId}">
+                            ${this._escape(l.Name)}${l.IsPrimary ? ' <span class="badge bg-light text-dark">primary</span>' : ''}
+                        </label>
+                    </div>`).join('');
+        } catch (e) {
+            console.error('[UsersModule] Could not load locations:', e);
+            list.innerHTML = '<div class="text-danger small">Could not load locations.</div>';
+        }
+
+        this._toggleLocationBlock();
+    }
+
+    /**
+     * Show the branch checklist only for roles that are actually scoped by it.
+     * @private
+     */
+    _toggleLocationBlock() {
+        const block = document.getElementById('userLocationsBlock');
+        const roleSelect = document.getElementById('userRoleSelect');
+        if (!block || !roleSelect) return;
+
+        const role = parseInt(roleSelect.value, 10);
+        block.style.display = role >= 2 ? 'block' : 'none';
     }
 
     /**
@@ -344,7 +423,7 @@ class UsersModule {
         try {
             const [user, providers] = await Promise.all([
                 this._apiGet(`/users/${userId}`),
-                this._apiGet('/providers?activeOnly=false')
+                this._apiGet('/providers?activeOnly=false').catch(() => [])
             ]);
 
             if (!user) return;
@@ -371,7 +450,9 @@ class UsersModule {
             document.querySelectorAll('.new-user-password').forEach(el => el.style.display = 'none');
             document.querySelector('#userForm [name="Password"]')?.removeAttribute('required');
 
-            document.querySelector('#userModal .modal-title').textContent = 'Edit User';
+            await this._populateLocationChecklist((user.Locations || []).map(l => l.LocationId));
+
+            document.querySelector("#userModal .modal-title").textContent = "Edit User";
 
             // Close provider modal if open
             bootstrap.Modal.getInstance(document.getElementById('providerModal'))?.hide();
@@ -417,11 +498,29 @@ class UsersModule {
         const providerId = formData.get('ProviderId');
         data.ProviderId = providerId ? parseInt(providerId) : null;
 
+        // Which branches this user may work in.
+        //
+        // Only sent for restricted roles. A Clinic Admin is not scoped, and
+        // posting an empty list for them would be refused by the server for a
+        // rule that does not apply to them.
+        //
+        // 12 to match Helpers/PasswordPolicy.cs. It said 8 here while the server
+        // enforced 12, so the form accepted a password the API then rejected.
+        if (data.Role >= 2) {
+            data.LocationIds = [...document.querySelectorAll('#userLocationsList input[type=checkbox]:checked')]
+                .map(cb => parseInt(cb.value, 10));
+
+            if (data.LocationIds.length === 0) {
+                this._showError('Select at least one location. A user with none sees no customers, orders or claims.');
+                return;
+            }
+        }
+
         // Add password for new users
         if (!isEdit) {
             const password = formData.get('Password');
-            if (!password || password.length < 8) {
-                this._showError('Password must be at least 8 characters');
+            if (!password || password.length < 12) {
+                this._showError('Password must be at least 12 characters');
                 return;
             }
             data.Password = password;
@@ -818,12 +917,39 @@ document.addEventListener('DOMContentLoaded', function() {
     const container = document.getElementById('usersPage');
     if (!container) return;
 
+    // Wait for the SPA to finish authenticating, but NOT forever.
+    //
+    // This used to be an unbounded 200ms poll. When the auth state never
+    // resolved it span for the life of the tab: the page never reached idle, the
+    // browser reported it as permanently busy, and the user saw a screen that
+    // was loading and always would be. A retry with no end is not a retry, it is
+    // a hang with a timer.
+    //
+    // Ten seconds is far longer than a local sign in takes and short enough that
+    // a person is still looking at the screen when it gives up. Giving up says
+    // so, in the table, instead of leaving them to guess.
+    const MAX_WAIT_MS = 10000;
+    const POLL_MS = 200;
+    let waited = 0;
+
     const initWhenReady = () => {
         const isAuthenticated = (typeof currentUser !== 'undefined' && currentUser) ||
                                (window.App && window.App.isAuthenticated && window.App.isAuthenticated());
 
         if (!isAuthenticated) {
-            setTimeout(initWhenReady, 200);
+            if (waited >= MAX_WAIT_MS) {
+                console.error('[UsersModule] Gave up waiting for authentication after ' + MAX_WAIT_MS + 'ms');
+                const body = document.querySelector('#usersTable tbody');
+                if (body) {
+                    body.innerHTML =
+                        '<tr><td colspan="8" class="text-center text-muted py-4">' +
+                        'Could not confirm your sign in. Reload the page, and sign in again if that does not help.' +
+                        '</td></tr>';
+                }
+                return;
+            }
+            waited += POLL_MS;
+            setTimeout(initWhenReady, POLL_MS);
             return;
         }
 

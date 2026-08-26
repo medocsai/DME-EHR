@@ -35,7 +35,7 @@ public class DmePhiRenderingTests
     /// a view that exposes the encrypted parts.
     /// </summary>
     private static readonly Regex ReadsCustomerNames = new(
-        @"FROM\s+dbo\.DmeCustomers|CustomerFirstName|FROM\s+dbo\.vDmeOrders|FROM\s+dbo\.vDmeRentals|FROM\s+dbo\.vDmeClaims",
+        @"FROM\s+dbo\.DmeCustomers|CustomerFirstName|FROM\s+dbo\.vDmeOrders|FROM\s+dbo\.vDmeRentals|FROM\s+dbo\.vDmeClaims|FROM\s+dbo\.vDmePayments",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>Any call into the PHI gateway counts as handling it.</summary>

@@ -41,7 +41,7 @@ public class DmeDbTenantScopeTests
     [Fact]
     public void Construction_WithoutTenant_Throws()
     {
-        var act = () => new DmeDb(Config(), new FakeTenantProvider { TenantId = null });
+        var act = () => new DmeDb(Config(), new FakeTenantProvider { TenantId = null }, new LocationProvider());
 
         act.Should().Throw<InvalidOperationException>(
                 "an unknown tenant must fail loudly; the RLS policy would otherwise fall through " +
@@ -52,7 +52,7 @@ public class DmeDbTenantScopeTests
     [Fact]
     public void Construction_WithTenant_BindsToThatTenant()
     {
-        var db = new DmeDb(Config(), new FakeTenantProvider { TenantId = 7 });
+        var db = new DmeDb(Config(), new FakeTenantProvider { TenantId = 7 }, new LocationProvider());
 
         db.TenantId.Should().Be(7, "queries must run scoped to the caller's tenant, not a default");
     }
@@ -66,7 +66,7 @@ public class DmeDbTenantScopeTests
     [Fact]
     public void Construction_DoesNotSubstituteADefaultTenant()
     {
-        var db = new DmeDb(Config(), new FakeTenantProvider { TenantId = 0 });
+        var db = new DmeDb(Config(), new FakeTenantProvider { TenantId = 0 }, new LocationProvider());
 
         db.TenantId.Should().Be(0,
             "the tenant must be taken verbatim from the token; silently substituting a default " +
@@ -76,7 +76,7 @@ public class DmeDbTenantScopeTests
     [Fact]
     public void Construction_WithoutConnectionString_Throws()
     {
-        var act = () => new DmeDb(Config(connectionString: null), new FakeTenantProvider { TenantId = 1 });
+        var act = () => new DmeDb(Config(connectionString: null), new FakeTenantProvider { TenantId = 1 }, new LocationProvider());
 
         act.Should().Throw<InvalidOperationException>(
             "a missing connection string must fail at construction rather than at the first query");

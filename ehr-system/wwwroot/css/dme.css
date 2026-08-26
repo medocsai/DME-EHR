@@ -62,6 +62,27 @@ table.dme-table tbody tr.clickable:hover { background:#f7f9fc; }
 .cms1500 .cms-cell:last-child { border-right:none; }
 .cms1500 .cms-lbl { font-size:8.5px; color:#666; text-transform:uppercase; letter-spacing:.3px; }
 
+/* Typeahead — the payer picker on the customer form. The list is absolutely
+   positioned so opening it does not push the rest of the card down the page. */
+.dme-typeahead { position:relative; }
+/* .dme-card clips its children (overflow:hidden, for the rounded corners), and
+   the next card paints over anything that escapes. A short card, like the
+   diagnosis one, therefore swallowed its own results list. The class is added
+   by Typeahead.js only while a list is open, so the corners stay clipped the
+   rest of the time. */
+.dme-card.dme-typeahead-open { overflow:visible; position:relative; z-index:50; }
+.dme-typeahead-list { position:absolute; z-index:30; left:0; right:0; top:calc(100% + 4px);
+    max-height:260px; overflow-y:auto; background:#fff; border:1px solid var(--line);
+    border-radius:10px; box-shadow:0 8px 24px rgba(16,24,40,.12); }
+.dme-typeahead-item { display:flex; justify-content:space-between; align-items:center; gap:12px;
+    width:100%; text-align:left; padding:8px 12px; background:none; border:0;
+    border-bottom:1px solid var(--line); font-size:13px; color:var(--ink); }
+.dme-typeahead-item:last-child { border-bottom:0; }
+.dme-typeahead-item:hover, .dme-typeahead-item:focus { background:#f2f6ff; }
+.dme-typeahead-code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px;
+    color:var(--ink-soft); white-space:nowrap; }
+.dme-typeahead-empty { padding:10px 12px; font-size:12.5px; color:var(--ink-soft); }
+
 /* Hide clinical leftovers that aren't part of the DME product */
 #patientMessagesBtn { display: none !important; }
 
