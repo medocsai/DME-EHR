@@ -43,11 +43,9 @@ branch is published:
 
 1. Run migrations **10 to 14** on the server database (see `CLAUDE.md`).
 2. Publish and recycle the app process.
-3. **Optional, and the only thing outstanding:** create a Google Cloud Storage
-   bucket for DME and set `GoogleCloudStorage:BucketName` plus a service account
-   key. Until then, attached delivery documents are stored on the app server's
-   own disk, which works but does not survive a second app instance behind a
-   load balancer. Hammas creates the bucket; there is no CLI access here.
+3. Copy the GCS service account key to the server and set the three
+   `GoogleCloudStorage__*` values. The bucket now EXISTS and the cloud path has
+   been proved from this machine: see the section at the end of this document.
 
 **One thing to do before new work:** click through `/UserManagement` once. The
 Chrome extension went offline before the new branch-grant form could be exercised
@@ -579,3 +577,46 @@ one decision at a time and close it before the next.
 Every file in this codebase carries a header saying what it is, why it exists,
 who calls it and what the tradeoff was. Keep that up. If something stops being
 used, delete it.
+
+---
+
+## Google Cloud Storage: created and proved, 2026-08-28
+
+The bucket exists and the cloud path has been exercised end to end from this
+machine, so the first real upload did not happen in front of the client.
+
+| | |
+|---|---|
+| Bucket | `dme-attachment-files`, US multi-region, uniform access, public access **enforced off** |
+| Project | `composed-anvil-482219-f1` ("My First Project", the RehabDox project) |
+| Service account | `dme-790@composed-anvil-482219-f1.iam.gserviceaccount.com` |
+| Role | Storage Object Admin, granted **on the bucket only**, not the project |
+| Key | downloaded by Hammas; installed locally at `ehr-system/App_Data/Credentials/gcs-service-account.json`, which is gitignored |
+
+**Proved on 2026-08-28, against the real bucket:** upload, byte-identical
+download back through `/Dme/DownloadPod`, and delete. A 69 byte PDF stored as 97
+bytes, which is the AES-GCM ciphertext (69 + 12 nonce + 16 tag), so what sits in
+Google is encrypted and not the document. Anonymous download still 401s.
+
+**`appsettings.json` is deliberately left BLANK** so a developer's machine keeps
+writing to local disk and never touches the production bucket. Set these on the
+SERVER only, as environment variables or `appsettings.Production.json`:
+
+```
+GoogleCloudStorage__BucketName=dme-attachment-files
+GoogleCloudStorage__ProjectId=composed-anvil-482219-f1
+GoogleCloudStorage__CredentialsPath=App_Data/Credentials/gcs-service-account.json
+```
+
+Copy the key file to the server by hand. It must never be committed.
+
+**Two things NOT done, both Hammas's call:**
+
+1. **Sign Google's BAA** on that project before real patient documents go in.
+   HIPAA requires it. It is a console click, but it is not automatic.
+2. **The project is shared with RehabDox.** `rehabdox-cloud-storage@` holds
+   Storage Object Admin at PROJECT level, so it can already read and write this
+   bucket, as can any project Editor or Owner. DME is standalone in its code and
+   its database, but not in its Google project. Genuinely separating them means a
+   separate GCP project under the same billing account. Revoking the existing
+   project-level roles would break RehabDox, so it was not touched.

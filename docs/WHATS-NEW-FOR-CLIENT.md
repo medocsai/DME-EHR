@@ -103,12 +103,4 @@ month reads exactly as it did when you sent it, even if a code is reworded later
 
 ---
 
-## One thing still open
-
-Delivery documents are currently stored on the application server itself. That
-works and is fully in use. Moving them to dedicated cloud storage is a
-configuration step on our side, with no change to how the screens behave.
-
----
-
 Anything that does not look right, tell us and we will take a look.
