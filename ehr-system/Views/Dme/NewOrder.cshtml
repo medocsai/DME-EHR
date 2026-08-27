@@ -1,6 +1,8 @@
 @using EHR.Helpers
+@using EHR.Services
 @{
     ViewData["ActivePage"] = "orders";
+    var distributors = (IReadOnlyList<Distributor>)ViewBag.Distributors;
     var customers = (List<Dictionary<string, object?>>)ViewBag.Customers;
     var doctors = (List<Dictionary<string, object?>>)ViewBag.Doctors;
     var catalog = (List<Dictionary<string, object?>>)ViewBag.Catalog;
@@ -72,6 +74,25 @@
                         <div class="col-5"><label class="form-label">Mode</label><select id="modeSel" class="form-select"></select></div>
                         <div class="col-3"><label class="form-label">Qty</label><input type="number" id="qtyIn" class="form-control" value="1" min="1" /></div>
                         <div class="col-4"><button type="button" id="addBtn" class="dme-btn dme-btn-light w-100">Add item</button></div>
+
+                        @* Drop shipping. Blank means it comes out of our own stock,
+                           which is what leaving this alone should mean, so it is not
+                           a checkbox to tick: naming a distributor IS the fact. A
+                           drop-shipped line writes no stock movement. *@
+                        <div class="col-7">
+                            <label class="form-label">Ships direct from <span class="dme-muted" style="font-size:11px">(leave blank if it comes out of your own stock)</span></label>
+                            <select id="distSel" class="form-select">
+                                <option value="0">From our stock</option>
+                                @foreach (var d in distributors)
+                                {
+                                    <option value="@d.DistributorId">@d.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-5">
+                            <label class="form-label">Their order / tracking ref</label>
+                            <input type="text" id="distRefIn" class="form-control" placeholder="e.g. INV-88213" />
+                        </div>
                     </div>
                     <table class="dme-table" id="lineTable"><tbody></tbody></table>
                     <div id="noLines" class="dme-muted" style="font-size:13px">No items added yet.</div>
@@ -100,10 +121,22 @@
             var o = itemSel.options[itemSel.selectedIndex];
             var mode = modeSel.value, qty = Math.max(1, parseInt(document.getElementById('qtyIn').value) || 1);
             var price = mode === 'purchase' ? ('$' + o.dataset.buy) : ('$' + o.dataset.rent + '/mo');
+
+            // Drop shipping is per LINE, not per order: the same item ships from
+            // stock one week and direct from the distributor the next. Every
+            // line posts a distributorId, and 0 means from our own stock.
+            var distSel = document.getElementById('distSel');
+            var distId = distSel.value || '0';
+            var distName = distId === '0' ? '' : distSel.options[distSel.selectedIndex].text;
+            var distRef = distId === '0' ? '' : document.getElementById('distRefIn').value.trim();
+
             var tr = document.createElement('tr');
             tr.innerHTML =
                 '<td><span class="dme-chip blue dme-mono">' + o.value + '</span> ' + o.dataset.name +
-                '<input type="hidden" name="hcpcs" value="' + o.value + '"><input type="hidden" name="mode" value="' + mode + '"><input type="hidden" name="qty" value="' + qty + '"></td>' +
+                (distName ? '<div class="dme-muted" style="font-size:11.5px"><i class="bi bi-truck"></i> Direct from ' +
+                            distName + (distRef ? ' · ' + distRef : '') + '</div>' : '') +
+                '<input type="hidden" name="hcpcs" value="' + o.value + '"><input type="hidden" name="mode" value="' + mode + '"><input type="hidden" name="qty" value="' + qty + '">' +
+                '<input type="hidden" name="distributorId" value="' + distId + '"><input type="hidden" name="distributorRef" value="' + distRef.replace(/"/g, '&quot;') + '"></td>' +
                 '<td>' + (mode === 'purchase' ? 'Purchase' : 'Rental') + '</td><td class="dme-mono">' + qty + '</td><td class="dme-mono">' + price + '</td>' +
                 '<td style="text-align:right"><button type="button" class="dme-btn dme-btn-light dme-btn-sm rm">remove</button></td>';
             tr.querySelector('.rm').onclick = function () { tr.remove(); toggleEmpty(); };

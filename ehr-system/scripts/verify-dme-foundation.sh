@@ -859,6 +859,120 @@ chk "the code catalog checks cleaned up after themselves" \
   "$($SQL -Q "SET NOCOUNT ON; SELECT (SELECT COUNT(*) FROM dbo.DmeCustomers WHERE CustomerId > $CC_BEFORE) + (SELECT COUNT(*) FROM dbo.HcpcsCodes) - $HC_BEFORE" | tr -d ' \r')" "0"
 
 echo
+echo "15. DROP SHIPPING (items that never enter the warehouse)"
+echo "----------------------------------------------------------------"
+
+# The client: "Most of the items we deliver are drop-shipped from
+# manufacturer/distributors." The guard that matters is an ABSENCE: such a line
+# must write no stock movement and no serialised unit, or on-hand marches
+# negative for the majority of what they sell. It must still be billed.
+#
+# Four tables in this database carry filtered indexes, which makes DML against
+# them require QUOTED_IDENTIFIER ON. sqlcmd defaults it OFF, so the writes in
+# this section go through SQLW, not SQL.
+SQLW="$SQL -I"
+
+chk "distributors are tenant scoped" \
+  "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.DmeDistributors') AND name='TenantId'" | tr -d ' \r')" "1"
+
+chk "distributors are inside the row level security policy" \
+  "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.security_predicates WHERE target_object_id=OBJECT_ID('dbo.DmeDistributors')" | tr -d ' \r')" "3"
+
+chk "drop-shipped is derived, not stored" \
+  "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.DmeOrderLines') AND name LIKE '%DropShip%'" | tr -d ' \r')" "0"
+
+chk "the order line index is not filtered, so the table stays writable from plain sqlcmd" \
+  "$($SQL -Q "SET NOCOUNT ON; SELECT ISNULL(MAX(CAST(has_filter AS INT)),0) FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.DmeOrderLines') AND name='IX_DmeOrderLines_Distributor'" | tr -d ' \r')" "0"
+
+# --- a distributor, then a MIXED order: one line direct, one out of stock
+DS_TOK=$(curl -s -b $J -c $J "$BASE/Dme/Distributors" | grep -oE 'name="__RequestVerificationToken"[^>]*value="[^"]+' | head -1 | sed 's/.*value="//')
+curl -s -b $J -c $J -o /dev/null -X POST $BASE/Dme/AddDistributor \
+  --data-urlencode "__RequestVerificationToken=$DS_TOK" -d 'name=VerifyScriptDistributor' -d 'accountNo=VS-1'
+curl -s -b $J -c $J -o /dev/null -X POST $BASE/Dme/AddDistributor \
+  --data-urlencode "__RequestVerificationToken=$DS_TOK" -d 'name=VerifyScriptDistributor'
+
+chk "the same distributor cannot be added twice" \
+  "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.DmeDistributors WHERE Name='VerifyScriptDistributor'" | tr -d ' \r')" "1"
+
+DS_ID=$($SQL -Q "SET NOCOUNT ON; SELECT DistributorId FROM dbo.DmeDistributors WHERE Name='VerifyScriptDistributor'" | tr -d ' \r')
+DS_CUST=$($SQL -Q "SET NOCOUNT ON; SELECT TOP 1 CustomerId FROM dbo.DmeCustomers WHERE LocationId=1 ORDER BY CustomerId" | tr -d ' \r')
+DS_ORD_BEFORE=$($SQL -Q "SET NOCOUNT ON; SELECT ISNULL(MAX(OrderId),0) FROM dbo.DmeOrders" | tr -d ' \r')
+DS_STOCK_BEFORE=$($SQL -Q "SET NOCOUNT ON; SELECT ISNULL(SUM(Qty),0) FROM dbo.DmeStockMovements WHERE Hcpcs='E0260'" | tr -d ' \r')
+
+DS_OTOK=$(curl -s -b $J -c $J "$BASE/Dme/NewOrder" | grep -oE 'name="__RequestVerificationToken"[^>]*value="[^"]+' | head -1 | sed 's/.*value="//')
+curl -s -b $J -c $J -o /dev/null -X POST $BASE/Dme/CreateOrder \
+  --data-urlencode "__RequestVerificationToken=$DS_OTOK" -d "customerId=$DS_CUST" -d 'deposit=0' \
+  -d 'hcpcs=E0260' -d 'mode=rental'   -d 'qty=1' -d "distributorId=$DS_ID" -d 'distributorRef=VS-TRACK-1' \
+  -d 'hcpcs=E0114' -d 'mode=purchase' -d 'qty=2' -d 'distributorId=0'      -d 'distributorRef='
+
+DS_ORD=$($SQL -Q "SET NOCOUNT ON; SELECT ISNULL(MAX(OrderId),0) FROM dbo.DmeOrders WHERE OrderId > $DS_ORD_BEFORE" | tr -d ' \r')
+
+if [ "$DS_ORD" = "0" ]; then
+  no "the drop-ship check could not create an order, so the rest of it is unproven"
+else
+  chk "the drop-shipped line records its distributor and reference" \
+    "$($SQL -Q "SET NOCOUNT ON; SELECT CAST(DistributorId AS VARCHAR) + '|' + DistributorRef FROM dbo.DmeOrderLines WHERE OrderId=$DS_ORD AND Hcpcs='E0260'" | tr -d '\r' | sed 's/ *$//')" "$DS_ID|VS-TRACK-1"
+
+  chk "the line taken from stock records no distributor" \
+    "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.DmeOrderLines WHERE OrderId=$DS_ORD AND Hcpcs='E0114' AND DistributorId IS NOT NULL" | tr -d ' \r')" "0"
+
+  # --- deliver it, and watch what is NOT written
+  DS_DTOK=$(curl -s -b $J -c $J "$BASE/Dme/Order/$DS_ORD" | grep -oE 'name="__RequestVerificationToken"[^>]*value="[^"]+' | head -1 | sed 's/.*value="//')
+  curl -s -b $J -c $J -o /dev/null -X POST $BASE/Dme/Deliver \
+    --data-urlencode "__RequestVerificationToken=$DS_DTOK" -d "id=$DS_ORD" -d 'signedBy=Verify Script'
+
+  chk "the drop-shipped item moved no stock" \
+    "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.DmeStockMovements WHERE RefType='DmeOrder' AND RefId=$DS_ORD AND Hcpcs='E0260'" | tr -d ' \r')" "0"
+
+  chk "its on-hand is exactly where it was" \
+    "$($SQL -Q "SET NOCOUNT ON; SELECT ISNULL(SUM(Qty),0) FROM dbo.DmeStockMovements WHERE Hcpcs='E0260'" | tr -d ' \r')" "$DS_STOCK_BEFORE"
+
+  chk "no unit of ours was registered for something we never held" \
+    "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.DmeSerializedUnits WHERE Hcpcs='E0260' AND CustomerId=$DS_CUST AND InServiceDate >= CAST(GETDATE() AS DATE)" | tr -d ' \r')" "0"
+
+  # The other half. If the guard drifted upwards it would silently stop billing
+  # the majority of this supplier's business.
+  chk "the drop-shipped item was still BILLED" \
+    "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.DmeClaimLines cl JOIN dbo.DmeClaims c ON c.ClaimId=cl.ClaimId WHERE c.OrderId=$DS_ORD AND cl.Hcpcs='E0260'" | tr -d ' \r')" "1"
+
+  chk "the line from stock DID move stock, so the guard is not just switched off" \
+    "$($SQL -Q "SET NOCOUNT ON; SELECT ISNULL(SUM(Qty),0) FROM dbo.DmeStockMovements WHERE RefType='DmeOrder' AND RefId=$DS_ORD AND Hcpcs='E0114'" | tr -d ' \r')" "-2"
+
+  chk "it appears on the drop-shipment view, marked arrived" \
+    "$($SQL -Q "SET NOCOUNT ON; SELECT CAST(HasArrived AS INT) FROM dbo.vDmeDropShipments WHERE OrderId=$DS_ORD" | tr -d ' \r')" "1"
+
+  curl -s -b $J -c $J "$BASE/Dme/Inventory" | grep -q 'VS-TRACK-1' \
+    && ok "the inventory screen shows what is coming direct from a distributor" \
+    || no "the inventory screen shows what is coming direct from a distributor"
+fi
+
+# --- a distributor is retired, never deleted
+curl -s -b $J -c $J -o /dev/null -X POST $BASE/Dme/RetireDistributor \
+  --data-urlencode "__RequestVerificationToken=$DS_TOK" -d "id=$DS_ID"
+
+chk "retiring a distributor keeps the row" \
+  "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.DmeDistributors WHERE DistributorId=$DS_ID AND RetiredAt IS NOT NULL" | tr -d ' \r')" "1"
+
+curl -s -b $J -c $J "$BASE/Dme/NewOrder" | grep -q 'VerifyScriptDistributor' \
+  && no "a retired distributor is still offered on a new order" \
+  || ok "a retired distributor is no longer offered on a new order"
+
+# --- clean up ONLY what this section created
+$SQLW -Q "SET NOCOUNT ON; EXEC sp_set_session_context N'CurrentTenantId', 1;
+          DECLARE @c INT = (SELECT ClaimId FROM dbo.DmeClaims WHERE OrderId = $DS_ORD);
+          DELETE FROM dbo.DmeClaimLines      WHERE ClaimId = @c;
+          DELETE FROM dbo.DmeClaims          WHERE ClaimId = @c;
+          DELETE FROM dbo.DmeRentals         WHERE OrderId = $DS_ORD;
+          DELETE FROM dbo.DmeStockMovements  WHERE RefType='DmeOrder' AND RefId = $DS_ORD;
+          DELETE FROM dbo.DmeSerializedUnits WHERE CustomerId=$DS_CUST AND InServiceDate >= CAST(GETDATE() AS DATE);
+          DELETE FROM dbo.DmeOrderLines      WHERE OrderId = $DS_ORD;
+          DELETE FROM dbo.DmeOrders          WHERE OrderId = $DS_ORD;
+          DELETE FROM dbo.DmeDistributors    WHERE DistributorId = $DS_ID;" > /dev/null
+
+chk "the drop-ship checks cleaned up after themselves" \
+  "$($SQL -Q "SET NOCOUNT ON; SELECT (SELECT COUNT(*) FROM dbo.DmeOrders WHERE OrderId > $DS_ORD_BEFORE) + (SELECT COUNT(*) FROM dbo.DmeDistributors WHERE DistributorId=$DS_ID)" | tr -d ' \r')" "0"
+
+echo
 echo "=============================================================="
 printf " RESULT: %d passed, %d failed\n" $pass $fail
 echo "=============================================================="

@@ -107,7 +107,7 @@ caller tenant and RLS BLOCKs cross-tenant writes, so an in-app version would
 have to punch a hole through the isolation. Order/claim numbering needs no
 seeding.
 
-### The database (31 tables, nothing unused)
+### The database (32 tables, nothing unused)
 DME owns 21 tables plus `HcpcsCodes` (the supplier's item master),
 `DmeSupplierProfile` and `DmeSftpAccounts`. Four are GLOBAL national reference
 data with no tenant column: `DmeCarcCodes`, `DmePayers`, `IcdCodes` and
@@ -129,6 +129,7 @@ and 1,745 clinical claims that DME never read. Do not reintroduce them.
 10. `2026-08-27_DME_Payer_Catalog.sql`
 11. `2026-08-27_DME_Icd10_Catalog.sql`
 12. `2026-08-27_DME_Hcpcs_Catalog.sql`
+13. `2026-08-27_DME_Drop_Ship.sql`
 Then `POST /Dme/BackfillPhi` once as an admin. Verified end to end on a scratch
 database. Note `ALTER SECURITY POLICY` and any batch naming a dropped column are
 validated at COMPILE time, so `IF NOT EXISTS` guards do not protect them: use
@@ -242,6 +243,52 @@ Migration `2026-08-27_DME_Payer_Catalog.sql`, service
   145 rows spell it BCBS and 18 spell it Blue Cross, so without the alias a
   biller typing what is printed on the card finds almost nothing. A search
   nobody can hit is the same complaint again.
+
+## Drop shipping (added 2026-08-27)
+
+The client, under Inventory: "Most of the items we deliver are drop-shipped from
+manufacturer/distributors." Migration `2026-08-27_DME_Drop_Ship.sql`, service
+`Services/DmeDistributors.cs`, screen `/Dme/Distributors`.
+
+**The fix is mostly an ABSENCE.** A drop-shipped line writes **no stock
+movement and no serialised unit**, because nothing entered or left a warehouse.
+On-hand therefore stays correct by construction. `Deliver` skips both writes via
+`if (dropShipped) continue;`, and that `continue` sits **after** the rental and
+claim line: a drop-shipped item is still delivered, still rented, still billed.
+Move the guard up by three lines and you silently stop billing the majority of
+this supplier's business. Two tests pin the ordering in both directions.
+
+- **Two columns, on the ORDER LINE**, because the same item ships from stock one
+  week and direct the next: `DistributorId` and `DistributorRef` (their order or
+  tracking number).
+- **There is NO is-drop-shipped flag.** It is derived from `DistributorId` being
+  present. A stored flag would be a second copy of the same fact.
+- **`dbo.DmeDistributors` is TENANT data**, unlike the payer, ICD and HCPCS
+  catalogs. Those are national lists; each supplier negotiates its own
+  distributors. In the RLS policy like every other DME table.
+- **A distributor is retired, never deleted** (`RetiredAt`, `IsRetired`
+  derived). `Find` deliberately does NOT filter retired ones, so an old order
+  still says who shipped it; only the picker hides them.
+- **A posted `distributorId` is checked against the tenant** before it is filed,
+  exactly like the branch on the customer form.
+- **Inventory shows a third panel, `vDmeDropShipments`**, kept separate from
+  both stock numbers: an item in somebody else's warehouse is not stock this
+  supplier holds. Arrival is derived from the order's status, not a second date.
+- **An all drop-shipped order asks for no signature.** Nobody from this supplier
+  is at the door; the tracking reference is the delivery evidence. A MIXED order
+  still asks, because somebody is there with part of it.
+
+**Trap:** the signature script is only emitted when a canvas exists. Without the
+`@if (!allDropShipped)` guard it throws on the first `getElementById` and takes
+the form's submit handler down with it.
+
+**Trap, and it is older than this work:** `Users`, `Locations` and
+`DmeClaimLines` carry FILTERED indexes, which makes every INSERT, UPDATE and
+DELETE against them require `QUOTED_IDENTIFIER ON`. `sqlcmd` defaults it OFF, so
+a maintenance script against those tables fails with an error naming neither the
+index nor the table's purpose. **Run `sqlcmd -I`.** The verification script uses
+`$SQLW` for exactly this. `DmeOrderLines` was deliberately kept out of that set:
+its distributor index is unfiltered even though a filter would be tidier.
 
 ## Code catalogs: ICD-10-CM and HCPCS (added 2026-08-27)
 
@@ -468,14 +515,14 @@ which supplier they are looking at.
   session cookie is issued against the same expiry.
 
 ### Tests
-`dotnet test ehr-system/EHR.Tests` — **286 passing**. It was 304 before the
+`dotnet test ehr-system/EHR.Tests` — **303 passing**. It was 304 before the
 clinical EHR was removed; 193 of those tested code that no longer exists. The DME suite is
 in `EHR.Tests/Dme/`. Four SecurityOverhaul test files are excluded in the csproj
 because they test `EHR.Services.Security`, which exists in IMEHR but was never
 copied into this fork.
 
 Run `bash scripts/verify-dme-foundation.sh` against a running app for the
-end-to-end proof: **142 checks** with a super admin sign in, 127 without.
+end-to-end proof: **159 checks** with a super admin sign in, 144 without.
 
 ```bash
 SUPERADMIN_EMAIL=you@example.com SUPERADMIN_PASSWORD=... bash scripts/verify-dme-foundation.sh

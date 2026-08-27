@@ -7,6 +7,10 @@
     int si = status == "billed" ? 4 : status == "delivered" ? 3 : status == "confirmed" ? 2 : 0;
     var stages = new[] { "Order received", "Eligibility / HCPCS", "Order / ship", "Proof of delivery", "Claim prepared" };
     decimal total = lines.Sum(l => F.S(l["Mode"]) == "purchase" ? F.Dec(l["UnitPrice"]) * F.I(l["Qty"]) : F.Dec(l["MonthlyRate"]));
+    // Only when EVERY line ships direct. On a mixed order somebody from this
+    // supplier is still at the door with part of it, so a signature is still the
+    // right record. Derived from the lines, never stored on the order.
+    bool allDropShipped = lines.Count > 0 && lines.All(l => l["DistributorId"] is not (null or DBNull));
 }
 
 <div class="dme-wrap">
@@ -50,7 +54,21 @@
                     decimal amt = F.S(l["Mode"]) == "purchase" ? F.Dec(l["UnitPrice"]) * F.I(l["Qty"]) : F.Dec(l["MonthlyRate"]);
                     <tr>
                         <td class="dme-mono">@F.S(l["Hcpcs"])</td>
-                        <td>@F.S(l["ItemName"])</td>
+                        <td>
+                            @F.S(l["ItemName"])
+                            @* Naming a distributor IS the drop-ship fact; there is no
+                               separate flag. This line touches no stock. *@
+                            @if (l["DistributorId"] is not (null or DBNull))
+                            {
+                                <div class="dme-muted" style="font-size:11.5px">
+                                    <i class="bi bi-truck"></i> Ships direct
+                                    @if (!string.IsNullOrWhiteSpace(F.S(l["DistributorRef"])))
+                                    {
+                                        <span>· @F.S(l["DistributorRef"])</span>
+                                    }
+                                </div>
+                            }
+                        </td>
                         <td>@(F.S(l["Mode"]) == "purchase" ? "Purchase" : "Rental")</td>
                         <td>@F.I(l["Qty"])</td>
                         <td class="dme-mono dme-muted">@F.S(l["Modifiers"])</td>
@@ -88,15 +106,44 @@
                     <input type="hidden" name="signature" id="podSig" />
                     <label class="form-label">Received by</label>
                     <input name="signedBy" class="form-control mb-2" value="@F.S(o["CustomerName"])" />
-                    <label class="form-label">Signature</label>
-                    <canvas class="sig-pad" id="sigCanvas"></canvas>
+
+                    @* On an all drop-shipped order nobody from this supplier is at the
+                       door, so there is no signature to capture and asking for one
+                       invites an invented squiggle. The distributor's tracking
+                       reference is the delivery evidence. *@
+                    @if (allDropShipped)
+                    {
+                        <div class="dme-banner" style="margin-bottom:10px">
+                            <i class="bi bi-truck"></i>
+                            Shipped direct from your distributor, so there is no signature to
+                            capture here. The tracking reference on each line is the delivery
+                            record.
+                        </div>
+                    }
+                    else
+                    {
+                        <label class="form-label">Signature</label>
+                        <canvas class="sig-pad" id="sigCanvas"></canvas>
+                    }
                     <div class="d-flex justify-content-between mt-2">
-                        <button type="button" class="dme-btn dme-btn-light dme-btn-sm" id="sigClear">Clear</button>
+                        @if (allDropShipped)
+                        {
+                            <span></span>
+                        }
+                        else
+                        {
+                            <button type="button" class="dme-btn dme-btn-light dme-btn-sm" id="sigClear">Clear</button>
+                        }
                         <button type="submit" class="dme-btn dme-btn-primary" id="podComplete"><i class="bi bi-check-lg"></i> Complete delivery</button>
                     </div>
                 </form>
             </div>
         </div>
+        @* Only wired when there is a canvas to wire. On an all drop-shipped order
+           the signature pad is not rendered at all, and this script would throw on
+           the first getElementById and take the submit handler down with it. *@
+        @if (!allDropShipped)
+        {
         <script>
             (function () {
                 var canvas = document.getElementById('sigCanvas');
@@ -117,5 +164,6 @@
                 });
             })();
         </script>
+        }
     }
 </div>

@@ -29,12 +29,15 @@ public class DmeController : Controller
     private readonly IDmeSftpAccountService _sftp;
     private readonly IDmePayerCatalog _payers;
     private readonly IDmeIcdCatalog _icd;
+    private readonly IDmeDistributors _distributors;
 
     public DmeController(IDmeDb db, IDmeAudit audit, DmeCustomerPhi phi,
                          IDmePaymentService payments, IDmeSftpAccountService sftp,
-                         IDmePayerCatalog payers, IDmeIcdCatalog icd)
+                         IDmePayerCatalog payers, IDmeIcdCatalog icd,
+                         IDmeDistributors distributors)
     {
         _icd = icd;
+        _distributors = distributors;
         _db = db;
         _audit = audit;
         _phi = phi;
@@ -429,6 +432,18 @@ public class DmeController : Controller
             LEFT JOIN dbo.Locations l ON l.LocationId = u.LocationId
             WHERE " + _db.LocationScope("u.LocationId") + @"
             ORDER BY u.Status, u.Hcpcs");
+
+        // The third number, and the client's actual complaint: most of what they
+        // deliver ships direct from a distributor and never reaches a shelf, so
+        // it appeared in neither of the two above. It is kept SEPARATE rather
+        // than added to either, because an item in somebody else's warehouse is
+        // not stock this supplier holds.
+        var drops = _db.Query(
+            "SELECT * FROM dbo.vDmeDropShipments WHERE " + _db.LocationScope() +
+            " ORDER BY HasArrived, OrderId DESC");
+        _phi.ComposeCustomerNames(drops);
+        ViewBag.DropShipments = drops;
+
         return View();
     }
 
@@ -475,6 +490,10 @@ public class DmeController : Controller
 
         ViewBag.Doctors = _db.Query("SELECT * FROM dbo.DmeDoctors ORDER BY LastName");
         ViewBag.Catalog = _db.Query("SELECT * FROM dbo.vHcpcsCatalog ORDER BY Category, Hcpcs");
+        // Live distributors only. A retired one still resolves on an old order,
+        // but offering it on a NEW line would file an order against a supplier
+        // this business no longer buys from.
+        ViewBag.Distributors = _distributors.All();
         ViewBag.PreCustomer = customerId;
         return View();
     }
@@ -482,7 +501,8 @@ public class DmeController : Controller
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreateOrder(int customerId, int? doctorId, DateTime? deliveryDate, decimal deposit,
-                                     string[]? hcpcs, string[]? mode, int[]? qty)
+                                     string[]? hcpcs, string[]? mode, int[]? qty,
+                                     int[]? distributorId, string[]? distributorRef)
     {
         // An order with no lines is not an order. Without this guard the form
         // saves an empty ticket that later generates a $0.00 claim, and the
@@ -526,14 +546,34 @@ public class DmeController : Controller
                 if (item == null) continue;
                 var m = (mode != null && i < mode.Length) ? mode[i] : "purchase";
                 var q = (qty != null && i < qty.Length && qty[i] > 0) ? qty[i] : 1;
-                _db.Execute(@"INSERT INTO dbo.DmeOrderLines (OrderId,Hcpcs,ItemName,Category,Mode,Qty,UnitPrice,MonthlyRate,Modifiers,IsSerialized,TenantId)
-                                VALUES (@orderId,@h,@name,@cat,@m,@q,@up,@mr,@mods,@ser,@TenantId)",
+
+                // Drop shipping. A posted distributor is checked against THIS
+                // tenant before it is filed, the same way the branch on the
+                // customer form is: row level security covers TenantId on the
+                // insert and would happily accept a foreign DistributorId
+                // sitting beside it.
+                //
+                // NULL means "out of our own stock", which is the answer for
+                // almost every line, and the absence is the whole record: there
+                // is no separate is-drop-shipped flag to disagree with it.
+                var postedDist = (distributorId != null && i < distributorId.Length) ? distributorId[i] : 0;
+                var dist = postedDist <= 0 ? null : _db.Scalar(
+                    "SELECT DistributorId FROM dbo.DmeDistributors WHERE DistributorId=@postedDist AND TenantId=@TenantId AND RetiredAt IS NULL",
+                    new { postedDist });
+
+                var distRef = (dist != null && distributorRef != null && i < distributorRef.Length)
+                    ? distributorRef[i] : null;
+
+                _db.Execute(@"INSERT INTO dbo.DmeOrderLines (OrderId,Hcpcs,ItemName,Category,Mode,Qty,UnitPrice,MonthlyRate,Modifiers,IsSerialized,DistributorId,DistributorRef,TenantId)
+                                VALUES (@orderId,@h,@name,@cat,@m,@q,@up,@mr,@mods,@ser,@dist,@distRef,@TenantId)",
                     new {
                         orderId, h = hcpcs[i], name = F.S(item["Name"]), cat = F.S(item["Category"]), m, q,
                         up = m == "purchase" ? F.Dec(item["PurchasePrice"]) : 0m,
                         mr = m == "purchase" ? 0m : F.Dec(item["MonthlyRate"]),
                         mods = m == "purchase" ? "NU" : "RR",
-                        ser = F.B(item["IsSerialized"])
+                        ser = F.B(item["IsSerialized"]),
+                        dist = (object?)dist ?? DBNull.Value,
+                        distRef = string.IsNullOrWhiteSpace(distRef) ? DBNull.Value : (object)distRef.Trim()
                     });
                 lineCount++;
             }
@@ -613,6 +653,20 @@ public class DmeController : Controller
             _db.Execute("INSERT INTO dbo.DmeClaimLines (ClaimId,Hcpcs,ItemName,Modifier,Units,Charge,RentalId,TenantId) VALUES (@claimId,@h,@n,@mod,@u,@c,@rid,@TenantId)",
                 new { claimId, h = F.S(l["Hcpcs"]), n = F.S(l["ItemName"]), mod = F.S(l["Modifiers"]),
                       u = F.I(l["Qty"]), c = charge, rid = (object?)rentalId ?? DBNull.Value });
+
+            // DROP SHIPPED lines touch neither the unit register nor the stock
+            // ledger, and that absence is the entire feature.
+            //
+            // The item went from the distributor to the customer's home. It was
+            // never on a shelf and this supplier never held it, so there is no
+            // movement to record and no unit of theirs to register. Writing one
+            // anyway would drive on-hand negative for the MAJORITY of what this
+            // supplier delivers, because most of their items ship this way.
+            //
+            // Derived from the distributor being present. There is no
+            // is-drop-shipped flag to fall out of step with it.
+            var dropShipped = l["DistributorId"] is not (null or DBNull);
+            if (dropShipped) continue;
 
             // The unit and the stock movement both belong to the branch that
             // fulfilled the order, which is the CUSTOMER's branch rather than
@@ -867,6 +921,65 @@ public class DmeController : Controller
     }
 
     // ---------------------------------------------------------------- Settings
+    /// <summary>
+    /// Who this supplier buys from, for the items they never hold themselves.
+    ///
+    /// Admin roles only: which distributors the business deals with is a
+    /// commercial relationship, the same kind of decision as item pricing.
+    /// </summary>
+    [Authorize(Roles = "0,1")]
+    public IActionResult Distributors()
+    {
+        ViewData["Title"] = "Distributors";
+        ViewData["ActivePage"] = "distributors";
+        LoadLocationContext();
+
+        // Retired ones included: the screen is where you see the whole history
+        // of who you have bought from, and where you retire the current ones.
+        ViewBag.Distributors = _distributors.All(includeRetired: true);
+        ViewBag.DistributorError = TempData["DistributorError"];
+        return View();
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> AddDistributor(string? name, string? accountNo, string? phone, string? email)
+    {
+        var id = _distributors.Add(name, accountNo, phone, email);
+        if (id == null)
+        {
+            TempData["DistributorError"] = string.IsNullOrWhiteSpace(name)
+                ? "Give the distributor a name."
+                : $"You already have a distributor called '{name.Trim()}'.";
+            return RedirectToAction("Distributors");
+        }
+
+        await _audit.RecordAsync("DME_DISTRIBUTOR_ADDED", "DmeDistributor", id.Value,
+            before: null, after: new { Name = name!.Trim(), AccountNo = accountNo });
+
+        return RedirectToAction("Distributors");
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> RetireDistributor(int id)
+    {
+        // Snapshot first: after the update the row no longer says it was live.
+        var before = _distributors.Find(id);
+        if (before == null || before.IsRetired) return RedirectToAction("Distributors");
+
+        if (_distributors.Retire(id))
+        {
+            await _audit.RecordAsync("DME_DISTRIBUTOR_RETIRED", "DmeDistributor", id,
+                before: new { before.Name, Retired = false },
+                after: new { before.Name, Retired = true });
+        }
+
+        return RedirectToAction("Distributors");
+    }
+
     /// <summary>
     /// Who this supplier is, and how it connects to the clearinghouse.
     ///

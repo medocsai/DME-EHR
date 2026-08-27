@@ -115,6 +115,10 @@ builder.Services.AddScoped<IDmeIcdCatalog, DmeIcdCatalog>();
 // stays tenant scoped in dbo.HcpcsCodes. See Services/DmeHcpcsCatalog.cs.
 builder.Services.AddScoped<IDmeHcpcsCatalog, DmeHcpcsCatalog>();
 
+// Who this supplier buys from, for drop-shipped items. TENANT data, unlike the
+// three national catalogs above. See Services/DmeDistributors.cs.
+builder.Services.AddScoped<IDmeDistributors, DmeDistributors>();
+
 // Google Cloud Storage Services
 builder.Services.Configure<GoogleCloudStorageOptions>(
     builder.Configuration.GetSection("GoogleCloudStorage"));

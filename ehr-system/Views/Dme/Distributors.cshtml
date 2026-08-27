@@ -1,0 +1,111 @@
+@using EHR.Helpers
+@using EHR.Services
+@{
+    ViewData["ActivePage"] = "distributors";
+    var distributors = (IReadOnlyList<Distributor>)ViewBag.Distributors;
+    var live = distributors.Count(d => !d.IsRetired);
+}
+
+<div class="dme-wrap">
+    <div class="dme-head">
+        <div>
+            <h1>Distributors</h1>
+            <div class="dme-sub">Who you buy from · @live active</div>
+        </div>
+    </div>
+
+    @if (ViewBag.DistributorError != null)
+    {
+        <div class="alert alert-danger" style="font-size:13px">@ViewBag.DistributorError</div>
+    }
+
+    <div class="dme-banner" style="margin-bottom:14px">
+        <i class="bi bi-truck"></i>
+        An item shipped direct from a distributor never reaches your shelf, so it is
+        deliberately kept out of your stock figures. It still gets delivered, billed and
+        claimed exactly as normal.
+    </div>
+
+    <div class="dme-grid2">
+        <div class="dme-card">
+            <div class="dme-card-head"><h2>Your distributors</h2></div>
+            <div class="dme-card-body" style="padding:0">
+                @if (distributors.Count == 0)
+                {
+                    <div class="dme-muted" style="padding:18px;font-size:13px">
+                        None yet. Add the first one to start marking order lines as drop-shipped.
+                    </div>
+                }
+                else
+                {
+                    <table class="dme-table">
+                        <thead>
+                            <tr><th>Name</th><th>Your account no.</th><th>Status</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var d in distributors)
+                        {
+                            <tr>
+                                <td>@d.Name</td>
+                                <td class="dme-mono">@(string.IsNullOrWhiteSpace(d.AccountNo) ? "—" : d.AccountNo)</td>
+                                <td>
+                                    @if (d.IsRetired)
+                                    {
+                                        <span class="dme-chip gray">Out of service</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="dme-chip green">Active</span>
+                                    }
+                                </td>
+                                <td style="text-align:right">
+                                    @* Retired, never deleted: past orders are the record of who
+                                       shipped them, and that has to survive the relationship ending. *@
+                                    @if (!d.IsRetired)
+                                    {
+                                        <form method="post" action="/Dme/RetireDistributor" style="display:inline">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="id" value="@d.DistributorId" />
+                                            <button type="submit" class="dme-btn dme-btn-light dme-btn-sm">Take out of service</button>
+                                        </form>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+
+        <div class="dme-card">
+            <div class="dme-card-head"><h2>Add a distributor</h2></div>
+            <div class="dme-card-body">
+                <form method="post" action="/Dme/AddDistributor">
+                    @Html.AntiForgeryToken()
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Name <span style="color:#d6453f">*</span></label>
+                            <input name="name" class="form-control" required placeholder="e.g. Invacare" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Your account number with them</label>
+                            <input name="accountNo" class="form-control" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Phone</label>
+                            <input name="phone" class="form-control" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email</label>
+                            <input type="email" name="email" class="form-control" />
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-end mt-3">
+                        <button type="submit" class="dme-btn dme-btn-primary"><i class="bi bi-plus-lg"></i> Add</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

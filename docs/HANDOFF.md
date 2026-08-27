@@ -19,8 +19,8 @@ verified by execution. Nothing is half finished.
 
 ```
 cd ehr-system && dotnet run --urls http://localhost:5077
-dotnet test ehr-system/EHR.Tests                       # 286 passing
-bash ehr-system/scripts/verify-dme-foundation.sh       # 142 checks, needs the app running
+dotnet test ehr-system/EHR.Tests                       # 303 passing
+bash ehr-system/scripts/verify-dme-foundation.sh       # 159 checks, needs the app running
 ```
 
 Logins on this machine:
@@ -35,13 +35,17 @@ OTP in Development is always `123456`. The last two passwords were set locally
 this session; the deployed environment is untouched.
 
 **Client feedback arrived 2026-08-27.** Seven items, all captured in
-`docs/CLIENT-REQUESTS-2026-08-27.md`. **Five are closed**: paste into the
-customer form, and the three "list is not exhaustive" complaints, which became
+`docs/CLIENT-REQUESTS-2026-08-27.md`. **Six are closed**: paste into the
+customer form; the three "list is not exhaustive" complaints, which became
 Office Ally's 4,017 payers, CMS's 74,719 ICD-10-CM codes and CMS's 8,623 HCPCS
-codes. A sixth was already built and only needs a deploy. **Two are open:** O2
-(proof-of-delivery attachments, parked by Hammas, approach written up) and I1
-(drop-shipping, which needs a conversation with the client before a spec). Read
-that file before starting anything on their feedback.
+codes; and drop shipping, where the answer was to write NOTHING to the stock
+ledger. A seventh was already built and only needs a deploy. **One is open:** O2,
+proof-of-delivery attachments, parked by Hammas with the approach written up.
+Read that file before starting anything on their feedback.
+
+**The next step is a DEPLOY.** Everything above is invisible to the client until
+the branch is published: four migrations to run on the server database plus a
+process recycle. See the migration list in `CLAUDE.md`.
 
 **One thing to do before new work:** click through `/UserManagement` once. The
 Chrome extension went offline before the new branch-grant form could be exercised

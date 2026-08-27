@@ -16,7 +16,7 @@ same email; append them under their screen heading as they arrive.
 | O1 | Orders / Delivery | HCPCS item list not exhaustive | DONE 2026-08-27 |
 | O2 | Orders / Delivery | Proof of delivery: attach files (PDF, pictures, etc) | NOT STARTED |
 | H1 | HCPCS Catalog | List not exhaustive | DONE 2026-08-27, same item as O1 |
-| I1 | Inventory | Most delivered items are drop-shipped from manufacturers / distributors. Can that be included? | NOT STARTED |
+| I1 | Inventory | Most delivered items are drop-shipped from manufacturers / distributors. Can that be included? | DONE 2026-08-27 |
 
 **That is the whole email.** Sent by Roland Okwen, PhD, PMP, CEO and Sales
 Director. Nothing else outstanding from it.
@@ -383,7 +383,52 @@ because you can only sell what you stock and have priced.
 
 ---
 
-## I1. Drop-shipped items in inventory (NOT STARTED)
+## I1. Drop-shipped items in inventory (DONE 2026-08-27)
+
+**Built, and no client conversation was needed after all.** Their sentence sits
+under Inventory, so the ask is visibility, not a new billing path. Operating
+detail is in `CLAUDE.md`.
+
+**The fix is mostly an ABSENCE, and that is the whole design.** A drop-shipped
+line writes **no stock movement and no serialised unit**, because nothing
+entered or left a warehouse. On-hand therefore stays correct by construction
+rather than by remembering to compensate. Forcing these through the ledger would
+make the inventory figures wrong for the MAJORITY of what they deliver, since
+most of their items ship this way. That is the stock problem at full scale.
+
+**Two facts stored, both on the ORDER LINE**, because the same item ships from
+stock one week and direct the next: `DistributorId` and `DistributorRef`.
+**There is no is-drop-shipped flag**; it is derived from the distributor being
+present, so there is no second copy to fall out of step.
+
+**Distributors are tenant data**, unlike the three national catalogs: each
+supplier negotiates their own. Retired, never deleted, and a retired one still
+resolves on an old order so it still says who shipped it.
+
+**Three consequences, all deliberate:**
+
+1. **Inventory shows a third panel**, kept separate from both stock numbers. An
+   item in somebody else's warehouse is not stock this supplier holds.
+2. **An all drop-shipped order asks for no signature.** Nobody from this supplier
+   is at the door; the tracking reference is the delivery evidence. A MIXED order
+   still asks, because somebody is there with part of it.
+3. **Billing is untouched.** The guard sits AFTER the rental and the claim line,
+   so a drop-shipped item is still delivered, rented and billed. Moving it up
+   three lines would silently stop billing most of their business, and two tests
+   pin the ordering in both directions.
+
+**Proved on a MIXED order end to end:** the drop-shipped hospital bed moved no
+stock and created no unit but was still billed $135; the walker from stock moved
+-2 and created a unit. Both on one order, one delivery.
+
+**One thing found and avoided:** a filtered index on `DmeOrderLines` would have
+made every future write to that table require `QUOTED_IDENTIFIER ON`, which
+`sqlcmd` does not set by default. Three tables already carry that constraint
+from earlier migrations; this one deliberately does not join them.
+
+---
+
+### The analysis, before it was built
 
 **Asked, in their words:** "Most of the items we deliver are drop-shipped from
 manufacturer/distributors. Is it possible include it here?"
@@ -417,27 +462,27 @@ stated yet.
 
 ---
 
-## Verification, all five closed items
+## Verification, all six closed items
 
 Everything below was proved by running it, not by reading it.
 
 ```
 dotnet build                                     clean, 0 errors
-dotnet test ehr-system/EHR.Tests                 286 passing, 0 failing
-bash ehr-system/scripts/verify-dme-foundation.sh 142 checks, 0 failures
+dotnet test ehr-system/EHR.Tests                 303 passing, 0 failing
+bash ehr-system/scripts/verify-dme-foundation.sh 159 checks, 0 failures
 ```
 
-Tests went 205 → 286 across this work. Every guard written was **mutation
+Tests went 205 → 303 across this work. Every guard written was **mutation
 tested**: broken deliberately, and the right test confirmed to fail. One
 survivor was found and reported rather than quietly patched (see C1).
 
-Verification sections **13** and **14** cover the three code catalogs end to
+Verification sections **13**, **14** and **15** cover the three code catalogs and drop shipping end to
 end over HTTP: that each list is global and outside the security policy, that
 the searches answer the way a human types, that the lookups need a session, and
 that the server refuses a forged payer, an invalid diagnosis, an invented HCPCS
-code, a retired one and a duplicate.
+code, a retired one and a duplicate, and that a drop-shipped line touches no stock while still being billed.
 
-All three migrations were run **twice** on the local database to prove they are
+All four migrations were run **twice** on the local database to prove they are
 re-runnable, and every screen was driven in a real browser.
 
 **Two rules these sections now follow, both learned the hard way here:**
@@ -447,5 +492,9 @@ re-runnable, and every screen was driven in a real browser.
 2. **Count matches, not lines.** `grep -c` on a one-line JSON response is always
    1, so a check comparing two such counts passes when both searches return
    nothing.
+
+3. **`sqlcmd -I`, not `sqlcmd`.** Four tables carry filtered indexes, which makes
+   every write against them require `QUOTED_IDENTIFIER ON`. Without `-I` the
+   cleanup fails with an error that mentions neither the index nor the table.
 
 **Nothing is deployed.** The client is still looking at the old build.

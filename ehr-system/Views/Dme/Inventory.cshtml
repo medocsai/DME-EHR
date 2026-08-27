@@ -3,6 +3,7 @@
     ViewData["ActivePage"] = "inventory";
     var catalog = (List<Dictionary<string, object?>>)ViewBag.Catalog;
     var units = (List<Dictionary<string, object?>>)ViewBag.Units;
+    var dropShipments = (List<Dictionary<string, object?>>)ViewBag.DropShipments;
     int low = catalog.Count(x => F.I(x["OnHand"]) <= F.I(x["ReorderPoint"]));
     int rented = units.Count(u => F.S(u["Status"]) == "rented");
     // StockHere is only computed when a single branch is being viewed; it is
@@ -83,6 +84,57 @@
                     }
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    @* The client's actual complaint: most of what they deliver ships direct from a
+       distributor and never reaches a shelf, so it appeared in neither number above.
+       It is shown SEPARATELY and never rolled into stock: an item in somebody else's
+       warehouse is not stock this supplier holds. *@
+    <div class="dme-card">
+        <div class="dme-card-head">
+            <h2>Direct from distributor</h2>
+            <span class="dme-muted" style="font-size:12px">Never enters your stock</span>
+        </div>
+        <div class="dme-card-body" style="padding:0">
+            @if (dropShipments.Count == 0)
+            {
+                <div class="dme-muted" style="padding:18px;font-size:13px">
+                    Nothing on order direct from a distributor. Mark a line on a new order
+                    as shipping direct, and it appears here instead of in your stock.
+                </div>
+            }
+            else
+            {
+                <table class="dme-table">
+                    <thead>
+                        <tr><th>Item</th><th>Customer</th><th>Distributor</th><th>Their ref</th><th>Qty</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var d in dropShipments)
+                    {
+                        var arrived = F.B(d["HasArrived"]);
+                        <tr>
+                            <td><span class="dme-chip blue dme-mono">@F.S(d["Hcpcs"])</span> @F.S(d["ItemName"])</td>
+                            <td>@F.S(d["CustomerName"])</td>
+                            <td>@F.S(d["DistributorName"])</td>
+                            <td class="dme-mono">@(string.IsNullOrWhiteSpace(F.S(d["DistributorRef"])) ? "—" : F.S(d["DistributorRef"]))</td>
+                            <td class="dme-mono">@F.I(d["Qty"])</td>
+                            <td>
+                                @if (arrived)
+                                {
+                                    <span class="dme-chip green">Delivered</span>
+                                }
+                                else
+                                {
+                                    <span class="dme-chip amber">On order</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
         </div>
     </div>
 </div>
