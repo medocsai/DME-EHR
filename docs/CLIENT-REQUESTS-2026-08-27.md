@@ -14,7 +14,7 @@ same email; append them under their screen heading as they arrive.
 | C2 | Customers | List of insurance is not exhaustive | DONE 2026-08-27 |
 | C3 | Customers | ICD-10 codes for DME not exhaustive | DONE 2026-08-27 |
 | O1 | Orders / Delivery | HCPCS item list not exhaustive | DONE 2026-08-27 |
-| O2 | Orders / Delivery | Proof of delivery: attach files (PDF, pictures, etc) | NOT STARTED |
+| O2 | Orders / Delivery | Proof of delivery: attach files (PDF, pictures, etc) | DONE 2026-08-27 |
 | H1 | HCPCS Catalog | List not exhaustive | DONE 2026-08-27, same item as O1 |
 | I1 | Inventory | Most delivered items are drop-shipped from manufacturers / distributors. Can that be included? | DONE 2026-08-27 |
 
@@ -279,7 +279,40 @@ real HCPCS code. That is checked on every verification run.
 
 ---
 
-## O2. Proof of delivery: attach files (NOT STARTED)
+## O2. Proof of delivery: attach files (DONE 2026-08-27)
+
+**Built.** Delivery documents panel on every order: attach a PDF or a picture,
+open it, remove it. Operating detail is in `CLAUDE.md`.
+
+**This was the first real file upload in the product**, so it brought storage,
+size and type limits and PHI at rest with it.
+
+- **The file is encrypted before it leaves the app.** A proof of delivery carries
+  the customer name, home address and signature. Proved by looking at the bytes
+  on disk: they do not start with %PDF.
+- **The stored name is opaque and the real one is encrypted** into the record, so
+  a storage listing cannot be read as a patient list.
+- **Validated three ways:** extension, MIME type, and the leading bytes actually
+  matching. Only the third catches an executable renamed to .pdf, because the
+  other two are whatever the browser claims. Proved with a real one.
+- **Served through the app, never a shareable storage link.** A signed link works
+  for anyone holding it and would skip both the tenant check and the audit trail.
+- **Removed, never erased.** The record that a document was attached and
+  withdrawn survives; the file itself is deleted.
+- **25MB cap**, PDF/JPG/PNG/TIFF only.
+
+**Still yours:** the Google Cloud bucket. Until one is configured the files sit
+on the app server disk, which works and is fully exercised, but will not survive
+a second app instance behind a load balancer. Going live is a configuration
+change, not a code change.
+
+**Found and fixed on the way:** `appsettings.json` still named IMEHR's bucket,
+inherited from the fork. The first service account key would have written DME
+proof-of-delivery documents into another product's bucket.
+
+---
+
+### The approach, written before it was built
 
 **Asked:** allow the option to attach proof of delivery files as PDF, pictures,
 etc.
@@ -462,27 +495,27 @@ stated yet.
 
 ---
 
-## Verification, all six closed items
+## Verification, all seven closed items
 
 Everything below was proved by running it, not by reading it.
 
 ```
 dotnet build                                     clean, 0 errors
-dotnet test ehr-system/EHR.Tests                 303 passing, 0 failing
-bash ehr-system/scripts/verify-dme-foundation.sh 159 checks, 0 failures
+dotnet test ehr-system/EHR.Tests                 323 passing, 0 failing
+bash ehr-system/scripts/verify-dme-foundation.sh 175 checks, 0 failures
 ```
 
-Tests went 205 → 303 across this work. Every guard written was **mutation
+Tests went 205 → 323 across this work. Every guard written was **mutation
 tested**: broken deliberately, and the right test confirmed to fail. One
 survivor was found and reported rather than quietly patched (see C1).
 
-Verification sections **13**, **14** and **15** cover the three code catalogs and drop shipping end to
+Verification sections **13** to **16** cover the three code catalogs and drop shipping end to
 end over HTTP: that each list is global and outside the security policy, that
 the searches answer the way a human types, that the lookups need a session, and
 that the server refuses a forged payer, an invalid diagnosis, an invented HCPCS
 code, a retired one and a duplicate, and that a drop-shipped line touches no stock while still being billed.
 
-All four migrations were run **twice** on the local database to prove they are
+All five migrations were run **twice** on the local database to prove they are
 re-runnable, and every screen was driven in a real browser.
 
 **Two rules these sections now follow, both learned the hard way here:**

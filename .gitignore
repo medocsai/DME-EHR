@@ -46,3 +46,9 @@ ehr-system/appsettings.Staging.json
 # Cookie jars written by ehr-system/scripts/verify-dme-foundation.sh
 cookies.txt
 restricted-cookies.txt
+
+# Attached files when no cloud bucket is configured (LocalFileStorageService)
+ehr-system/App_Data/storage/
+
+# Verification-code emails written when Email:Enabled is false
+emails_sent/

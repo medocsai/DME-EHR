@@ -973,6 +973,123 @@ chk "the drop-ship checks cleaned up after themselves" \
   "$($SQL -Q "SET NOCOUNT ON; SELECT (SELECT COUNT(*) FROM dbo.DmeOrders WHERE OrderId > $DS_ORD_BEFORE) + (SELECT COUNT(*) FROM dbo.DmeDistributors WHERE DistributorId=$DS_ID)" | tr -d ' \r')" "0"
 
 echo
+echo "16. PROOF OF DELIVERY ATTACHMENTS"
+echo "----------------------------------------------------------------"
+
+# The document that defends a claim in an audit. It is PHI, so the guard that
+# matters is that what reaches storage is NOT the document.
+
+chk "the document table stores no derived state" \
+  "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.DmeOrderDocuments') AND name IN ('IsDeleted','IsEncrypted','LocationId')" | tr -d ' \r')" "0"
+
+chk "documents are inside the row level security policy" \
+  "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.security_predicates WHERE target_object_id=OBJECT_ID('dbo.DmeOrderDocuments')" | tr -d ' \r')" "3"
+
+# No bucket inherited from the product this was forked from. With credentials in
+# place, that would have written DME documents into another product's bucket.
+grep -q '"BucketName": *"imehr-files"' "$(dirname "$0")/../appsettings.json" \
+  && no "no bucket is inherited from another product" \
+  || ok "no bucket is inherited from another product"
+
+POD_ORD=$($SQL -Q "SET NOCOUNT ON; SELECT TOP 1 OrderId FROM dbo.DmeOrders ORDER BY OrderId DESC" | tr -d ' \r')
+POD_BEFORE=$($SQL -Q "SET NOCOUNT ON; SELECT ISNULL(MAX(DocumentId),0) FROM dbo.DmeOrderDocuments" | tr -d ' \r')
+# Baselines, not totals. The audit log is cumulative and this order may have been
+# used before, so counting all its rows measures history rather than this run.
+POD_AUDIT_BEFORE=$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.AuditLogs WHERE Action='DME_POD_REMOVED' AND EntityId=$POD_ORD" | tr -d ' \r')
+
+# A real PDF, and an executable wearing a .pdf name. Written where the Windows
+# curl can see them, which is not the shell's /tmp.
+POD_DIR="${TEMP:-/tmp}/dme-pod-verify"
+mkdir -p "$POD_DIR"
+printf '%%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%%%EOF\n' > "$POD_DIR/pod.pdf"
+printf 'MZ\220\000\003\000\000\000not a pdf at all, just wearing the name' > "$POD_DIR/evil.pdf"
+
+POD_TOK=$(curl -s -b $J -c $J "$BASE/Dme/Order/$POD_ORD" | grep -oE 'name="__RequestVerificationToken"[^>]*value="[^"]+' | head -1 | sed 's/.*value="//')
+
+curl -s -b $J -c $J -o /dev/null -X POST "$BASE/Dme/AttachPod" \
+  -F "__RequestVerificationToken=$POD_TOK" -F "id=$POD_ORD" -F "file=@$POD_DIR/pod.pdf;type=application/pdf"
+curl -s -b $J -c $J -o /dev/null -X POST "$BASE/Dme/AttachPod" \
+  -F "__RequestVerificationToken=$POD_TOK" -F "id=$POD_ORD" -F "file=@$POD_DIR/evil.pdf;type=application/pdf"
+
+POD_ID=$($SQL -Q "SET NOCOUNT ON; SELECT ISNULL(MIN(DocumentId),0) FROM dbo.DmeOrderDocuments WHERE DocumentId > $POD_BEFORE" | tr -d ' \r')
+
+if [ "$POD_ID" = "0" ]; then
+  no "the attachment check could not attach a file, so the rest of it is unproven"
+else
+  chk "exactly one of the two files was accepted" \
+    "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.DmeOrderDocuments WHERE DocumentId > $POD_BEFORE" | tr -d ' \r')" "1"
+
+  # The whole point. What is in storage must not be the document.
+  POD_PATH=$($SQL -Q "SET NOCOUNT ON; SELECT StoragePath FROM dbo.DmeOrderDocuments WHERE DocumentId=$POD_ID" | tr -d ' \r')
+  POD_FILE="$(dirname "$0")/../App_Data/storage/$POD_PATH"
+
+  if [ -f "$POD_FILE" ]; then
+    head -c 4 "$POD_FILE" | grep -q '%PDF' \
+      && no "the file in storage is encrypted, not the document" \
+      || ok "the file in storage is encrypted, not the document"
+  else
+    echo "  INFO  a cloud bucket is configured, so the local copy check does not apply"
+  fi
+
+  # A bucket listing must not read as a patient list.
+  case "$POD_PATH" in
+    *pod.pdf) no "the stored name carries no detail from the original file" ;;
+    *)        ok "the stored name carries no detail from the original file" ;;
+  esac
+
+  chk "the original filename is stored as ciphertext" \
+    "$($SQL -Q "SET NOCOUNT ON; SELECT CASE WHEN FileName LIKE '%pod.pdf%' THEN 'readable' ELSE 'encrypted' END FROM dbo.DmeOrderDocuments WHERE DocumentId=$POD_ID" | tr -d ' \r')" "encrypted"
+
+  # Round trip through the controller, which is the only way out.
+  curl -s -b $J -c $J -o "$POD_DIR/back.pdf" "$BASE/Dme/DownloadPod/$POD_ID"
+  cmp -s "$POD_DIR/back.pdf" "$POD_DIR/pod.pdf" \
+    && ok "the document downloads back byte for byte" \
+    || no "the document downloads back byte for byte"
+
+  chk "downloading needs a session" \
+    "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/Dme/DownloadPod/$POD_ID")" "401"
+
+  # --- removed, not erased
+  curl -s -b $J -c $J -o /dev/null -X POST "$BASE/Dme/RemovePod" \
+    --data-urlencode "__RequestVerificationToken=$POD_TOK" -d "id=$POD_ID" -d "orderId=$POD_ORD"
+  curl -s -b $J -c $J -o /dev/null -X POST "$BASE/Dme/RemovePod" \
+    --data-urlencode "__RequestVerificationToken=$POD_TOK" -d "id=$POD_ID" -d "orderId=$POD_ORD"
+
+  chk "the row survives the removal" \
+    "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.DmeOrderDocuments WHERE DocumentId=$POD_ID AND DeletedAt IS NOT NULL" | tr -d ' \r')" "1"
+
+  chk "but it is no longer listed on the order" \
+    "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.vDmeOrderDocuments WHERE DocumentId=$POD_ID" | tr -d ' \r')" "0"
+
+  chk "and it can no longer be downloaded" \
+    "$(curl -s -b $J -c $J -o /dev/null -w '%{http_code}' "$BASE/Dme/DownloadPod/$POD_ID")" "404"
+
+  chk "removing twice records one removal, not two" \
+    "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) - $POD_AUDIT_BEFORE FROM dbo.AuditLogs WHERE Action='DME_POD_REMOVED' AND EntityId=$POD_ORD" | tr -d ' \r')" "1"
+
+  chk "attaching and removing are both audited" \
+    "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(DISTINCT Action) FROM dbo.AuditLogs WHERE Action IN ('DME_POD_ATTACHED','DME_POD_REMOVED')" | tr -d ' \r')" "2"
+fi
+
+# --- a document belonging to another supplier cannot even be written
+$SQLW -Q "SET NOCOUNT ON; EXEC sp_set_session_context N'CurrentTenantId', 1;
+          BEGIN TRY
+            INSERT INTO dbo.DmeOrderDocuments (TenantId,OrderId,FileName,StoragePath,ContentType,FileSize,FileHash)
+            VALUES (2,$POD_ORD,'x','pod/2/x.enc','application/pdf',10,REPLICATE('a',64));
+          END TRY BEGIN CATCH END CATCH" > /dev/null 2>&1
+
+chk "a document cannot be planted in another supplier's tenant" \
+  "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.DmeOrderDocuments WHERE TenantId=2" | tr -d ' \r')" "0"
+
+# --- clean up ONLY what this section created
+$SQLW -Q "SET NOCOUNT ON; EXEC sp_set_session_context N'CurrentTenantId', 1;
+          DELETE FROM dbo.DmeOrderDocuments WHERE DocumentId > $POD_BEFORE;" > /dev/null
+rm -rf "$POD_DIR"
+
+chk "the attachment checks cleaned up after themselves" \
+  "$($SQL -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.DmeOrderDocuments WHERE DocumentId > $POD_BEFORE" | tr -d ' \r')" "0"
+
+echo
 echo "=============================================================="
 printf " RESULT: %d passed, %d failed\n" $pass $fail
 echo "=============================================================="

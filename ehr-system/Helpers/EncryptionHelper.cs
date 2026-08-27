@@ -59,6 +59,72 @@ namespace EHR.Helpers
         }
 
         /// <summary>
+        /// Encrypt raw bytes with AES-256-GCM, for FILES.
+        ///
+        /// Same key, same nonce + tag + ciphertext layout as Encrypt, but no
+        /// base64 and no UTF-8: a PDF is not text, and round-tripping one
+        /// through a string would corrupt it. Used by DmeOrderDocuments so a
+        /// proof of delivery never reaches storage in the clear.
+        /// </summary>
+        public byte[] EncryptBytes(byte[] plainBytes)
+        {
+            ArgumentNullException.ThrowIfNull(plainBytes);
+
+            using var aes = new AesGcm(_key, AesGcm.TagByteSizes.MaxSize);
+
+            var nonce = new byte[AesGcm.NonceByteSizes.MaxSize];
+            RandomNumberGenerator.Fill(nonce);
+
+            var cipherBytes = new byte[plainBytes.Length];
+            var tag = new byte[AesGcm.TagByteSizes.MaxSize];
+
+            aes.Encrypt(nonce, plainBytes, cipherBytes, tag);
+
+            var result = new byte[nonce.Length + tag.Length + cipherBytes.Length];
+            Buffer.BlockCopy(nonce, 0, result, 0, nonce.Length);
+            Buffer.BlockCopy(tag, 0, result, nonce.Length, tag.Length);
+            Buffer.BlockCopy(cipherBytes, 0, result, nonce.Length + tag.Length, cipherBytes.Length);
+
+            return result;
+        }
+
+        /// <summary>
+        /// Decrypt bytes produced by EncryptBytes.
+        ///
+        /// Returns NULL when the data is not ours or has been tampered with.
+        /// Unlike the string overload, this does NOT fall back to returning the
+        /// input: handing a caller ciphertext that it will serve to a browser as
+        /// a PDF turns a detected tamper into a corrupt download with no error.
+        /// </summary>
+        public byte[]? DecryptBytes(byte[]? fullCipher)
+        {
+            var minSize = AesGcm.NonceByteSizes.MaxSize + AesGcm.TagByteSizes.MaxSize;
+            if (fullCipher == null || fullCipher.Length <= minSize) return null;
+
+            try
+            {
+                var nonce = new byte[AesGcm.NonceByteSizes.MaxSize];
+                var tag = new byte[AesGcm.TagByteSizes.MaxSize];
+                var cipherBytes = new byte[fullCipher.Length - nonce.Length - tag.Length];
+
+                Buffer.BlockCopy(fullCipher, 0, nonce, 0, nonce.Length);
+                Buffer.BlockCopy(fullCipher, nonce.Length, tag, 0, tag.Length);
+                Buffer.BlockCopy(fullCipher, nonce.Length + tag.Length, cipherBytes, 0, cipherBytes.Length);
+
+                var plainBytes = new byte[cipherBytes.Length];
+
+                using var aes = new AesGcm(_key, AesGcm.TagByteSizes.MaxSize);
+                aes.Decrypt(nonce, cipherBytes, tag, plainBytes);
+
+                return plainBytes;
+            }
+            catch (CryptographicException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Decrypt a string encrypted with AES-256-GCM
         /// </summary>
         public string? Decrypt(string? encryptedText)

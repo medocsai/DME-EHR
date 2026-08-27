@@ -30,14 +30,16 @@ public class DmeController : Controller
     private readonly IDmePayerCatalog _payers;
     private readonly IDmeIcdCatalog _icd;
     private readonly IDmeDistributors _distributors;
+    private readonly IDmeOrderDocuments _documents;
 
     public DmeController(IDmeDb db, IDmeAudit audit, DmeCustomerPhi phi,
                          IDmePaymentService payments, IDmeSftpAccountService sftp,
                          IDmePayerCatalog payers, IDmeIcdCatalog icd,
-                         IDmeDistributors distributors)
+                         IDmeDistributors distributors, IDmeOrderDocuments documents)
     {
         _icd = icd;
         _distributors = distributors;
+        _documents = documents;
         _db = db;
         _audit = audit;
         _phi = phi;
@@ -468,6 +470,8 @@ public class DmeController : Controller
         ViewData["Title"] = F.S(o["OrderNumber"]);
         ViewBag.Order = o;
         ViewBag.Lines = _db.Query("SELECT * FROM dbo.DmeOrderLines WHERE OrderId=@id", new { id });
+        ViewBag.Documents = _documents.ForOrder(id);
+        ViewBag.PodError = TempData["PodError"];
         return View();
     }
 
@@ -921,6 +925,104 @@ public class DmeController : Controller
     }
 
     // ---------------------------------------------------------------- Settings
+    /// <summary>
+    /// The signed-in user, for "who attached this". Same two claims DmeAudit
+    /// reads, so a document and its audit row always name the same person.
+    /// Null rather than a guess when neither claim is present: an attribution
+    /// that might be wrong is worse than none on a document that defends a claim.
+    /// </summary>
+    private int? CurrentUserId()
+    {
+        var raw = User.FindFirst("UserId")?.Value
+               ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        return int.TryParse(raw, out var id) ? id : null;
+    }
+
+    /// <summary>
+    /// Attach a proof of delivery to an order: the ticket the driver
+    /// photographed, the signed paper the customer scanned, the carrier's
+    /// paperwork on a drop-shipped item.
+    ///
+    /// The document is what defends the claim in an audit, so it is worth an
+    /// audit row of its own. The file itself is validated, encrypted and stored
+    /// by DmeOrderDocuments; nothing about that is repeated here.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(DmeOrderDocuments.MaxFileBytes + 1024 * 1024)]
+    public async Task<IActionResult> AttachPod(int id, IFormFile? file)
+    {
+        if (file == null || file.Length == 0)
+        {
+            TempData["PodError"] = "Choose a file to attach.";
+            return RedirectToAction("Order", new { id });
+        }
+
+        // Read once into memory. The cap is 25MB and the bytes have to be hashed
+        // AND encrypted, so streaming would buy nothing but complexity.
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer);
+
+        var result = await _documents.AttachAsync(
+            id, file.FileName, file.ContentType ?? "application/octet-stream", buffer.ToArray(), CurrentUserId());
+
+        if (!result.Success)
+        {
+            TempData["PodError"] = result.Error;
+            return RedirectToAction("Order", new { id });
+        }
+
+        await _audit.RecordAsync("DME_POD_ATTACHED", "DmeOrder", id,
+            before: null,
+            after: new { result.DocumentId, file.FileName, Size = file.Length });
+
+        return RedirectToAction("Order", new { id });
+    }
+
+    /// <summary>
+    /// Send an attached document back to the browser.
+    ///
+    /// Deliberately NOT a signed storage URL. A signed URL is valid for anyone
+    /// holding it and leaves both the tenant check and the audit trail behind.
+    /// This action authenticates, is scoped by row level security through the
+    /// view, and writes a PHI read row like every other read in this controller.
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> DownloadPod(int id)
+    {
+        var doc = await _documents.OpenAsync(id);
+        if (doc == null) return NotFound();
+
+        // Inline so a PDF or a photo opens in the browser instead of landing in
+        // the downloads folder, which is what somebody checking a delivery wants.
+        Response.Headers.ContentDisposition =
+            $"inline; filename=\"{Uri.EscapeDataString(doc.Value.FileName)}\"";
+
+        return File(doc.Value.Bytes, doc.Value.ContentType);
+    }
+
+    /// <summary>
+    /// Take a document off an order.
+    ///
+    /// The ROW survives with a DeletedAt: the record that a proof of delivery
+    /// was attached and then withdrawn is itself evidence. The bytes do not.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> RemovePod(int id, int orderId)
+    {
+        if (await _documents.RemoveAsync(id))
+        {
+            await _audit.RecordAsync("DME_POD_REMOVED", "DmeOrder", orderId,
+                before: new { DocumentId = id, Attached = true },
+                after: new { DocumentId = id, Attached = false });
+        }
+
+        return RedirectToAction("Order", new { id = orderId });
+    }
+
     /// <summary>
     /// Who this supplier buys from, for the items they never hold themselves.
     ///

@@ -1,6 +1,8 @@
 @using EHR.Helpers
+@using EHR.Services
 @{
     ViewData["ActivePage"] = "orders";
+    var documents = (IReadOnlyList<OrderDocument>)ViewBag.Documents;
     var o = (Dictionary<string, object?>)ViewBag.Order;
     var lines = (List<Dictionary<string, object?>>)ViewBag.Lines;
     var status = F.S(o["Status"]);
@@ -78,6 +80,70 @@
                 }
             </tbody>
         </table>
+    </div>
+
+    @* Proof of delivery documents: the ticket the driver photographed, the signed
+       paper the customer scanned, the carrier's paperwork on a drop-shipped item.
+       This is the document that defends the claim in an audit, so it is on the
+       order whatever stage it has reached. *@
+    <div class="dme-card">
+        <div class="dme-card-head">
+            <h2>Delivery documents</h2>
+            <span class="dme-muted" style="font-size:12px">PDF or picture, up to 25MB</span>
+        </div>
+        <div class="dme-card-body">
+            @if (ViewBag.PodError != null)
+            {
+                <div class="alert alert-danger" style="font-size:13px">@ViewBag.PodError</div>
+            }
+
+            @if (documents.Count == 0)
+            {
+                <div class="dme-muted" style="font-size:13px;margin-bottom:12px">
+                    Nothing attached yet.
+                </div>
+            }
+            else
+            {
+                <table class="dme-table" style="margin-bottom:12px">
+                    <thead><tr><th>Document</th><th>Size</th><th>Attached by</th><th>When</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach (var d in documents)
+                    {
+                        <tr>
+                            <td>
+                                @* Through our own controller, not a storage URL: it authenticates,
+                                   checks the tenant and writes an audit row. *@
+                                <a href="/Dme/DownloadPod/@d.DocumentId" target="_blank" rel="noopener">
+                                    <i class="bi bi-paperclip"></i> @d.FileName
+                                </a>
+                            </td>
+                            <td class="dme-mono">@(((d.FileSize + 1023) / 1024).ToString("N0")) KB</td>
+                            <td>@(string.IsNullOrWhiteSpace(d.UploadedByName) ? "—" : d.UploadedByName)</td>
+                            <td class="dme-muted">@d.UploadedAt.ToLocalTime().ToString("MMM d, yyyy")</td>
+                            <td style="text-align:right">
+                                <form method="post" action="/Dme/RemovePod" style="display:inline"
+                                      onsubmit="return confirm('Remove this document from the order?');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@d.DocumentId" />
+                                    <input type="hidden" name="orderId" value="@F.I(o["OrderId"])" />
+                                    <button type="submit" class="dme-btn dme-btn-light dme-btn-sm requires-admin">remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+
+            <form method="post" action="/Dme/AttachPod" enctype="multipart/form-data" class="d-flex gap-2 align-items-center">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@F.I(o["OrderId"])" />
+                <input type="file" name="file" class="form-control" style="max-width:360px"
+                       accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff" required />
+                <button type="submit" class="dme-btn dme-btn-light"><i class="bi bi-upload"></i> Attach</button>
+            </form>
+        </div>
     </div>
 
     @if (status == "delivered" || status == "billed")

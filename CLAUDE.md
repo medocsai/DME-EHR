@@ -107,7 +107,7 @@ caller tenant and RLS BLOCKs cross-tenant writes, so an in-app version would
 have to punch a hole through the isolation. Order/claim numbering needs no
 seeding.
 
-### The database (32 tables, nothing unused)
+### The database (33 tables, nothing unused)
 DME owns 21 tables plus `HcpcsCodes` (the supplier's item master),
 `DmeSupplierProfile` and `DmeSftpAccounts`. Four are GLOBAL national reference
 data with no tenant column: `DmeCarcCodes`, `DmePayers`, `IcdCodes` and
@@ -130,6 +130,7 @@ and 1,745 clinical claims that DME never read. Do not reintroduce them.
 11. `2026-08-27_DME_Icd10_Catalog.sql`
 12. `2026-08-27_DME_Hcpcs_Catalog.sql`
 13. `2026-08-27_DME_Drop_Ship.sql`
+14. `2026-08-27_DME_Order_Documents.sql`
 Then `POST /Dme/BackfillPhi` once as an admin. Verified end to end on a scratch
 database. Note `ALTER SECURITY POLICY` and any batch naming a dropped column are
 validated at COMPILE time, so `IF NOT EXISTS` guards do not protect them: use
@@ -243,6 +244,60 @@ Migration `2026-08-27_DME_Payer_Catalog.sql`, service
   145 rows spell it BCBS and 18 spell it Blue Cross, so without the alias a
   biller typing what is printed on the card finds almost nothing. A search
   nobody can hit is the same complaint again.
+
+## Proof of delivery attachments (added 2026-08-27)
+
+The client: "allow the option to attach Proof of delivery files as pdf,
+pictures, etc." Migration `2026-08-27_DME_Order_Documents.sql`, service
+`Services/DmeOrderDocuments.cs`, panel on `/Dme/Order/{id}`.
+
+**This is the first REAL file upload in the product.** The Attachments panel on
+the New Customer screen is still demo UI that persists nothing.
+
+### Where the bytes go
+- **`IFileStorageService` has two implementations and configuration picks.** A
+  `GoogleCloudStorage:BucketName` means the cloud; blank means
+  `LocalFileStorageService`, files under `App_Data/storage`. Both store the same
+  encrypted bytes under the same object keys, so going live is a config change,
+  not a code change, and the feature is provable before a key exists.
+- **A multi-server deployment needs the bucket.** Two instances behind a load
+  balancer do not share a disk.
+- **`App_Data`, never `wwwroot`.** Anything under `wwwroot` is served by URL with
+  no auth, no tenant check and no audit row.
+
+**Trap, fixed:** `appsettings.json` said `"BucketName": "imehr-files"`, inherited
+from the fork. The first service account key would have written DME
+proof-of-delivery documents into another product's bucket. It is blank now and a
+test fails if any product's bucket name reappears.
+
+### What is stored
+`DmeOrderDocuments`: `StoragePath`, `FileName` (**ciphertext**, the original name
+is PHI), `ContentType`, `FileSize`, `FileHash`, who and when, `DeletedAt`.
+
+- **No `IsDeleted`, no `IsEncrypted`, no `LocationId`.** All derived or constant.
+- **The hash is of the PLAINTEXT**, taken BEFORE encryption, so a document stays
+  checkable across a key rotation. A test pins the ordering.
+- **The stored filename is opaque.** A bucket listing must not read
+  `john-doe-oxygen-pod.pdf`.
+- Reads go through `vDmeOrderDocuments`, which excludes removed rows. That
+  exclusion IS the removal mechanism, like `vDmePayments` and voided receipts.
+
+### The rules
+- **Encrypted before it leaves the app**, with `EncryptionHelper.EncryptBytes`,
+  added for this. `DecryptBytes` returns **null** on tamper, unlike the string
+  overload which returns its input: handing a caller ciphertext to serve as a
+  PDF turns a detected tamper into a silent corrupt download.
+- **Validated three ways:** extension, MIME, and leading magic bytes. Only the
+  third catches a renamed executable, because the first two are whatever the
+  browser claims. PDF, JPG, PNG and TIFF only.
+- **25MB cap**, enforced in the service and by `[RequestSizeLimit]`.
+- **Served by `/Dme/DownloadPod/{id}`, never a signed URL.** A signed URL is
+  valid for anyone holding it and leaves the tenant check and the audit trail
+  behind. `LocalFileStorageService.GetSignedUrlAsync` throws to keep that
+  decision from being quietly undone.
+- **Removed, never erased.** The ROW survives with `DeletedAt` (the record that a
+  document was attached and withdrawn is itself evidence); the BYTES are
+  deleted. Admin only, guarded on `DeletedAt IS NULL`, audited both ways.
 
 ## Drop shipping (added 2026-08-27)
 
@@ -515,14 +570,14 @@ which supplier they are looking at.
   session cookie is issued against the same expiry.
 
 ### Tests
-`dotnet test ehr-system/EHR.Tests` — **303 passing**. It was 304 before the
+`dotnet test ehr-system/EHR.Tests` — **323 passing**. It was 304 before the
 clinical EHR was removed; 193 of those tested code that no longer exists. The DME suite is
 in `EHR.Tests/Dme/`. Four SecurityOverhaul test files are excluded in the csproj
 because they test `EHR.Services.Security`, which exists in IMEHR but was never
 copied into this fork.
 
 Run `bash scripts/verify-dme-foundation.sh` against a running app for the
-end-to-end proof: **159 checks** with a super admin sign in, 144 without.
+end-to-end proof: **175 checks** with a super admin sign in, 160 without.
 
 ```bash
 SUPERADMIN_EMAIL=you@example.com SUPERADMIN_PASSWORD=... bash scripts/verify-dme-foundation.sh

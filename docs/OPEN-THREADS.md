@@ -10,7 +10,7 @@ Nothing here is being worked on unless it says so.
 
 ---
 
-## Thread 7: Client feedback, 2026-08-27 (OPEN, one item at a time)
+## Thread 7: Client feedback, 2026-08-27 (CLOSED, all seven built)
 
 Their email after seeing the platform. Every item, what it actually is and what
 was found, lives in **`docs/CLIENT-REQUESTS-2026-08-27.md`**. Summary only here:
@@ -22,14 +22,13 @@ was found, lives in **`docs/CLIENT-REQUESTS-2026-08-27.md`**. Summary only here:
 | C2 | Insurance list is not exhaustive | DONE 2026-08-27. 4 payers became 4,017, global catalog, typeahead |
 | C3 | ICD-10 codes for DME not exhaustive | DONE 2026-08-27. 12 codes became CMS's 74,719 |
 | O1 / H1 | HCPCS item list not exhaustive (raised on two screens, one job) | DONE 2026-08-27. CMS's 8,623, plus an Add item form |
-| O2 | Proof of delivery: attach PDFs and pictures | Parked by Hammas. Storage decided: new Google bucket, RehabDox pattern. Approach written up |
+| O2 | Proof of delivery: attach PDFs and pictures | DONE 2026-08-27. Encrypted, served through an audited action. Bucket still to be created |
 | I1 | Most delivered items are drop-shipped from distributors | DONE 2026-08-27. They write no stock movement, and are shown separately |
 
-**Six of the seven are closed.** The three "not exhaustive" complaints were
-decided together and all three lists are now global national reference data,
-never copied per tenant. I1 turned out not to need the client after all: the
-answer was to write NOTHING to the stock ledger for a drop-shipped line and show
-those items separately. **One remains: O2, parked by Hammas.**
+**All seven are closed.** The three "not exhaustive" complaints were decided
+together and all three lists are now global national reference data, never
+copied per tenant. I1 turned out not to need the client after all: the answer
+was to write NOTHING to the stock ledger for a drop-shipped line.
 
 **Nothing is deployed**, so the client is still looking at the old build. D1 in
 particular closes on a deploy, not on code.

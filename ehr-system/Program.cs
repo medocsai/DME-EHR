@@ -119,13 +119,34 @@ builder.Services.AddScoped<IDmeHcpcsCatalog, DmeHcpcsCatalog>();
 // three national catalogs above. See Services/DmeDistributors.cs.
 builder.Services.AddScoped<IDmeDistributors, DmeDistributors>();
 
+// Proof-of-delivery attachments. Scoped because it holds the request-scoped
+// DmeDb; it owns validation, encryption and the document row together so no
+// caller can do two of the three. See Services/DmeOrderDocuments.cs.
+builder.Services.AddScoped<IDmeOrderDocuments, DmeOrderDocuments>();
+
 // Google Cloud Storage Services
 builder.Services.Configure<GoogleCloudStorageOptions>(
     builder.Configuration.GetSection("GoogleCloudStorage"));
 builder.Services.AddSingleton<FilePathBuilder>();
 builder.Services.AddSingleton<FileValidator>();
 builder.Services.AddSingleton<MetadataBuilder>();
-builder.Services.AddSingleton<IFileStorageService, GoogleCloudStorageService>();
+// Where attached files live. A configured bucket means Google Cloud Storage;
+// nothing configured means the local disk.
+//
+// This is not a stub-versus-real split. Both store the same encrypted bytes
+// under the same object keys, so going live is a configuration change, not a
+// code change, and the feature can be exercised and proved before anybody has
+// issued a service account key. LocalFileStorageService says where the line is.
+//
+// The bucket name is deliberately NOT defaulted. It used to read "imehr-files",
+// inherited from the product this was forked from, which would have written DME
+// proof-of-delivery documents into another product's bucket the moment
+// credentials existed.
+var storageBucket = builder.Configuration["GoogleCloudStorage:BucketName"];
+if (!string.IsNullOrWhiteSpace(storageBucket))
+    builder.Services.AddSingleton<IFileStorageService, GoogleCloudStorageService>();
+else
+    builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
 
 builder.Services.AddMemoryCache();
 
