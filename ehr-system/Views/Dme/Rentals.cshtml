@@ -3,6 +3,12 @@
 @{ ViewData["ActivePage"] = "rentals"; }
 
 <div class="dme-wrap">
+    @if (TempData["RentalError"] != null)
+    {
+        <div class="dme-banner" style="background:#fdecea;color:#8a1c13">
+            <i class="bi bi-exclamation-triangle"></i> @TempData["RentalError"]
+        </div>
+    }
     <div class="dme-head"><div><h1>Rentals</h1><div class="dme-sub">Recurring next-bill-date cycle</div></div></div>
 
     <div class="dme-kpis" style="grid-template-columns:repeat(3,1fr)">
@@ -19,7 +25,10 @@
                 @foreach (var r in Model)
                 {
                     var d = F.DaysUntil(r["NextBillDate"]);
-                    var capped = r["CapMonths"] != null && F.I(r["MonthsBilled"]) >= F.I(r["CapMonths"]);
+                    // Straight from vDmeRentals, the same value BillNow refuses on.
+                    // Recomputing it here is how a screen and a guard end up
+                    // disagreeing about whether billing is allowed.
+                    var capped = F.B(r["CapReached"]);
                     var active = F.S(r["Status"]) == "active";
                     <tr>
                         <td><strong>@F.S(r["CustomerName"])</strong><div class="dme-muted" style="font-size:12px">@F.S(r["ItemName"]) · @F.S(r["Serial"]) <span class="dme-mono">@F.S(r["Hcpcs"])</span></div></td>
@@ -41,6 +50,30 @@
                                 </form>
                             }
                             else if (capped) { <span class="dme-muted" style="font-size:12px">Cap reached</span> }
+
+                            @* Equipment comes back, a customer moves or dies, or the cap is
+                               reached and the item is now theirs. Until this existed the
+                               rental went on asking to be billed forever. *@
+                            @if (active)
+                            {
+                                <form method="post" action="/Dme/EndRental" style="display:inline"
+                                      onsubmit="var r = prompt('Why is this rental ending? (returned, deceased, cap reached, written off)'); if (!r) return false; this.reason.value = r; this.backToStock.value = confirm('Is the equipment coming back into stock?
+
+OK = back on the shelf
+Cancel = not returning (kept, lost or written off)') ? 'true' : 'false'; return true;">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@F.I(r["RentalId"])" />
+                                    <input type="hidden" name="reason" value="" />
+                                    <input type="hidden" name="backToStock" value="true" />
+                                    <button class="dme-btn dme-btn-light dme-btn-sm requires-admin" type="submit">End</button>
+                                </form>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(F.S(r["EndReason"])))
+                            {
+                                <span class="dme-muted" style="font-size:12px" title="@F.S(r["EndReason"])">
+                                    ended @F.Date(r["EndedAt"])
+                                </span>
+                            }
                         </td>
                     </tr>
                 }

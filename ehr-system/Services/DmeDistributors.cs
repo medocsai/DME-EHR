@@ -7,7 +7,7 @@ namespace EHR.Services;
 /// <param name="Name">Their name.</param>
 /// <param name="AccountNo">This supplier's account number WITH them, or null.</param>
 /// <param name="IsRetired">DERIVED from RetiredAt. Not a stored flag.</param>
-public record Distributor(int DistributorId, string Name, string? AccountNo, bool IsRetired);
+public record Distributor(int DistributorId, string Name, string? AccountNo, string? Phone, string? Email, bool IsRetired);
 
 /// <summary>
 /// Who a supplier buys from, for the items they never hold themselves.
@@ -31,7 +31,15 @@ public interface IDmeDistributors
     /// who shipped them, and that record has to survive the relationship
     /// ending. Same rule as a clearinghouse account.
     /// </summary>
+    /// <summary>Correct a distributor's details. Retired ones included: a typo in
+    /// the name still shows on every old order that names them.</summary>
+    bool Update(int distributorId, string? name, string? accountNo, string? phone, string? email);
+
     bool Retire(int distributorId);
+
+    /// <summary>Undo a retirement. Retiring is one click and had no way back,
+    /// so a mis-click removed a distributor from every picker permanently.</summary>
+    bool Restore(int distributorId);
 }
 
 /// <summary>
@@ -68,7 +76,7 @@ public sealed class DmeDistributors : IDmeDistributors
     public IReadOnlyList<Distributor> All(bool includeRetired = false)
     {
         var rows = _db.Query(
-            "SELECT DistributorId, Name, AccountNo, RetiredAt FROM dbo.DmeDistributors " +
+            "SELECT DistributorId, Name, AccountNo, Phone, Email, RetiredAt FROM dbo.DmeDistributors " +
             (includeRetired ? "" : "WHERE RetiredAt IS NULL ") +
             "ORDER BY CASE WHEN RetiredAt IS NULL THEN 0 ELSE 1 END, Name");
 
@@ -83,7 +91,7 @@ public sealed class DmeDistributors : IDmeDistributors
         // No RetiredAt filter: an order placed before the relationship ended
         // still has to say who shipped it.
         var r = _db.QueryOne(
-            "SELECT DistributorId, Name, AccountNo, RetiredAt FROM dbo.DmeDistributors WHERE DistributorId=@distributorId",
+            "SELECT DistributorId, Name, AccountNo, Phone, Email, RetiredAt FROM dbo.DmeDistributors WHERE DistributorId=@distributorId",
             new { distributorId });
 
         return r == null ? null : Map(r);
@@ -119,6 +127,39 @@ public sealed class DmeDistributors : IDmeDistributors
     }
 
     /// <inheritdoc />
+    public bool Update(int distributorId, string? name, string? accountNo, string? phone, string? email)
+    {
+        if (distributorId <= 0 || string.IsNullOrWhiteSpace(name)) return false;
+        var clean = name.Trim();
+
+        // Same duplicate rule as Add, minus this row: renaming a distributor to
+        // a name somebody else already has is the ambiguity the unique index
+        // exists to prevent, and an operator deserves a sentence for it.
+        var clash = _db.Scalar(
+            "SELECT DistributorId FROM dbo.DmeDistributors " +
+            "WHERE TenantId=@TenantId AND Name=@clean AND DistributorId<>@distributorId",
+            new { clean, distributorId });
+
+        if (clash != null) return false;
+
+        // Retired ones are editable on purpose. A typo in the name of a
+        // distributor you no longer use still shows on every old order that
+        // names them.
+        return _db.Execute(@"
+            UPDATE dbo.DmeDistributors
+               SET Name=@clean, AccountNo=@accountNo, Phone=@phone, Email=@email
+             WHERE DistributorId=@distributorId AND TenantId=@TenantId",
+            new
+            {
+                distributorId,
+                clean,
+                accountNo = Blank(accountNo),
+                phone = Blank(phone),
+                email = Blank(email)
+            }) == 1;
+    }
+
+    /// <inheritdoc />
     public bool Retire(int distributorId)
     {
         if (distributorId <= 0) return false;
@@ -132,6 +173,19 @@ public sealed class DmeDistributors : IDmeDistributors
             new { distributorId }) == 1;
     }
 
+    /// <inheritdoc />
+    public bool Restore(int distributorId)
+    {
+        if (distributorId <= 0) return false;
+
+        // Guarded on RetiredAt IS NOT NULL, the mirror of Retire: restoring one
+        // that is already in service changes nothing and reports nothing.
+        return _db.Execute(
+            "UPDATE dbo.DmeDistributors SET RetiredAt = NULL " +
+            "WHERE DistributorId=@distributorId AND TenantId=@TenantId AND RetiredAt IS NOT NULL",
+            new { distributorId }) == 1;
+    }
+
     private static object Blank(string? v)
         => string.IsNullOrWhiteSpace(v) ? DBNull.Value : v.Trim();
 
@@ -139,5 +193,7 @@ public sealed class DmeDistributors : IDmeDistributors
         F.I(r["DistributorId"]),
         F.S(r["Name"]),
         r["AccountNo"] is null or DBNull ? null : F.S(r["AccountNo"]),
+        r["Phone"] is null or DBNull ? null : F.S(r["Phone"]),
+        r["Email"] is null or DBNull ? null : F.S(r["Email"]),
         r["RetiredAt"] is not (null or DBNull));
 }

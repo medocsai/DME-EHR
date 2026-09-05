@@ -10,11 +10,26 @@
 }
 
 <div class="dme-wrap">
+    @if (TempData["CustomerError"] != null)
+    {
+        <div class="dme-banner" style="background:#fdecea;color:#8a1c13">
+            <i class="bi bi-exclamation-triangle"></i> @TempData["CustomerError"]
+        </div>
+    }
+    @if (F.S(c["Status"]) == "archived")
+    {
+        <div class="dme-banner" style="background:#faeeda;color:#854f0b">
+            <i class="bi bi-archive"></i> This customer is archived. They are off the working list
+            and cannot be given new orders until restored.
+        </div>
+    }
     <a href="/Dme/Customers" class="dme-muted" style="font-size:13px;text-decoration:none"><i class="bi bi-arrow-left"></i> All customers</a>
 
     <div class="dme-card" style="margin-top:10px">
         <div class="dme-card-body" style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
             <div style="display:flex;align-items:center;gap:14px">
+                @* The archive guard reports through TempData; without somewhere to
+                   show it, a refusal would look like nothing happening. *@
                 <span class="dme-avatar" style="width:52px;height:52px;font-size:18px">@F.Initials(c["FirstName"], c["LastName"])</span>
                 <div>
                     <div style="font-size:19px;font-weight:700">@F.S(c["FirstName"]) @F.S(c["LastName"])</div>
@@ -22,7 +37,50 @@
                     <div class="dme-muted" style="font-size:12.5px">Ht @(ht > 0 ? (ht / 12) + "' " + (ht % 12) + "\"" : "—") · Wt @(F.I(c["WeightLbs"]) > 0 ? F.I(c["WeightLbs"]) + " lb" : "—") · @F.S(c["AddressLine1"]), @F.S(c["City"]) @F.S(c["State"]) @F.S(c["Zip"])</div>
                 </div>
             </div>
-            <a href="/Dme/NewOrder?customerId=@F.I(c["CustomerId"])" class="dme-btn dme-btn-primary"><i class="bi bi-box-seam"></i> New Order</a>
+            @* One group, not three loose children. The card is justify-content:
+               space-between, so each direct child becomes its own flex item and
+               the buttons drift apart across the width. *@
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                @* A customer could be created and never corrected. Everything on
+                   this record ends up on a CMS-1500, so a wrong address is a
+                   denied claim. *@
+                <a href="/Dme/EditCustomer/@F.I(c["CustomerId"])" class="dme-btn dme-btn-light" title="Correct this customer">
+                    <i class="bi bi-pencil"></i> Edit
+                </a>
+
+                @* Never deleted: their orders, claims and payments are the record
+                   of money that changed hands. Archiving is the reversible half. *@
+                @if (F.S(c["Status"]) == "archived")
+                {
+                    <form method="post" action="/Dme/RestoreCustomer" style="display:inline">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@F.I(c["CustomerId"])" />
+                        <button type="submit" class="dme-btn dme-btn-light requires-admin" title="Put back on the working list">
+                            <i class="bi bi-arrow-counterclockwise"></i> Restore
+                        </button>
+                    </form>
+                }
+                else
+                {
+                    <form method="post" action="/Dme/ArchiveCustomer" style="display:inline"
+                          onsubmit="return confirm('Archive this customer? They come off the working list and cannot be given new orders until restored.');">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@F.I(c["CustomerId"])" />
+                        <button type="submit" class="dme-btn dme-btn-light requires-admin" title="Take off the working list">
+                            <i class="bi bi-archive"></i> Archive
+                        </button>
+                    </form>
+                }
+
+                @* An archived customer cannot be given new orders, so the button
+                   that would start one does not belong on their page. *@
+                @if (F.S(c["Status"]) != "archived")
+                {
+                    <a href="/Dme/NewOrder?customerId=@F.I(c["CustomerId"])" class="dme-btn dme-btn-primary">
+                        <i class="bi bi-box-seam"></i> New Order
+                    </a>
+                }
+            </div>
         </div>
     </div>
 

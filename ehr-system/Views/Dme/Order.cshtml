@@ -18,6 +18,19 @@
 <div class="dme-wrap">
     <a href="/Dme/Orders" class="dme-muted" style="font-size:13px;text-decoration:none"><i class="bi bi-arrow-left"></i> Orders</a>
 
+    @if (TempData["OrderError"] != null)
+    {
+        <div class="dme-banner" style="background:#fdecea;color:#8a1c13">
+            <i class="bi bi-exclamation-triangle"></i> @TempData["OrderError"]
+        </div>
+    }
+    @if (status == "cancelled")
+    {
+        <div class="dme-banner" style="background:#faeeda;color:#854f0b">
+            <i class="bi bi-x-circle"></i> This order was cancelled. Nothing was delivered, billed or taken from stock.
+        </div>
+    }
+
     <div class="dme-card" style="margin-top:10px">
         <div class="dme-card-body">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px">
@@ -26,6 +39,16 @@
                     <div class="dme-muted" style="font-size:13px">@F.S(o["CustomerName"]) · @(string.IsNullOrEmpty(F.S(o["DoctorName"])) ? "no referring doctor" : F.S(o["DoctorName"])) · delivery @F.Date(o["DeliveryDate"])</div>
                 </div>
                 <div class="d-flex gap-2">
+                    @* Until delivery nothing irreversible has happened, so a
+                       wrong quantity or the wrong item is a correction rather
+                       than a cancellation. The action re-checks the status
+                       itself: this only decides whether to offer the link. *@
+                    @if (status != "delivered" && status != "billed" && status != "cancelled")
+                    {
+                        <a href="/Dme/EditOrder/@F.I(o["OrderId"])" class="dme-btn dme-btn-light">
+                            <i class="bi bi-pencil"></i> Edit order
+                        </a>
+                    }
                     @if (status == "confirmed")
                     {
                         <button class="dme-btn dme-btn-primary" onclick="document.getElementById('podPanel').scrollIntoView({behavior:'smooth'})"><i class="bi bi-truck"></i> Mark Delivered + POD</button>
@@ -33,6 +56,27 @@
                     @if (status == "delivered" || status == "billed")
                     {
                         <a href="/Dme/Billing" class="dme-btn dme-btn-light"><i class="bi bi-receipt"></i> Go to Billing</a>
+                    }
+                    @* A delivered order is never cancellable: delivering wrote a claim,
+                       a rental, a stock movement and a serialised unit, and cancelling
+                       would leave all of it pointing at something that never happened. *@
+                    @if (status == "cancelled")
+                    {
+                        <form method="post" action="/Dme/RestoreOrder" style="display:inline">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@F.I(o["OrderId"])" />
+                            <button type="submit" class="dme-btn dme-btn-light requires-admin">Reopen as draft</button>
+                        </form>
+                    }
+                    else if (status != "delivered" && status != "billed")
+                    {
+                        <form method="post" action="/Dme/CancelOrder" style="display:inline"
+                              onsubmit="var r = prompt('Why is this order being cancelled?'); if (!r) return false; this.reason.value = r; return true;">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@F.I(o["OrderId"])" />
+                            <input type="hidden" name="reason" value="" />
+                            <button type="submit" class="dme-btn dme-btn-light requires-admin">Cancel order</button>
+                        </form>
                     }
                 </div>
             </div>
@@ -122,6 +166,12 @@
                             <td>@(string.IsNullOrWhiteSpace(d.UploadedByName) ? "—" : d.UploadedByName)</td>
                             <td class="dme-muted">@d.UploadedAt.ToLocalTime().ToString("MMM d, yyyy")</td>
                             <td style="text-align:right">
+                                @* The file name has always been a link, but a link that looks
+                                   like a file name is not an offer to open it. Same action,
+                                   said out loud. DownloadPod serves inline, so a PDF or a
+                                   photo opens in the tab rather than landing in Downloads. *@
+                                <a href="/Dme/DownloadPod/@d.DocumentId" target="_blank" rel="noopener"
+                                   class="dme-btn dme-btn-light dme-btn-sm">view</a>
                                 <form method="post" action="/Dme/RemovePod" style="display:inline"
                                       onsubmit="return confirm('Remove this document from the order?');">
                                     @Html.AntiForgeryToken()

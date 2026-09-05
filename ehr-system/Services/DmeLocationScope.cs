@@ -58,8 +58,9 @@ public interface IDmeLocationScope
 /// <inheritdoc cref="IDmeLocationScope"/>
 public sealed class DmeLocationScope : IDmeLocationScope
 {
-    // 0 = Super Admin, 1 = Clinic Admin, 2 = Clinician, 3 = Front Desk,
-    // 4 = Biller, 5 = Read Only, 6 = Medical Assistant, 7 = Nurse.
+    // 0 = Super Admin, 1 = Admin, 2 = Intake, 3 = Delivery, 4 = Biller.
+    // Anything else is a leftover from the clinical fork and is treated as the
+    // MOST restricted, never the least.
     private const int SuperAdminRole = 0;
     private const int ClinicAdminRole = 1;
 

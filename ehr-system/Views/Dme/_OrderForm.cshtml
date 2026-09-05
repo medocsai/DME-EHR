@@ -1,0 +1,279 @@
+@using EHR.Helpers
+@using EHR.Services
+@*
+    ONE order form. New Order and Edit order both render this.
+
+    WHY IT IS A PARTIAL
+    The same reason _CustomerForm is. An order could be raised and never
+    corrected: a quantity typed wrong, the wrong HCPCS picked off a similar
+    name, a delivery date moved. The only way out was to cancel it and raise
+    another, which spends an order number and leaves a cancelled row whose real
+    reason was a typo.
+
+    Two files describing one form drift. This one cannot: a field added here
+    appears on both, and if it does not appear on both it is not a field.
+
+    The mode is decided by ViewBag.Order being null, and by nothing else.
+*@
+@{
+    var order = ViewBag.Order as Dictionary<string, object?>;
+    var editing = order != null;
+
+    var distributors = (IReadOnlyList<Distributor>)ViewBag.Distributors;
+    var customers = (List<Dictionary<string, object?>>)ViewBag.Customers;
+    var doctors = (IReadOnlyList<Doctor>)ViewBag.Doctors;
+    var catalog = (List<Dictionary<string, object?>>)ViewBag.Catalog;
+
+    var lines = ViewBag.Lines as List<Dictionary<string, object?>>
+                ?? new List<Dictionary<string, object?>>();
+
+    // On New the customer can be pre-chosen from the customer screen. On Edit it
+    // is whoever the order is already for.
+    var selectedCustomer = editing
+        ? F.I(order!["CustomerId"])
+        : (ViewBag.PreCustomer == null ? 0 : (int)ViewBag.PreCustomer);
+
+    var selectedDoctor = editing ? F.I(order!["DoctorId"]) : 0;
+    var deposit = editing ? F.Dec(order!["Deposit"]).ToString("0.##") : "0";
+
+    // Stored as a date; shown the way the rest of the product writes them, and
+    // DateInput reads either back.
+    var deliveryShown = editing && order!["DeliveryDate"] != null
+        ? Convert.ToDateTime(order["DeliveryDate"]).ToString("MM/dd/yyyy")
+        : "";
+
+    // A retired distributor still has to resolve on a line already filed, so the
+    // name is looked up across all of them and only the PICKER hides them.
+    var allDistributors = ViewBag.AllDistributors as IReadOnlyList<Distributor> ?? distributors;
+    string DistributorName(object? id) =>
+        allDistributors.FirstOrDefault(d => d.DistributorId == F.I(id))?.Name ?? "";
+}
+
+<form method="post" action="@(editing ? "/Dme/UpdateOrder" : "/Dme/CreateOrder")" id="orderForm">
+    @Html.AntiForgeryToken()
+    @if (editing)
+    {
+        <input type="hidden" name="id" value="@F.I(order!["OrderId"])" />
+    }
+
+    <div class="dme-grid2">
+        <div class="dme-card">
+            <div class="dme-card-head"><h2>Order details</h2></div>
+            <div class="dme-card-body">
+                <div class="mb-3">
+                    <label class="form-label">Customer <span style="color:#d6453f">*</span></label>
+                    <select name="customerId" class="form-select" required>
+                        <option value="">Choose a customer&hellip;</option>
+                        @foreach (var c in customers)
+                        {
+                            <option value="@F.I(c["CustomerId"])" selected="@(F.I(c["CustomerId"]) == selectedCustomer)">@F.S(c["LastName"]), @F.S(c["FirstName"]) &mdash; @F.S(c["AccountNo"])</option>
+                        }
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Referring doctor</label>
+                    <select name="doctorId" class="form-select">
+                        <option value="">Select&hellip;</option>
+                        @foreach (var d in doctors)
+                        {
+                            <option value="@d.DoctorId" selected="@(d.DoctorId == selectedDoctor)">@d.DisplayName@(string.IsNullOrWhiteSpace(d.Npi) ? "" : $" (NPI {d.Npi})")</option>
+                        }
+                    </select>
+                    @* Boxes 17 and 17b of the CMS-1500. A claim without the ordering
+                       physician is rejected, so an empty picker is a dead end. *@
+                    @if (doctors.Count == 0)
+                    {
+                        <div class="form-text" style="font-size:11.5px">
+                            No doctors yet?
+                            <a href="/Dme/Doctors" target="_blank" rel="noopener">Add one</a>
+                            &mdash; DMEPOS claims need the referring doctor and their NPI.
+                        </div>
+                    }
+                </div>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="form-label">Delivery date</label>
+                        @* Plain text, like the date of birth on the customer form:
+                           Chrome refuses a paste into the native date control, and a
+                           delivery date is routinely copied out of a scheduling email.
+                           Helpers/DateInput.cs reads it server side. *@
+                        <input name="deliveryDate" class="form-control js-dateinput" placeholder="mm/dd/yyyy" value="@deliveryShown" />
+                        <div class="form-text" style="font-size:11px">Type or paste. mm/dd/yyyy</div>
+                    </div>
+                    <div class="col-6"><label class="form-label">Deposit ($)</label><input type="number" step="0.01" name="deposit" class="form-control" value="@deposit" /></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dme-card">
+            <div class="dme-card-head"><h2>Items</h2></div>
+            <div class="dme-card-body">
+                <div class="row g-2 align-items-end mb-2">
+                    <div class="col-12">
+                        <label class="form-label">Add HCPCS item</label>
+                        <select id="itemSel" class="form-select">
+                            @foreach (var x in catalog)
+                            {
+                                <option value="@F.S(x["Hcpcs"])"
+                                        data-name="@F.S(x["Name"])"
+                                        data-rentable="@(F.B(x["Rentable"]) ? "1" : "0")"
+                                        data-purchasable="@(F.B(x["Purchasable"]) ? "1" : "0")"
+                                        data-buy="@F.Dec(x["PurchasePrice"]).ToString("0.00")"
+                                        data-rent="@F.Dec(x["MonthlyRate"]).ToString("0.00")">@F.S(x["Hcpcs"]) &mdash; @F.S(x["Name"])</option>
+                            }
+                        </select>
+                        @* This list is the SUPPLIER'S item master, their items at
+                           their prices, not the 8,623 national codes. So an item
+                           they have never priced is genuinely absent, and without
+                           this line there is nothing on the screen saying where to
+                           go. New tab, because a half-built order is easy to lose. *@
+                        <div class="form-text" style="font-size:11.5px">
+                            Item not listed?
+                            <a href="/Hcpcs" target="_blank" rel="noopener">Add it to your catalog</a>,
+                            then reopen this picker.
+                        </div>
+                    </div>
+                    <div class="col-5"><label class="form-label">Mode</label><select id="modeSel" class="form-select"></select></div>
+                    <div class="col-3"><label class="form-label">Qty</label><input type="number" id="qtyIn" class="form-control" value="1" min="1" /></div>
+                    <div class="col-4"><button type="button" id="addBtn" class="dme-btn dme-btn-light w-100">Add line</button></div>
+
+                    @* Drop shipping. Blank means it comes out of our own stock,
+                       which is what leaving this alone should mean, so it is not
+                       a checkbox to tick: naming a distributor IS the fact. A
+                       drop-shipped line writes no stock movement. *@
+                    <div class="col-7">
+                        <label class="form-label">Ships direct from <span class="dme-muted" style="font-size:11px">(leave blank if it comes out of your own stock)</span></label>
+                        <select id="distSel" class="form-select">
+                            <option value="0">From our stock</option>
+                            @foreach (var d in distributors)
+                            {
+                                <option value="@d.DistributorId">@d.Name</option>
+                            }
+                        </select>
+                        @* Retired distributors are hidden from this picker on purpose, so a
+                           supplier who has retired their only one sees nothing but "our stock"
+                           and no reason why. Same hint the HCPCS picker carries. *@
+                        @if (distributors.Count == 0)
+                        {
+                            <div class="form-text" style="font-size:11.5px">
+                                No distributors yet?
+                                <a href="/Dme/Distributors" target="_blank" rel="noopener">Add one</a>
+                                to ship an item direct.
+                            </div>
+                        }
+                    </div>
+                    <div class="col-5">
+                        <label class="form-label">Their order / tracking ref</label>
+                        <input type="text" id="distRefIn" class="form-control" placeholder="e.g. INV-88213" />
+                    </div>
+                </div>
+
+                @* The rows ARE the posted state, and on edit they are rendered
+                   HERE, by the server, not built by a script from a data island.
+
+                   That matters for the same reason it matters on the diagnosis
+                   chips: the POST replaces the order's lines with whatever it
+                   carries, so a page whose JavaScript failed to run would post
+                   nothing and empty the order. These hidden inputs exist in the
+                   markup before a line of script runs, so the worst a dead
+                   script can do is save the order exactly as it was. *@
+                <table class="dme-table" id="lineTable">
+                    <tbody>
+                        @foreach (var l in lines)
+                        {
+                            var mode = F.S(l["Mode"]);
+                            var distName = DistributorName(l["DistributorId"]);
+                            var distRef = F.S(l["DistributorRef"]);
+                            <tr>
+                                <td>
+                                    <span class="dme-chip blue dme-mono">@F.S(l["Hcpcs"])</span> @F.S(l["ItemName"])
+                                    @if (!string.IsNullOrEmpty(distName))
+                                    {
+                                        <div class="dme-muted" style="font-size:11.5px">
+                                            <i class="bi bi-truck"></i> Direct from @distName@(string.IsNullOrEmpty(distRef) ? "" : " · " + distRef)
+                                        </div>
+                                    }
+                                    <input type="hidden" name="hcpcs" value="@F.S(l["Hcpcs"])" />
+                                    <input type="hidden" name="mode" value="@mode" />
+                                    <input type="hidden" name="qty" value="@F.I(l["Qty"])" />
+                                    <input type="hidden" name="distributorId" value="@F.I(l["DistributorId"])" />
+                                    <input type="hidden" name="distributorRef" value="@distRef" />
+                                </td>
+                                <td>@(mode == "purchase" ? "Sale" : "Rental")</td>
+                                <td class="dme-mono">@F.I(l["Qty"])</td>
+                                <td class="dme-mono">@(mode == "purchase" ? F.Money(l["UnitPrice"]) : F.Money(l["MonthlyRate"]) + "/mo")</td>
+                                <td style="text-align:right"><button type="button" class="dme-btn dme-btn-light dme-btn-sm rm">remove</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div id="noLines" class="dme-muted" style="font-size:13px">No items added yet.</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2 mt-2">
+        <a href="@(editing ? $"/Dme/Order/{F.I(order!["OrderId"])}" : "/Dme/Orders")" class="dme-btn dme-btn-light">Cancel</a>
+        <button type="submit" class="dme-btn dme-btn-primary">
+            <i class="bi bi-check-lg"></i> @(editing ? "Save changes" : "Create Order")
+        </button>
+    </div>
+</form>
+
+<script>
+    (function () {
+        var itemSel = document.getElementById('itemSel'), modeSel = document.getElementById('modeSel');
+        var body = document.querySelector('#lineTable tbody');
+
+        function refreshModes() {
+            var o = itemSel.options[itemSel.selectedIndex]; modeSel.innerHTML = '';
+            if (o.dataset.purchasable === '1') modeSel.add(new Option('Sell $' + o.dataset.buy, 'purchase'));
+            if (o.dataset.rentable === '1') modeSel.add(new Option('Rent $' + o.dataset.rent + '/mo', 'rental'));
+            if (!modeSel.options.length) modeSel.add(new Option('Sell $' + o.dataset.buy, 'purchase'));
+        }
+        itemSel.addEventListener('change', refreshModes); refreshModes();
+
+        document.getElementById('addBtn').addEventListener('click', function () {
+            var o = itemSel.options[itemSel.selectedIndex];
+            var mode = modeSel.value, qty = Math.max(1, parseInt(document.getElementById('qtyIn').value) || 1);
+            var price = mode === 'purchase' ? ('$' + o.dataset.buy) : ('$' + o.dataset.rent + '/mo');
+
+            // Drop shipping is per LINE, not per order: the same item ships from
+            // stock one week and direct from the distributor the next. Every
+            // line posts a distributorId, and 0 means from our own stock.
+            var distSel = document.getElementById('distSel');
+            var distId = distSel.value || '0';
+            var distName = distId === '0' ? '' : distSel.options[distSel.selectedIndex].text;
+            var distRef = distId === '0' ? '' : document.getElementById('distRefIn').value.trim();
+
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td><span class="dme-chip blue dme-mono">' + o.value + '</span> ' + o.dataset.name +
+                (distName ? '<div class="dme-muted" style="font-size:11.5px"><i class="bi bi-truck"></i> Direct from ' +
+                            distName + (distRef ? ' · ' + distRef : '') + '</div>' : '') +
+                '<input type="hidden" name="hcpcs" value="' + o.value + '"><input type="hidden" name="mode" value="' + mode + '"><input type="hidden" name="qty" value="' + qty + '">' +
+                '<input type="hidden" name="distributorId" value="' + distId + '"><input type="hidden" name="distributorRef" value="' + distRef.replace(/"/g, '&quot;') + '"></td>' +
+                '<td>' + (mode === 'purchase' ? 'Sale' : 'Rental') + '</td><td class="dme-mono">' + qty + '</td><td class="dme-mono">' + price + '</td>' +
+                '<td style="text-align:right"><button type="button" class="dme-btn dme-btn-light dme-btn-sm rm">remove</button></td>';
+            body.appendChild(tr); toggleEmpty();
+        });
+
+        // Delegated, not wired per row. The rows on an edit are rendered by the
+        // server, so a handler attached only at add-time would leave every line
+        // the order already had with a remove button that does nothing.
+        body.addEventListener('click', function (e) {
+            var btn = e.target.closest('.rm');
+            if (!btn) return;
+            btn.closest('tr').remove();
+            toggleEmpty();
+        });
+
+        function toggleEmpty() {
+            document.getElementById('noLines').style.display = body.children.length ? 'none' : 'block';
+        }
+
+        // Run once on load, or an order that already has lines still says
+        // "No items added yet" underneath them.
+        toggleEmpty();
+    })();
+</script>

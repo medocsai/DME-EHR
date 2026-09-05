@@ -32,7 +32,11 @@ class UsersModule {
         this.changeEmailModal = null;
 
         // Role names mapping
-        this.roleNames = ['Super Admin', 'Clinic Admin', 'Clinician', 'Front Desk', 'Biller', 'Read Only', 'Medical Assistant', 'Nurse'];
+        // Role names are NOT kept here. This array was a second copy of the
+        // list in AllDtos.GetRoleName, and the two drifted: the server was
+        // renamed to the five roles a DME supplier has while this one went on
+        // printing "Clinic Admin", "Clinician" and "Front Desk" in the table.
+        // The server sends RoleName on every user; that is the one to show.
 
         // Bind methods
         this._handleUserFormSubmit = this._handleUserFormSubmit.bind(this);
@@ -94,7 +98,7 @@ class UsersModule {
             providerSelect.addEventListener('change', this._handleProviderSelectChange);
         }
 
-        // Role change shows or hides the branch checklist, because Clinic Admin
+        // Role change shows or hides the branch checklist, because Admin
         // is not scoped by it and a required field they cannot see would block
         // the form with no explanation.
         const roleSelect = document.getElementById('userRoleSelect');
@@ -187,21 +191,11 @@ class UsersModule {
                 queryParam = '?activeOnly=';
             }
 
-            // Load users and providers in parallel.
-            //
-            // The provider fetch is allowed to FAIL. /api/providers is a
-            // clinical endpoint that no longer exists in DME: it went with the
-            // rest of the clinical schema on 2026-08-25, and this call was left
-            // behind. Inside a Promise.all its 404 rejected the whole thing, so
-            // load() threw, init() never completed and the User Management
-            // screen sat on its loading overlay forever.
-            //
-            // An empty provider list is the correct answer for a DME install
-            // anyway. Removing the provider UI properly is a separate cleanup;
-            // see docs/OPEN-THREADS.md.
+            // Providers are not fetched at all; see _loadProviders. Removing the
+            // provider UI itself is a separate cleanup, see docs/OPEN-THREADS.md.
             const [users, providers] = await Promise.all([
                 this._apiGet(`/users${queryParam}`),
-                this._apiGet('/providers?activeOnly=false').catch(() => [])
+                this._loadProviders()
             ]);
 
             this.users = users || [];
@@ -309,10 +303,10 @@ class UsersModule {
             <tr class="${user.IsActive ? '' : 'table-secondary'}">
                 <td><strong>${escapedName}</strong></td>
                 <td>${escapedEmail}</td>
-                <td><span class="badge bg-secondary">${this.roleNames[user.Role] || 'User'}</span></td>
+                <td><span class="badge bg-secondary">${this._escape(user.RoleName || 'Unknown')}</span></td>
                 <td>${providerDisplay}</td>
                 <td>${this._escape(user.TenantName || "-")}</td>
-                <!-- Which branches this person can work in. Clinic Admin and Super
+                <!-- Which branches this person can work in. Admin and Super
                      Admin are not scoped, so they show "All" rather than a list
                      of every branch, which would say the same thing at length. -->
                 <td>${user.Role < 2
@@ -337,7 +331,7 @@ class UsersModule {
     async openAddModal() {
         try {
             // Load fresh providers
-            this.providers = await this._apiGet('/providers?activeOnly=true').catch(() => []) || [];
+            this.providers = await this._loadProviders();
 
             if (!this.userForm) return;
 
@@ -371,7 +365,7 @@ class UsersModule {
      * all, so this is not an optional extra on the form: it is the difference
      * between an account that works and one that silently shows nothing.
      *
-     * Hidden for Clinic Admin, who is not scoped.
+     * Hidden for Admin, who is not scoped.
      *
      * @param {number[]} selectedIds branches already granted
      * @private
@@ -423,7 +417,7 @@ class UsersModule {
         try {
             const [user, providers] = await Promise.all([
                 this._apiGet(`/users/${userId}`),
-                this._apiGet('/providers?activeOnly=false').catch(() => [])
+                this._loadProviders()
             ]);
 
             if (!user) return;
@@ -500,7 +494,7 @@ class UsersModule {
 
         // Which branches this user may work in.
         //
-        // Only sent for restricted roles. A Clinic Admin is not scoped, and
+        // Only sent for restricted roles. An Admin is not scoped, and
         // posting an empty list for them would be refused by the server for a
         // rule that does not apply to them.
         //
@@ -791,6 +785,23 @@ class UsersModule {
     }
 
     // === API Methods ===
+
+    /**
+     * Providers do not exist in DME.
+     *
+     * /api/providers went with the clinical schema on 2026-08-25 and the calls
+     * to it were left behind. Each one 404'd, and ApiService raises its error
+     * toast BEFORE it throws, so the caller's .catch() swallowed the failure
+     * only after the user had already been shown a blocking
+     * "API Error: HTTP 404 Not Found" alert on every visit to this screen.
+     *
+     * Not requesting it at all is the honest fix: an empty list is the correct
+     * answer for a DME install, and this is the single place to change if the
+     * provider concept ever comes back.
+     */
+    async _loadProviders() {
+        return [];
+    }
 
     async _apiGet(url) {
         if (this.api) return this.api.get(url);

@@ -1,0 +1,612 @@
+@using EHR.Helpers
+@*
+    ONE customer form. New Customer and Edit customer both render this.
+
+    WHY IT IS A PARTIAL
+    They were two files describing one thing, and they had already drifted. Edit
+    carried Basic Info and Emergency Contact; New carried those plus Insurance,
+    Diagnosis and Attachments. A note on Edit said insurance and diagnosis "are
+    changed from the customer's own page", and they were not: no action anywhere
+    in the product changed either, so a payer entered wrong stayed wrong for the
+    life of the customer.
+
+    Two files cannot be kept in step by hand. A partial does not need to be: a
+    field added here appears on both, and if it does not appear on both it is
+    not a field.
+
+    The mode is decided by ViewBag.Customer being null, and by nothing else.
+*@
+@{
+    var c = ViewBag.Customer as Dictionary<string, object?>;
+    var editing = c != null;
+
+    var locations = (List<Dictionary<string, object?>>)ViewBag.Locations;
+    var ins = ViewBag.Insurance as Dictionary<string, object?>;
+    var sec = ViewBag.SecondaryInsurance as Dictionary<string, object?>;
+    var diagnoses = ViewBag.Diagnoses as List<Dictionary<string, object?>>
+                    ?? new List<Dictionary<string, object?>>();
+
+    var documents = ViewBag.Documents as IReadOnlyList<EHR.Services.CustomerDocument>
+                    ?? Array.Empty<EHR.Services.CustomerDocument>();
+    var documentKinds = ViewBag.DocumentKinds as IReadOnlyList<(string Value, string Name)>
+                    ?? Array.Empty<(string, string)>();
+
+    // The row arrives decrypted from the controller. Nothing here re-encrypts;
+    // the POST does that, and the browser only ever sees what the operator is
+    // allowed to correct.
+    string V(string col) => editing ? F.S(c![col]) : "";
+    string I(string col) => ins == null ? "" : F.S(ins[col]);
+    string S2(string col) => sec == null ? "" : F.S(sec[col]);
+
+    // Falls back to the primary branch when the user is viewing all of them,
+    // because "all locations" is not somewhere a customer can be filed.
+    var currentLocationId = (int?)ViewBag.CurrentLocationId;
+    var selectedLocationId = editing
+        ? F.I(c!["LocationId"])
+        : currentLocationId ?? (locations.Count > 0 ? F.I(locations[0]["LocationId"]) : 0);
+
+    // Stored ISO so it parses independently of culture; shown the way the rest
+    // of the product writes dates, and DateInput reads either back.
+    var dobShown = DateTime.TryParse(V("Dob"), System.Globalization.CultureInfo.InvariantCulture,
+                                     System.Globalization.DateTimeStyles.None, out var parsedDob)
+        ? parsedDob.ToString("MM/dd/yyyy")
+        : V("Dob");
+
+    string Amount(string col) => ins == null ? "0" : F.Dec(ins[col]).ToString("0.##");
+    string Amount2(string col) => sec == null ? "0" : F.Dec(sec[col]).ToString("0.##");
+}
+
+<form method="post" action="@(editing ? "/Dme/UpdateCustomer" : "/Dme/CreateCustomer")">
+    @Html.AntiForgeryToken()
+    @if (editing)
+    {
+        <input type="hidden" name="id" value="@F.I(c!["CustomerId"])" />
+    }
+
+    <div class="dme-grid2">
+        <div>
+            <div class="dme-card">
+                <div class="dme-card-head"><h2>Basic Info</h2></div>
+                <div class="dme-card-body">
+                    <div class="row g-3">
+                        @*
+                            The branch is the ONE place a location is stored for a person.
+                            Orders, rentals, claims and payments all derive theirs from here,
+                            so this field is the only one that has to be right.
+                        *@
+                        <div class="col-12">
+                            <label class="form-label">Location <span style="color:#d6453f">*</span></label>
+                            <select name="locationId" class="form-select" required>
+                                @foreach (var l in locations)
+                                {
+                                    <option value="@F.I(l["LocationId"])" selected="@(F.I(l["LocationId"]) == selectedLocationId)">
+                                        @F.S(l["Name"])@(F.B(l["IsPrimary"]) ? " (primary)" : "")
+                                    </option>
+                                }
+                            </select>
+                            <div class="form-text" style="font-size:11px">
+                                @(editing
+                                    ? "Moving a customer moves everything that follows them: their orders, rentals, claims and payments all derive their branch from here."
+                                    : "Which branch this customer belongs to. Their orders, rentals, claims and payments all follow it.")
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">First Name <span style="color:#d6453f">*</span></label>
+                            <input name="firstName" class="form-control js-name" required placeholder="John" value="@V("FirstName")" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Last Name <span style="color:#d6453f">*</span></label>
+                            <input name="lastName" class="form-control js-name" required placeholder="Doe" value="@V("LastName")" />
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">Date of Birth</label>
+                            @* Plain text, not type="date": Chrome refuses a paste into the
+                               native date control, and a DOB is usually copied off a referral
+                               rather than typed. Helpers/DateInput.cs reads it server side. *@
+                            <input name="dob" class="form-control js-dateinput" placeholder="mm/dd/yyyy"
+                                   autocomplete="bday" value="@dobShown" />
+                            <div class="form-text" style="font-size:11px">Type or paste. mm/dd/yyyy</div>
+                            @* Shown by FormFields.js. The server refuses an unreadable
+                               date too: a DOB that silently vanished on save was the
+                               whole complaint. *@
+                            <div class="js-field-error" style="font-size:11px;color:#d6453f" hidden>
+                                That is not a date we can read. Use mm/dd/yyyy.
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Gender</label>
+                            <select name="gender" class="form-select">
+                                <option value="">Select&hellip;</option>
+                                @foreach (var g in new[] { "Male", "Female", "Other" })
+                                {
+                                    <option selected="@(V("Gender") == g)">@g</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">SSN <span class="dme-muted" style="font-size:11px">(optional)</span></label>
+                            <input name="ssnLast4" class="form-control js-digits" inputmode="numeric"
+                                   placeholder="last 4" maxlength="4" value="@V("SsnLast4")" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Height (in)</label>
+                            <input type="number" name="heightInches" class="form-control" value="@V("HeightInches")" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Weight (lb)</label>
+                            <input type="number" name="weightLbs" class="form-control" value="@V("WeightLbs")" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Phone</label>
+                            <input name="phone" type="tel" inputmode="tel" class="form-control js-phone"
+                                   placeholder="(214) 555-0101" value="@V("Phone")" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Email</label>
+                            <input type="email" name="email" class="form-control js-email"
+                                   placeholder="john.doe@@example.com" value="@V("Email")" />
+                            <div class="js-field-error" style="font-size:11px;color:#d6453f" hidden>
+                                That is not an email address.
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Address</label>
+                            <input name="addressLine1" class="form-control"
+                                   placeholder="482 Cedar Springs Rd" value="@V("AddressLine1")" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">City</label>
+                            <input name="city" class="form-control" placeholder="Dallas" value="@V("City")" />
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label">State</label>
+                            <input name="state" class="form-control js-upper" maxlength="2"
+                                   placeholder="TX" value="@V("State")" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">ZIP</label>
+                            <input name="zip" class="form-control js-digits" inputmode="numeric"
+                                   maxlength="5" placeholder="75219" value="@V("Zip")" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="dme-card">
+                <div class="dme-card-head"><h2>Emergency Contact</h2></div>
+                <div class="dme-card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Contact Name</label>
+                            <input name="emergencyName" class="form-control js-name"
+                                   placeholder="Mary Doe" value="@V("EmergencyName")" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Relationship</label>
+                            <input name="emergencyRel" class="form-control"
+                                   placeholder="Spouse" value="@V("EmergencyRel")" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Phone</label>
+                            <input name="emergencyPhone" type="tel" inputmode="tel" class="form-control js-phone"
+                                   placeholder="(214) 555-0102" value="@V("EmergencyPhone")" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div>
+            <div class="dme-card">
+                <div class="dme-card-head"><h2>Insurance</h2></div>
+                <div class="dme-card-body">
+                    <div class="dme-banner"><i class="bi bi-shield-check"></i> Primary insurance is required to bill 3rd-party for DME.</div>
+                    <div class="dme-muted" style="font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Primary</div>
+                    <div class="row g-3">
+                        @* Payer: a typeahead over Office Ally's national list, not a
+                           <select>. 4,017 options in the markup is a 400KB page and
+                           unusable with a mouse. The visible box is a search field; the
+                           hidden field carries the catalog id, which is the only thing
+                           the server trusts. See Services/DmePayerCatalog.cs. *@
+                        <div class="col-12">
+                            <label class="form-label">Payer</label>
+                            @if (ins != null)
+                            {
+                                @* The stored row keeps the payer's NAME and Payer ID, never
+                                   the catalog row id, because it is the point-in-time record
+                                   of who this person was insured with and must not move when
+                                   Office Ally corrects a name.
+
+                                   So there is nothing to select back into the picker, and the
+                                   catalog id cannot be recovered from the code either: Office
+                                   Ally issues ALLCA to two different payers. The current payer
+                                   is shown as a fact instead. Blank means keep it; searching
+                                   means change it. *@
+                                <div class="dme-line" style="padding:8px 10px;margin-bottom:8px">
+                                    <strong>@I("PayerName")</strong>
+                                    <span class="dme-muted" style="font-size:12px"> &middot; Payer ID @I("PayerId")</span>
+                                </div>
+                            }
+                            <div class="dme-typeahead">
+                                <input type="text" id="payerSearch" class="form-control" autocomplete="off"
+                                       placeholder="@(ins != null ? "Search to change the payer…" : "Search insurance by name or Payer ID…")" />
+                                <input type="hidden" name="insPayerId" id="insPayerId" value="0" />
+                                <div id="payerResults" class="dme-typeahead-list" hidden></div>
+                            </div>
+                            <div id="payerChosen" class="form-text" style="font-size:11px" hidden></div>
+                            @if (ins != null)
+                            {
+                                <div class="form-text" style="font-size:11px">Leave blank to keep @I("PayerName").</div>
+                            }
+                        </div>
+                        <div class="col-md-6"><label class="form-label">Member ID</label><input name="insMemberId" class="form-control" value="@I("MemberId")" /></div>
+                        <div class="col-md-6"><label class="form-label">Group #</label><input name="insGroup" class="form-control" value="@I("GroupNumber")" /></div>
+                        <div class="col-md-4"><label class="form-label">Copay ($)</label><input type="number" step="0.01" name="insCopay" class="form-control" value="@Amount("Copay")" /></div>
+                        <div class="col-md-4"><label class="form-label">Coinsurance (%)</label><input type="number" name="insCoins" class="form-control" value="@(ins == null ? "0" : F.I(ins["Coinsurance"]).ToString())" /></div>
+                        <div class="col-md-4"><label class="form-label">Deductible ($)</label><input type="number" step="0.01" name="insDeductible" class="form-control" value="@Amount("Deductible")" /></div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 mt-3">
+                        <button type="button" class="dme-btn dme-btn-light dme-btn-sm" id="validateBtn" style="background:#e1f5ee;color:#0f6e56"><i class="bi bi-shield-check"></i> Validate Insurance</button>
+                        <span id="eligResult" class="dme-muted" style="font-size:12.5px"></span>
+                    </div>
+
+                    @* SECONDARY.
+
+                       The column and the customer page have shown secondary
+                       insurance since the schema was written; no form ever wrote
+                       one, so the only way a customer had one was the demo seed.
+                       Medicare plus a supplement is the ordinary case in this
+                       trade, not an edge case.
+
+                       Same rules as the primary above: the picker posts a catalog
+                       id, blank means keep what is on file, and the payer's name
+                       and Payer ID are read from the catalog rather than the
+                       browser. One difference, and it is deliberate: this one can
+                       be ended. A secondary policy genuinely lapses when a spouse
+                       changes job or COBRA runs out. A primary does not lapse into
+                       nothing; it becomes a different payer, which the picker
+                       already handles. *@
+                    <hr style="margin:18px 0 14px;border:0;border-top:1px solid #e4e8ee" />
+                    <div class="d-flex align-items-center justify-content-between" style="margin-bottom:6px">
+                        <div class="dme-muted" style="font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.4px">
+                            Secondary <span style="text-transform:none;font-weight:400">(optional)</span>
+                        </div>
+                        @if (editing && sec != null)
+                        {
+                            <label class="dme-muted" style="font-size:11.5px;display:flex;align-items:center;gap:6px;cursor:pointer">
+                                <input type="checkbox" name="secRemove" value="true" class="form-check-input" style="margin:0" />
+                                This policy has ended
+                            </label>
+                        }
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Payer</label>
+                            @if (sec != null)
+                            {
+                                <div class="dme-line" style="padding:8px 10px;margin-bottom:8px">
+                                    <strong>@S2("PayerName")</strong>
+                                    <span class="dme-muted" style="font-size:12px"> &middot; Payer ID @S2("PayerId")</span>
+                                </div>
+                            }
+                            <div class="dme-typeahead">
+                                <input type="text" id="secPayerSearch" class="form-control" autocomplete="off"
+                                       placeholder="@(sec != null ? "Search to change the payer…" : "No secondary insurance. Search to add one…")" />
+                                <input type="hidden" name="secPayerId" id="secPayerId" value="0" />
+                                <div id="secPayerResults" class="dme-typeahead-list" hidden></div>
+                            </div>
+                            <div id="secPayerChosen" class="form-text" style="font-size:11px" hidden></div>
+                            @if (sec != null)
+                            {
+                                <div class="form-text" style="font-size:11px">Leave blank to keep @S2("PayerName").</div>
+                            }
+                        </div>
+                        <div class="col-md-6"><label class="form-label">Member ID</label><input name="secMemberId" class="form-control" value="@S2("MemberId")" /></div>
+                        <div class="col-md-6"><label class="form-label">Group #</label><input name="secGroup" class="form-control" value="@S2("GroupNumber")" /></div>
+                        <div class="col-md-4"><label class="form-label">Copay ($)</label><input type="number" step="0.01" name="secCopay" class="form-control" value="@Amount2("Copay")" /></div>
+                        <div class="col-md-4"><label class="form-label">Coinsurance (%)</label><input type="number" name="secCoins" class="form-control" value="@(sec == null ? "0" : F.I(sec["Coinsurance"]).ToString())" /></div>
+                        <div class="col-md-4"><label class="form-label">Deductible ($)</label><input type="number" step="0.01" name="secDeductible" class="form-control" value="@Amount2("Deductible")" /></div>
+                    </div>
+                </div>
+            </div>
+            <div class="dme-card">
+                <div class="dme-card-head"><h2>Diagnosis (ICD-10)</h2></div>
+                <div class="dme-card-body">
+                    <div class="dme-banner"><i class="bi bi-clipboard2-pulse"></i> ICD-10 diagnosis is required for DME insurance billing.</div>
+                    @* The whole CMS ICD-10-CM code set, searched as you type.
+                       74,719 options cannot be a <select>. The hidden field
+                       carries the code, which is all the server trusts, and it
+                       re-reads the description from the catalog. *@
+                    <label class="form-label">Diagnoses</label>
+                    <div class="dme-typeahead">
+                        <input type="text" id="dxSearch" class="form-control" autocomplete="off"
+                               placeholder="Search by condition or ICD-10 code…" />
+                        <input type="hidden" name="dxCode" id="dxCode" value="" />
+                        <div id="dxResults" class="dme-typeahead-list" hidden></div>
+                    </div>
+                    <div id="dxChosen" class="form-text" style="font-size:11px" hidden></div>
+
+                    @* One code was never enough. CMS-1500 carries up to twelve
+                       diagnosis pointers, and DME routinely needs two or three:
+                       oxygen on COPD alone is thin, and thin medical necessity is
+                       the CO-50 denial on the dashboard.
+
+                       The chips ARE the posted state, and on edit they are rendered
+                       HERE, by the server, not seeded into a script. That matters:
+                       the POST replaces the diagnosis list with whatever it
+                       carries, so a page whose JavaScript failed to run would post
+                       an empty list and silently wipe the customer's diagnoses. The
+                       hidden inputs below exist in the markup before a line of
+                       script runs, so the worst a dead script can do is leave the
+                       list exactly as it was. *@
+                    <div id="dxChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+                        @for (var i = 0; i < diagnoses.Count; i++)
+                        {
+                            var code = F.S(diagnoses[i]["IcdCode"]);
+                            var desc = F.S(diagnoses[i]["Description"]);
+                            <span class="dme-chip @(i == 0 ? "teal" : "gray")" title="@desc"
+                                  data-code="@code" data-name="@desc"
+                                  style="display:inline-flex;align-items:center;gap:6px">
+                                <span>@code@(i == 0 ? " · primary" : "")</span>
+                                <input type="hidden" name="dxCodes" value="@code" />
+                                <button type="button" aria-label="Remove @code"
+                                        style="border:0;background:none;padding:0;cursor:pointer;font-size:15px;line-height:1;color:inherit">&times;</button>
+                            </span>
+                        }
+                    </div>
+                    <div id="dxHint" class="form-text" style="font-size:11px">
+                        Add as many as apply. The first is the primary diagnosis.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2 mt-2">
+        <a href="@(editing ? $"/Dme/Customer/{F.I(c!["CustomerId"])}" : "/Dme/Customers")" class="dme-btn dme-btn-light">Cancel</a>
+        <button type="submit" class="dme-btn dme-btn-primary">
+            <i class="bi bi-check-lg"></i> @(editing ? "Save changes" : "Save Customer")
+        </button>
+    </div>
+</form>
+
+@* Attachments.
+
+   OUTSIDE the customer form, and that is the whole reason this card is not in
+   the two column grid with the others. The uploader is a form of its own, HTML
+   forbids nested forms, and a browser handed one silently drops the inner one:
+   the file would go nowhere and nothing would say why. An earlier draft put the
+   card in the grid and moved the uploader here with script, which produced the
+   same nesting in the DOM instead of in the markup, so it was no better.
+
+   Until 2026-09-05 this panel stored NOTHING. It let an operator pick a file,
+   listed it, and dropped it the moment the page navigated. A list of file names
+   reads as "saved", which made it the worst kind of broken: the intake clerk
+   attaches the referral, sees it on the screen, and it is gone.
+
+   It is the same machinery proof of delivery uses. The bytes are encrypted
+   before they leave the app, the stored name is opaque so a bucket listing
+   reveals nothing, the leading magic bytes have to match the extension, and they
+   are served back only through an audited action. All of that lives in
+   DmeDocumentStore, shared with the order panel. *@
+<div class="dme-card">
+    <div class="dme-card-head"><h2>Attachments</h2></div>
+    <div class="dme-card-body">
+        <div class="dme-banner"><i class="bi bi-paperclip"></i> Attach scanned CMN/RX, insurance cards, ID, referrals.</div>
+        @if (!editing)
+        {
+            @* Nothing to attach a file to yet. Said plainly rather than shown as
+               a picker that quietly discards what it is given, which is exactly
+               what this panel used to do. *@
+            <div class="dme-muted" style="font-size:11.5px">
+                Save the customer first. Documents attach to a record, and there is not one yet.
+            </div>
+        }
+        else
+        {
+            if (TempData["DocError"] != null)
+            {
+                <div class="dme-banner" style="background:#fdecea;color:#8a1c13;font-size:12.5px">
+                    <i class="bi bi-exclamation-triangle"></i> @TempData["DocError"]
+                </div>
+            }
+
+            foreach (var d in documents)
+            {
+                <div class="dme-line" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px">
+                    <span style="min-width:0">
+                        <i class="bi bi-file-earmark-text dme-muted"></i>
+                        <a href="/Dme/DownloadCustomerDoc/@d.DocumentId" target="_blank" rel="noopener"
+                           style="text-decoration:none">@d.FileName</a>
+                        <span class="dme-chip gray">@d.KindName</span>
+                        <div class="dme-muted" style="font-size:11px">
+                            @d.UploadedAt.ToString("MMM d, yyyy")@(string.IsNullOrWhiteSpace(d.UploadedByName) ? "" : " · " + d.UploadedByName)
+                            · @(Math.Max(1, d.FileSize / 1024)) KB
+                        </div>
+                    </span>
+                    @if (User.CanAdminister())
+                    {
+                        @* Admin only, matching RemovePod. Removing a CMN removes the
+                           document that defends a claim in an audit, so it is not a
+                           correction an intake clerk makes in passing. *@
+                        <form method="post" action="/Dme/RemoveCustomerDoc" style="margin:0">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@d.DocumentId" />
+                            <input type="hidden" name="customerId" value="@F.I(c!["CustomerId"])" />
+                            <button type="submit" class="dme-btn dme-btn-light dme-btn-sm"
+                                    onclick="return confirm('Remove this document? The file is deleted.')">remove</button>
+                        </form>
+                    }
+                </div>
+            }
+
+            if (documents.Count == 0)
+            {
+                <div class="dme-muted" style="font-size:12px;padding:4px 0 10px">No documents on file.</div>
+            }
+
+            <form method="post" action="/Dme/AttachCustomerDoc" enctype="multipart/form-data" class="mt-2">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@F.I(c!["CustomerId"])" />
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-5">
+                        <label class="form-label">Category</label>
+                        <select name="kind" class="form-select">
+                            @foreach (var k in documentKinds)
+                            {
+                                <option value="@k.Value">@k.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">File</label>
+                        <input type="file" name="file" class="form-control" required
+                               accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff" />
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="dme-btn dme-btn-light w-100">Attach</button>
+                    </div>
+                </div>
+                <div class="form-text" style="font-size:11px">
+                    PDF or picture, up to 25MB. Stored encrypted.
+                </div>
+            </form>
+        }
+    </div>
+</div>
+
+<script>
+    // Date of birth, the phone boxes and the rest of the field rules all live in
+    // wwwroot/js/dme/FormFields.js, keyed off the js- classes in the markup
+    // above. They used to be repeated per page.
+
+    // Payer: Office Ally's 4,017. The hidden insPayerId is the only thing
+    // posted; the server reads the name and Payer ID back out of the catalog.
+    // On edit it starts at 0, which the server reads as "keep the payer on
+    // file" rather than "no payer".
+    dmeTypeahead({
+        input: '#payerSearch', hidden: '#insPayerId', results: '#payerResults', chosen: '#payerChosen',
+        url: '/Lookups/Payers',
+        emptyValue: '0',
+        value: function (p) { return p.id; },
+        label: function (p) { return p.name; },
+        side:  function (p) { return p.code; },
+        note:  function (p) { return 'Payer ID ' + p.code; },
+        empty: 'No payer matches that. Check the spelling, or the Payer ID on the card.'
+    });
+
+    // The secondary payer picker. Same helper, its own ids: dmeTypeahead is
+    // keyed entirely off the selectors it is given, so two on one page do not
+    // know about each other.
+    dmeTypeahead({
+        input: '#secPayerSearch', hidden: '#secPayerId', results: '#secPayerResults', chosen: '#secPayerChosen',
+        url: '/Lookups/Payers',
+        emptyValue: '0',
+        value: function (p) { return p.id; },
+        label: function (p) { return p.name; },
+        side:  function (p) { return p.code; },
+        note:  function (p) { return 'Payer ID ' + p.code; },
+        empty: 'No payer matches that. Check the spelling, or the Payer ID on the card.'
+    });
+
+    // Diagnosis: the whole CMS ICD-10-CM code set. The code is posted and the
+    // description is read from the catalog, so a mistyped code files nothing
+    // rather than a diagnosis with no wording.
+    //
+    // Picking a code ADDS a chip rather than filling a single field, because one
+    // diagnosis was never enough: CMS-1500 carries up to twelve pointers, and DME
+    // routinely needs two or three to establish medical necessity.
+    (function () {
+        var chips  = document.getElementById('dxChips');
+        var hint   = document.getElementById('dxHint');
+        var search = document.getElementById('dxSearch');
+        var chosen = document.getElementById('dxChosen');
+
+        // Read, do not seed. The chips already in the markup are what is on file,
+        // rendered by the server, so this list has one source and cannot start out
+        // disagreeing with what the form would post.
+        var added = Array.prototype.map.call(
+            chips.querySelectorAll('[data-code]'),
+            function (el) { return { code: el.getAttribute('data-code'), name: el.getAttribute('data-name') }; });
+
+        function render() {
+            chips.innerHTML = '';
+
+            added.forEach(function (d, i) {
+                var chip = document.createElement('span');
+                chip.className = 'dme-chip ' + (i === 0 ? 'teal' : 'gray');
+                chip.style.display = 'inline-flex';
+                chip.style.alignItems = 'center';
+                chip.style.gap = '6px';
+                chip.title = d.name;
+                chip.setAttribute('data-code', d.code);
+                chip.setAttribute('data-name', d.name);
+
+                var text = document.createElement('span');
+                // The first one added is the primary, and says so: on the claim
+                // that distinction decides which diagnosis the service line
+                // points at.
+                text.textContent = d.code + (i === 0 ? ' · primary' : '');
+                chip.appendChild(text);
+
+                // The posted state IS the chips. No separate list to keep in step.
+                var field = document.createElement('input');
+                field.type = 'hidden';
+                field.name = 'dxCodes';
+                field.value = d.code;
+                chip.appendChild(field);
+
+                var x = document.createElement('button');
+                x.type = 'button';
+                x.textContent = '×';
+                x.setAttribute('aria-label', 'Remove ' + d.code);
+                x.style.cssText = 'border:0;background:none;padding:0;cursor:pointer;font-size:15px;line-height:1;color:inherit';
+                x.addEventListener('click', function () {
+                    added = added.filter(function (a) { return a.code !== d.code; });
+                    render();
+                });
+                chip.appendChild(x);
+
+                chips.appendChild(chip);
+            });
+
+            hint.textContent = added.length === 0
+                ? 'Add as many as apply. The first is the primary diagnosis.'
+                : added.length + ' diagnosis' + (added.length === 1 ? '' : 'es')
+                  + '. The first is primary; remove one with ×.';
+        }
+
+        window.dmeAddDiagnosis = function (d) {
+            // Silently ignore a repeat: the same code twice on a claim is a
+            // duplicate pointer, not a stronger case.
+            if (!added.some(function (a) { return a.code === d.code; })) {
+                added.push({ code: d.code, name: d.name });
+                render();
+            }
+
+            // Clear the box so the next one can be typed straight away, which is
+            // the whole point of picking more than one.
+            search.value = '';
+            if (chosen) chosen.hidden = true;
+        };
+
+        render();
+    })();
+
+    dmeTypeahead({
+        input: '#dxSearch', hidden: '#dxCode', results: '#dxResults', chosen: '#dxChosen',
+        url: '/Lookups/Icd',
+        value: function (d) { return d.code; },
+        label: function (d) { return d.name; },
+        side:  function (d) { return d.code; },
+        note:  function (d) { window.dmeAddDiagnosis(d); return 'ICD-10 ' + d.code; },
+        empty: 'No diagnosis matches that. Try a condition, or the ICD-10 code.'
+    });
+
+    document.getElementById('validateBtn').addEventListener('click', function () {
+        var r = document.getElementById('eligResult');
+        r.innerHTML = '<span class="spinner-border spinner-border-sm text-success"></span> Checking eligibility…';
+        setTimeout(function () {
+            r.innerHTML = '<span class="dme-chip green"><i class="bi bi-check-circle"></i> Active · DME covered · Deductible met · 20% coinsurance</span>';
+        }, 1100);
+    });
+</script>
+

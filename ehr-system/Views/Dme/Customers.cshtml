@@ -1,15 +1,31 @@
 @model List<Dictionary<string, object?>>
 @using EHR.Helpers
-@{ ViewData["ActivePage"] = "customers"; var q = (string)(ViewBag.Query ?? ""); }
+@{
+    ViewData["ActivePage"] = "customers";
+    var q = (string)(ViewBag.Query ?? "");
+    var view = (string)(ViewBag.StatusView ?? "active");
+}
 
 <div class="dme-wrap">
     <div class="dme-head">
         <div>
             <h1>Customers</h1>
-            <div class="dme-sub">@Model.Count customers</div>
+            <div class="dme-sub">
+                @Model.Count @(view == "archived" ? "archived" : view == "all" ? "customers in total" : "active customers")
+            </div>
         </div>
         <div class="d-flex gap-2 align-items-center">
+            @* Active is the default. A list that shows everybody who ever bought
+               something stops being a working list within a year. *@
+            <div class="btn-group btn-group-sm" role="group">
+                @foreach (var (key, label) in new[] { ("active", "Active"), ("archived", "Archived"), ("all", "All") })
+                {
+                    <a href="/Dme/Customers?status=@key@(string.IsNullOrEmpty(q) ? "" : "&q=" + Uri.EscapeDataString(q))"
+                       class="dme-btn dme-btn-sm @(view == key ? "dme-btn-primary" : "dme-btn-light")">@label</a>
+                }
+            </div>
             <form method="get" action="/Dme/Customers" class="d-flex gap-2 align-items-center">
+                <input type="hidden" name="status" value="@view" />
                 <input name="q" value="@q" placeholder="Search name, account, phone" class="form-control form-control-sm" style="width:240px" />
                 <button class="dme-btn dme-btn-light dme-btn-sm" type="submit"><i class="bi bi-search"></i></button>
             </form>
@@ -20,7 +36,7 @@
     <div class="dme-card">
         <table class="dme-table">
             <thead>
-                <tr><th>Customer</th><th>Account</th><th>Age / DOB</th><th>Phone</th><th>Location</th><th>Primary insurance</th><th>Status</th></tr>
+                <tr><th>Customer</th><th>Account</th><th>Age / DOB</th><th>Phone</th><th>Location</th><th>Primary insurance</th><th>Status</th><th></th></tr>
             </thead>
             <tbody>
                 @foreach (var c in Model)
@@ -32,12 +48,56 @@
                         <td class="dme-muted">@F.S(c["Phone"])</td>
                         <td class="dme-muted">@F.S(c["LocationName"])</td>
                         <td>@(c["PrimaryPayer"] == null ? "—" : F.S(c["PrimaryPayer"]))</td>
-                        <td><span class="dme-chip green">Active</span></td>
+                        @* Was hardcoded to "Active", which said the wrong thing the moment
+                           archiving existed: an archived customer read as active on the
+                           very list you filtered to find them. *@
+                        <td>
+                            @if (F.S(c["Status"]) == "archived")
+                            {
+                                <span class="dme-chip gray">Archived</span>
+                            }
+                            else
+                            {
+                                <span class="dme-chip green">Active</span>
+                            }
+                        </td>
+                        @* The row itself navigates, so every control in here has to stop
+                           the click travelling up, or Edit would open the customer page
+                           instead and Archive would fire and then navigate away. *@
+                        <td style="text-align:right;white-space:nowrap" onclick="event.stopPropagation()">
+                            <a href="/Dme/EditCustomer/@F.I(c["CustomerId"])"
+                               class="dme-btn dme-btn-light dme-btn-sm" title="Edit @F.S(c["FirstName"]) @F.S(c["LastName"])">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            @if (F.S(c["Status"]) == "archived")
+                            {
+                                <form method="post" action="/Dme/RestoreCustomer" style="display:inline">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@F.I(c["CustomerId"])" />
+                                    <button type="submit" class="dme-btn dme-btn-light dme-btn-sm requires-admin"
+                                            title="Put back on the working list">
+                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                    </button>
+                                </form>
+                            }
+                            else
+                            {
+                                <form method="post" action="/Dme/ArchiveCustomer" style="display:inline"
+                                      onsubmit="return confirm('Archive @F.S(c["FirstName"]) @F.S(c["LastName"])? They come off the working list and cannot be given new orders until restored.');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@F.I(c["CustomerId"])" />
+                                    <button type="submit" class="dme-btn dme-btn-light dme-btn-sm requires-admin"
+                                            title="Take off the working list">
+                                        <i class="bi bi-archive"></i>
+                                    </button>
+                                </form>
+                            }
+                        </td>
                     </tr>
                 }
                 @if (Model.Count == 0)
                 {
-                    <tr><td colspan="7" class="dme-empty"><i class="bi bi-people"></i><div>No customers match.</div></td></tr>
+                    <tr><td colspan="8" class="dme-empty"><i class="bi bi-people"></i><div>No customers match.</div></td></tr>
                 }
             </tbody>
         </table>

@@ -30,7 +30,8 @@
        inside their own markup. An inline script runs during parsing, so a tag
        at the end of the body defines the function AFTER the call that needs it,
        and both pickers silently do nothing. *@
-    <script src="~/js/dme/Typeahead.js?v=2"></script>
+    <script src="~/js/dme/Typeahead.js?v=3"></script>
+    <script src="~/js/dme/FormFields.js?v=3"></script>
 
     @await RenderSectionAsync("Styles", required: false)
 </head>
@@ -238,34 +239,69 @@
                     <i class="bi bi-box"></i>
                     <span>Inventory</span>
                 </a>
-                <a href="/Dme/Distributors" class="nav-item requires-admin @(activePage == "distributors" ? "active" : "")">
-                    <i class="bi bi-truck"></i>
-                    <span>Distributors</span>
+                @if (User.CanAdminister())
+                {
+                    <a href="/Dme/Distributors" class="nav-item @(activePage == "distributors" ? "active" : "")">
+                        <i class="bi bi-truck"></i>
+                        <span>Distributors</span>
+                    </a>
+                }
+                <a href="/Dme/Doctors" class="nav-item @(activePage == "doctors" ? "active" : "")">
+                    <i class="bi bi-person-badge"></i>
+                    <span>Doctors</span>
                 </a>
                 <a href="/Dme/Rentals" class="nav-item @(activePage == "rentals" ? "active" : "")">
                     <i class="bi bi-arrow-repeat"></i>
                     <span>Rentals</span>
                 </a>
-                <a href="/Dme/Billing" class="nav-item @(activePage == "billing" ? "active" : "")">
-                    <i class="bi bi-receipt"></i>
-                    <span>Billing</span>
-                </a>
-                <a href="/Dme/Payments" class="nav-item @(activePage == "payments" ? "active" : "")">
-                    <i class="bi bi-cash-stack"></i>
-                    <span>Payments</span>
-                </a>
-                <a href="/Dme/Settings" class="nav-item requires-admin @(activePage == "settings" ? "active" : "")">
-                    <i class="bi bi-gear"></i>
-                    <span>Settings</span>
-                </a>
-                <a href="/UserManagement" class="nav-item requires-admin @(activePage == "users" ? "active" : "")">
-                    <i class="bi bi-people-fill"></i>
-                    <span>User Management</span>
-                </a>
-                <a href="#" class="nav-item requires-admin" onclick="openLocationManagement(); return false;">
-                    <i class="bi bi-geo-alt"></i>
-                    <span>Locations</span>
-                </a>
+                @* Money is the biller's and the owner's.
+
+                   These two are hidden SERVER side, not by the body-class CSS
+                   the admin-only links use. That mechanism runs after the user
+                   loads over the API, so the tab paints first and disappears a
+                   moment later, and if that call fails it never disappears at
+                   all. The role is already in the cookie this page was rendered
+                   against, so the honest answer is available before a byte is
+                   written.
+
+                   Hiding is the manners; DmeController carries the same
+                   DmeRoles.Money constant on [Authorize], which is the lock. *@
+                @if (User.CanSeeMoney())
+                {
+                    <a href="/Dme/Billing" class="nav-item @(activePage == "billing" ? "active" : "")">
+                        <i class="bi bi-receipt"></i>
+                        <span>Billing</span>
+                    </a>
+                    <a href="/Dme/Payments" class="nav-item @(activePage == "payments" ? "active" : "")">
+                        <i class="bi bi-cash-stack"></i>
+                        <span>Payments</span>
+                    </a>
+                }
+                @* Same reasoning as Billing and Payments above, and the same
+                   move away from .requires-admin: that class is hidden by CSS
+                   keyed off a body class the API sets after the page has
+                   painted, so the links were in the markup of every user's
+                   sidebar and merely invisible. View source and they were
+                   there. The role is in the cookie; render the truth. *@
+                @if (User.CanAdminister())
+                {
+                    <a href="/Dme/Settings" class="nav-item @(activePage == "settings" ? "active" : "")">
+                        <i class="bi bi-gear"></i>
+                        <span>Settings</span>
+                    </a>
+                    <a href="/UserManagement" class="nav-item @(activePage == "users" ? "active" : "")">
+                        <i class="bi bi-people-fill"></i>
+                        <span>User Management</span>
+                    </a>
+                }
+                @* Locations is hidden, not deleted.
+                   The link called openLocationManagement(), which looks for a
+                   #locationManagementModal that exists nowhere in this product:
+                   the markup went with the clinical shell and only the script
+                   came across. Clicking it did nothing at all, silently.
+                   Branch switching is unaffected: that is the switcher in the
+                   sidebar header, which is a different modal and works.
+                   Restore this once there is a page behind it. *@
             </nav>
 
             <div class="sidebar-footer">
@@ -465,7 +501,7 @@
     <script src="~/js/shared/utils/AvatarUtils.js?v=1776285000"></script>
 
     <!-- Shared Constants -->
-    <script src="~/js/shared/constants/UserRoles.js?v=1776285000"></script>
+    <script src="~/js/shared/constants/UserRoles.js?v=1777100001"></script>
     <script src="~/js/shared/constants/AppointmentTypes.js?v=1776285000"></script>
     <script src="~/js/shared/constants/AppointmentStatuses.js?v=1776285000"></script>
     <script src="~/js/shared/constants/PatientStatuses.js?v=1776285000"></script>
@@ -484,10 +520,10 @@
 
     <!-- Core Services -->
     <script src="~/js/core/EventBus.js?v=1776285000"></script>
-    <script src="~/js/core/ApiService.js?v=1776285000"></script>
+    <script src="~/js/core/ApiService.js?v=1776999001"></script>
     <script src="~/js/core/StateManager.js?v=1776285000"></script>
     <script src="~/js/core/AuthService.js?v=1776375986"></script>
-    <script src="~/js/core/App.js?v=1776285003"></script>
+    <script src="~/js/core/App.js?v=1777100001"></script>
     <script src="~/js/shared/ui/FileViewerModal.js?v=1776285000"></script>
     <script src="~/js/shared/ui/HistoryActionModal.js?v=1777095224"></script>
     <script src="~/js/core/GlobalBridge.js?v=1778060324"></script>
@@ -496,10 +532,10 @@
     <script src="~/js/core/ConsentSignalRService.js?v=1776285000"></script>
 
     <!-- Feature Modules -->
-    <script src="~/js/modules/auth/AuthModule.js?v=1776375986"></script>
+    <script src="~/js/modules/auth/AuthModule.js?v=1777100001"></script>
     <script src="~/js/modules/settings/SettingsModule.js?v=1776285000"></script>
     <script src="~/js/modules/settings/LongevityLocationTogglesModule.js?v=1777078000"></script>
-    <script src="~/js/modules/users/UsersModule.js?v=1778613712"></script>
+    <script src="~/js/modules/users/UsersModule.js?v=1776999003"></script>
     <script src="~/js/modules/tenants/TenantsModule.js?v=1776285001"></script>
     <!-- Patient Module Helpers -->
     <!-- Patient Module (Main) -->

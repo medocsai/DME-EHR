@@ -213,8 +213,8 @@ public class DmeDropShipTests
     [Fact]
     public void RetirementIsDerivedFromTheDate()
     {
-        new Distributor(1, "Invacare", null, IsRetired: true).IsRetired.Should().BeTrue();
-        new Distributor(1, "Invacare", null, IsRetired: false).IsRetired.Should().BeFalse();
+        new Distributor(1, "Invacare", null, null, null, IsRetired: true).IsRetired.Should().BeTrue();
+        new Distributor(1, "Invacare", null, null, null, IsRetired: false).IsRetired.Should().BeFalse();
 
         var migration = Read("Migrations", "Manual", "2026-08-27_DME_Drop_Ship.sql");
         migration.Should().Contain("RetiredAt")

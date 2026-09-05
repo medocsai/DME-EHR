@@ -169,7 +169,7 @@ public class TenantService : ITenantService
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.AdminPassword),
             FirstName = dto.AdminFirstName,
             LastName = dto.AdminLastName,
-            Role = (int)UserRole.ClinicAdmin,
+            Role = (int)UserRole.Admin,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };

@@ -305,3 +305,224 @@ posting screen already writes.
 - **Thread 2, locations.** Closed 2026-08-26 and built: branch separation with an
   all-branches roll-up, location stored once on the customer plus separately on
   inventory, and never made a security boundary.
+- **Thread 6, separation of duties.** Closed 2026-09-05. Role 3 was renamed from
+  Front Desk to Delivery on 2026-08-31 and the name was the only thing that
+  changed. Billing, Payments, Cms, PostPayment, CreatePayment, VoidPayment,
+  Submit and BillNow carried no role list at all, so the driver could post a
+  payment against the order he had just delivered, and the sidebar offered him
+  the tab. All eight now carry `DmeRoles.Money` and the sidebar reads the same
+  constant. `/UserManagement` was the same shape one level up: the guard was on
+  UsersController and not on the page, so an Intake user who typed the URL got
+  the screen and an empty table. Pinned by `DmeSeparationOfDutiesTests`.
+
+  Two things came out of it that are worth remembering:
+
+  1. **`.requires-admin` was never a permission.** It is CSS keyed off a body
+     class the SPA sets after `/api/auth/me` returns, so the links were in every
+     user's markup and merely invisible, and hiding a link says nothing about
+     whether the URL opens. The DME sidebar is server rendered against the
+     session cookie, which already holds the role, so it now renders the truth.
+  2. **The role NAME had three sources in JavaScript** and they had drifted. The
+     sidebar read `AuthModule.getRoleName`, whose own array still said
+     "Clinician" and "Front Desk", so a user the server called Intake was told
+     by the only label they ever see that they were a Clinician. `UserRoles` is
+     the list now; both it and `AllDtos.GetRoleName` answer "Unknown" for a
+     number neither recognises, rather than naming a real role.
+
+  **Still open, deliberately:** reads are not separated. A biller can open a
+  customer and an order, because that is how you check what a claim was billed
+  for, and Intake and Delivery can see stock. Only money is walled off. If the
+  supplier later wants Delivery kept out of customer insurance detail, that is a
+  new decision, not a bug.
+- **Thread 7, one customer form.** Closed 2026-09-05. New Customer and Edit
+  customer were two files. New carried Basic Info, Emergency Contact, Insurance,
+  Diagnosis and Attachments; Edit carried the first two, and a note saying
+  insurance and diagnosis "are changed from the customer's own page". They were
+  not: no action anywhere in the product changed either, so a payer entered
+  wrong on the day a customer was created stayed wrong for the life of the
+  record and every claim went to it. Both pages now render
+  `Views/Dme/_CustomerForm.cshtml`, and `CreateCustomer` and `UpdateCustomer`
+  both file through `SaveCustomerInsurance` and `SaveCustomerDiagnoses`. Pinned
+  by `DmeCustomerFormTests`.
+
+  Two decisions inside it:
+
+  1. **A posted payer id of 0 means KEEP the payer on file.** The insurance row
+     stores the payer's NAME and Payer ID, never the catalog row id, because it
+     is the point-in-time record of who somebody was insured with. The id is
+     recoverable from neither: Office Ally issues ALLCA to two different payers.
+     So the picker cannot start on the stored payer and an untouched form posts
+     0. If 0 meant "no payer", opening the edit screen to fix a phone number
+     would drop the customer's insurance. Mutation tested: rewriting that line
+     to treat 0 as blank fails `AnUntouchedPayerPickerKeepsThePayerOnFile`.
+  2. **The diagnosis chips are rendered by the SERVER.** The posted list
+     replaces what is on file, so a page whose script failed to run would
+     otherwise post nothing and silently empty a customer's diagnoses. Hidden
+     inputs that exist in the markup before any script runs mean the worst a
+     dead script can do is leave the record as it was.
+
+### Still open, out of this thread
+
+- ~~**Secondary insurance has a column and no screen.**~~ Closed 2026-09-05, see
+  thread 8 below.
+- ~~**Customer attachments store nothing.**~~ Closed 2026-09-05, see thread 9.
+- **A claim has no diagnosis snapshot.** `Cms` reads the customer's CURRENT
+  diagnoses, so editing them now changes what an already submitted claim prints.
+  Until 2026-09-05 this could not happen, because nothing could edit a diagnosis
+  at all. The fix is to store the codes on the claim when it is raised, the same
+  way `DmeClaims` already keeps its own `CustomerName` and `PayerName`. It is a
+  schema change and its own decision, so it is written down here rather than
+  done in passing.
+
+- **Thread 8, secondary insurance.** Closed 2026-09-05. `Kind` has carried
+  `primary | secondary` since the schema was written and the customer page has
+  always displayed both, but no form ever wrote a secondary, so the only
+  customer who had one was the demo seed. Medicare plus a supplement is the
+  ordinary case in this trade, not an edge case. Both forms now write both, and
+  `SaveCustomerInsurance` takes the kind. Migration
+  `2026-09-05_DME_Secondary_Insurance.sql`.
+
+  Three decisions:
+
+  1. **A secondary can be ENDED; a primary cannot.** A secondary genuinely
+     lapses: a spouse changes job, COBRA runs out, and "they no longer have one"
+     is a fact the record has to hold. A primary does not lapse into nothing, it
+     becomes a different payer, which the picker already does, and a supplier
+     with no primary cannot bill at all. So the checkbox exists on one and not
+     the other, and it only appears when there is a policy to end.
+  2. **Ending it DELETES the row, and that is safe here and nowhere else.**
+     `DmeClaims.PayerName` is copied at the moment a claim is raised, so a past
+     claim keeps saying what it was billed under. Verified by ending customer
+     2's secondary and reading their three claims back unchanged. If that column
+     ever became a join, this delete would start silently rewriting history.
+  3. **`Kind` is now enforced by the database.** It was NVARCHAR(12) with a
+     comment beside it and nothing checking it, which was survivable while one
+     screen wrote the table and only ever wrote `primary`. Six places read
+     `WHERE Kind='primary'`; a row stored as anything else would be found by
+     none of them, and the claim raised at delivery would carry a NULL payer.
+     Not an error, just a claim addressed to nobody, found weeks later by the
+     biller. `CK_DmeCustomerInsurances_Kind` and
+     `UX_DmeCustomerInsurances_Kind` (one of each kind per customer) close both.
+     The data was queried first: six rows, five primary and one secondary, no
+     duplicates, so neither guard is an outage. Both were exercised by trying to
+     violate them.
+
+  **Not built, and worth knowing:** the CMS-1500 has no box 9. Box 9, 9a and 9d
+  are where the OTHER insured's policy goes, and `Views/Dme/Cms.cshtml` does not
+  render them at all, so a secondary is recorded and displayed but does not yet
+  reach a printed claim. Coordination of benefits is its own piece of work: the
+  837 needs an SBR loop per payer and the secondary is only billed after the
+  primary adjudicates. Recording it correctly is the half that had to come
+  first.
+
+- **Thread 9, customer documents.** Closed 2026-09-05. The Attachments panel on
+  the New Customer screen had been demo UI since the product was written: it let
+  an operator pick a file, listed it, and stored nothing at all. A list of file
+  names reads as "saved", which made it the worst kind of broken. The intake
+  clerk attaches the referral, sees it on the screen, and the referral is gone
+  the moment the page navigates. Migration
+  `2026-09-05_DME_Customer_Documents.sql`, services `DmeDocumentStore` and
+  `DmeCustomerDocuments`, panel on both customer screens. Pinned by
+  `DmeCustomerDocumentTests`.
+
+  Four decisions:
+
+  1. **The FILE rules moved into `DmeDocumentStore`, shared with proof of
+     delivery.** Encrypt before the bytes leave the app, hash the plaintext
+     first so the document survives a key rotation, opaque object key, magic
+     bytes checked against the extension, 25MB. Copying those for this feature
+     would have put the magic-bytes check in two places, and the copy that gets
+     forgotten is always the one that mattered. `DmeOrderDocuments` was moved
+     onto it in the same pass; its seventeen tests are what made that safe, and
+     one of them now pins the hash ordering for both.
+  2. **A customer document has a KIND and a proof of delivery does not.** Every
+     row in `DmeOrderDocuments` is the same thing. A customer's documents are
+     not: a biller answering a CO-50 is looking for the CMN that establishes
+     medical necessity, not for "a file". `CK_DmeCustomerDocuments_Kind` pins
+     the six values, and a test proves the picker offers exactly what the
+     constraint accepts.
+  3. **The panel is OUTSIDE the customer form**, which is why that card is no
+     longer in the two column grid with the others. The uploader is a form of
+     its own, HTML forbids nested forms, and a browser handed one silently drops
+     the inner one: the file would go nowhere and nothing would say why. An
+     earlier draft kept the card in the grid and moved the uploader out with a
+     script, which produced the same nesting in the DOM instead of the markup
+     and passed a weaker version of the test. The browser reported
+     `nestedInCustomerForm: true` and that is how it was caught.
+  4. **New Customer says "save the customer first" rather than showing a
+     picker.** A document attaches to a record and there is not one yet. Showing
+     a picker that quietly discards what it is given is precisely the bug being
+     fixed.
+
+  Proved end to end on the running app: a real PDF stored (69 plaintext bytes,
+  97 on disk, `%PDF` absent from the file, object key carrying no name),
+  downloaded back byte-identical, an executable renamed to `.pdf` refused with
+  "That file is not really a PDF", an invented kind refused, and neither refusal
+  leaving a row or a file behind. Removal leaves the row with a `DeletedAt`,
+  empties the bytes from disk, and turns the download into a 404.
+
+- **Thread 10, the picker nobody could click.** Closed 2026-09-05. Reported as
+  "dropdowns work with an external mouse and not with the laptop trackpad", and
+  it was exactly that. `Typeahead.js` closed its results list 150ms after the
+  box lost focus, to give a click time to land first. A mouse does mousedown,
+  mouseup and click inside about 20ms and wins. A trackpad has to RECOGNISE a
+  tap before the click is synthesised, and finger movement during the tap pushes
+  it further out; past 150ms the list has been emptied and the button the click
+  was aimed at no longer exists, so nothing happens and nothing explains itself.
+
+  Reproduced in the browser by firing `blur` and clicking 250ms later: the row
+  was gone from the DOM and the hidden field still read `0`. The fix is to
+  prevent the default on `mousedown` over the list, so focus never moves, `blur`
+  never fires while somebody is picking, and there is no race to lose. Escape
+  and leaving the box still close it, immediately, with no timer.
+
+  **Worth knowing:** this affects all three pickers, payers, ICD-10 and HCPCS,
+  because they are one component. And there is still no keyboard navigation in
+  it: arrow keys and Enter do nothing, so a picker that cannot be clicked cannot
+  be used at all. That is a separate piece of work.
+
+- **Thread 11, editing an order.** Closed 2026-09-05. An order could be raised
+  and never corrected. A quantity typed wrong, the wrong HCPCS picked off a
+  similar name, a delivery date moved: the only way out was to cancel it and
+  raise another, which spends an order number and leaves a cancelled row whose
+  real reason was a typo. Every cancellation then reads as a business event when
+  most of them were corrections. `NewOrder` and `EditOrder` now render
+  `Views/Dme/_OrderForm.cshtml`, and `CreateOrder` and `UpdateOrder` both file
+  through `SaveOrderLines`. Pinned by `DmeOrderEditTests`.
+
+  Four decisions:
+
+  1. **Delivery is the line, not "draft".** `IsEditable` asks whether anything
+     irreversible has happened yet, and the answer is no until `Deliver` runs.
+     Deliver writes a claim, a rental, a stock movement and a serialised unit,
+     and none of those can be un-written by editing the order they came from. So
+     `draft` and `confirmed` are both editable and `delivered` is not. A
+     `cancelled` order is reopened first, deliberately: reopening resets it to
+     draft and says out loud that the eligibility and stock check behind
+     "confirmed" has gone stale.
+  2. **The status is re-read on POST, never trusted from the open screen.**
+     Somebody can deliver an order while the edit form is sitting open, and the
+     delivery has to win. The UPDATE carries the same guard in its WHERE, so
+     even a race past the check writes nothing. Proved by delivering order 23
+     behind an open form: the save was refused, the deposit did not move, and
+     the operator was told why.
+  3. **The lines are REPLACED, and that is only safe here.** Nothing in the
+     product references an order line by id, and before delivery the lines have
+     produced nothing. After delivery they have produced stock movements,
+     serialised units and claim lines, which is the whole reason the window
+     closes.
+  4. **The rows are rendered by the SERVER**, same as the diagnosis chips. The
+     POST replaces the lines with whatever it carries, so a page whose script
+     failed to run would post nothing and empty the order. The remove button is
+     delegated rather than wired per row, or every line the order already had
+     would have a button that does nothing.
+
+  **What the test suite caught that a browser would not have:**
+  `DmePhiRenderingTests` failed the moment `EditOrder` read `vDmeOrders` without
+  calling `_phi.ComposeCustomerName`. That view returns the customer's first and
+  last name separately and both are ciphertext, because two ciphertexts
+  concatenated in SQL cannot be decrypted. The page would have rendered base64
+  and still returned 200.
+
+  **Mutation tested:** widening `IsEditable` to allow `delivered` fails
+  `AnOrderPastThePointOfNoReturnIsNotEditable`.

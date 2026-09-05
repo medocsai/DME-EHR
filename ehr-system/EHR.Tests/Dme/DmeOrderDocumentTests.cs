@@ -101,7 +101,12 @@ public class DmeOrderDocumentTests
         var storage = new RecordingStorage();
         var enc = Encryption();
 
-        return (new DmeOrderDocuments(db.Object, storage, new FilePathBuilder(), enc), storage, enc, db);
+        // The file rules moved into DmeDocumentStore on 2026-09-05 so customer
+        // documents could share them. This service now knows its own table and
+        // nothing else, which is why the store is built here and handed in.
+        var files = new DmeDocumentStore(storage, new FilePathBuilder(), enc);
+
+        return (new DmeOrderDocuments(db.Object, files), storage, enc, db);
     }
 
     private static byte[] RealPdf()
@@ -271,7 +276,10 @@ public class DmeOrderDocumentTests
     [Fact]
     public void TheHashIsOfThePlaintext()
     {
-        var service = Read("Services", "DmeOrderDocuments.cs");
+        // In DmeDocumentStore since 2026-09-05, which means this ordering is now
+        // pinned once for proof of delivery AND customer documents rather than
+        // once per service.
+        var service = Read("Services", "DmeDocumentStore.cs");
 
         var hashLine = service.Split('\n').First(l => l.Contains("SHA256.HashData"));
         hashLine.Should().Contain("bytes",

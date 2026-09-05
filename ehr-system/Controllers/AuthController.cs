@@ -49,6 +49,19 @@ public class AuthController : ControllerBase
             if (result == null)
                 return Unauthorized(new { message = "Invalid email or password" });
 
+            // A trusted device skips OTP, so verify-otp — the usual place the session
+            // cookie is issued — never runs on this path. Without this the SPA holds a
+            // working token while every server-rendered Razor page 401s and bounces
+            // back to sign-in, so the user is signed in and signed out at once.
+            // Same guards as verify-otp: no cookie while a clinic is still to be
+            // picked, because that token is not yet a full session token.
+            if (!result.RequiresOtpVerification && !result.RequiresTenantSelection
+                && !string.IsNullOrEmpty(result.Token))
+            {
+                SessionCookie.Issue(Response, result.Token,
+                    result.TokenExpiry ?? DateTime.UtcNow.AddMinutes(30), Request.IsHttps);
+            }
+
             return Ok(result);
         }
         catch (Exception ex)

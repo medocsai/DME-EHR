@@ -272,11 +272,16 @@ namespace EHR.Models
         private static string GetRoleName(int role) => role switch
         {
             0 => "Super Admin",
-            1 => "Clinic Admin",
-            2 => "Clinician",
-            3 => "Front Desk",
+            1 => "Admin",
+            2 => "Intake",
+            3 => "Delivery",
             4 => "Biller",
-            _ => "Read Only"
+
+            // Not "Read Only". A fall-through that names an unknown value as a
+            // real role hides bad data: 6 and 7 were Medical Assistant and Nurse,
+            // never listed here, so thirteen accounts displayed as "Read Only"
+            // while being something else entirely.
+            _ => "Unknown"
         };
     }
 

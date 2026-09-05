@@ -21,6 +21,25 @@ class ApiService {
      * Set the authentication token
      * @param {string} token - JWT token
      */
+    /**
+     * The session slides on activity, and a renewed token comes back on this
+     * header. Every response is checked, because any request can be the one that
+     * crossed the halfway mark. Silent by design: nothing about the call changes.
+     */
+    _takeRenewedToken(response) {
+        try {
+            const renewed = response && response.headers && response.headers.get('X-Session-Token');
+            if (renewed) {
+                this.authToken = renewed;
+                if (window.App && App.auth && App.auth.applyRenewedToken) {
+                    App.auth.applyRenewedToken(renewed);
+                }
+            }
+        } catch (e) {
+            // Never let housekeeping break the caller's request.
+        }
+    }
+
     setAuthToken(token) {
         this.authToken = token;
     }
@@ -94,6 +113,7 @@ class ApiService {
             }
 
             const response = await fetch(url, fetchOptions);
+            this._takeRenewedToken(response);
 
             // Handle 401 Unauthorized
             if (response.status === 401) {
@@ -238,6 +258,7 @@ class ApiService {
                 headers,
                 body: formData
             });
+            this._takeRenewedToken(response);
 
             if (!response.ok) {
                 let errorMessage = '';

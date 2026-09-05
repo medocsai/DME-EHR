@@ -118,11 +118,16 @@ builder.Services.AddScoped<IDmeHcpcsCatalog, DmeHcpcsCatalog>();
 // Who this supplier buys from, for drop-shipped items. TENANT data, unlike the
 // three national catalogs above. See Services/DmeDistributors.cs.
 builder.Services.AddScoped<IDmeDistributors, DmeDistributors>();
+builder.Services.AddScoped<IDmeDoctors, DmeDoctors>();
 
 // Proof-of-delivery attachments. Scoped because it holds the request-scoped
 // DmeDb; it owns validation, encryption and the document row together so no
 // caller can do two of the three. See Services/DmeOrderDocuments.cs.
+// The rules about FILES, shared by proof of delivery and customer documents.
+// Scoped, not singleton, only because the two services that use it are.
+builder.Services.AddScoped<DmeDocumentStore>();
 builder.Services.AddScoped<IDmeOrderDocuments, DmeOrderDocuments>();
+builder.Services.AddScoped<IDmeCustomerDocuments, DmeCustomerDocuments>();
 
 // Google Cloud Storage Services
 builder.Services.Configure<GoogleCloudStorageOptions>(
@@ -421,6 +426,12 @@ app.UseStaticFiles();
 app.UseRouting();
 
 app.UseAuthentication();
+
+// Straight after authentication, because it reads the identity that step built.
+// Pushes the session deadline back on activity, so HIPAA:SessionTimeoutMinutes
+// means "idle for this long" rather than "signed in this long".
+app.UseSlidingSession();
+
 app.UseTenantResolution();
 // After tenant resolution, so every source has been tried, and before the DME
 // controllers are constructed, because DmeDb throws on a missing tenant and the

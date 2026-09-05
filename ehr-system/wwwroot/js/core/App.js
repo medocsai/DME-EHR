@@ -289,21 +289,21 @@ const App = (() => {
             const roleNum = parseInt(role, 10);
             const user = this.auth.getCurrentUser();
 
-            // Super Admin = 0, Clinic Admin = 1, Clinician = 2, Front Desk = 3, Biller = 4
+            // Super Admin = 0, Admin = 1, Intake = 2, Delivery = 3, Biller = 4
             const isSuperAdmin = roleNum === 0 && !user?.TenantId;
             const isAdmin = roleNum === 0 || roleNum === 1;
-            const isTherapist = roleNum === 2;
-            const isBiller = roleNum === 4;
 
 
             // CSS uses body classes with !important to control visibility
             // Add appropriate classes to body element
             const body = document.body;
 
-            // Clear previous role classes
-            body.classList.remove('super-admin', 'admin', 'clinician', 'biller', 'front-desk', 'read-only', 'medical-assistant', 'nurse');
+            // Clear previous role classes, including the clinical ones this
+            // product no longer issues: a body that kept 'nurse' from a previous
+            // session would still be matching CSS written for another product.
+            body.classList.remove('super-admin', 'admin', 'intake', 'delivery', 'biller',
+                'clinician', 'front-desk', 'read-only', 'medical-assistant', 'nurse');
 
-            // Add current role classes based on CSS selectors
             if (isSuperAdmin) {
                 body.classList.add('super-admin');
                 body.classList.add('admin'); // Super admin is also an admin
@@ -311,28 +311,11 @@ const App = (() => {
                 body.classList.add('admin');
             }
 
-            if (isTherapist) {
-                body.classList.add('clinician'); // CSS uses 'clinician' class
-            }
-
-            if (isBiller) {
-                body.classList.add('biller');
-            }
-
-            if (roleNum === 3) { // Front Desk
-                body.classList.add('front-desk');
-            }
-
-            if (roleNum === 5) { // Read Only
-                body.classList.add('read-only');
-            }
-
-            if (roleNum === 6) { // Medical Assistant
-                body.classList.add('medical-assistant');
-            }
-
-            if (roleNum === 7) { // Nurse
-                body.classList.add('nurse');
+            // UserRoles owns the mapping, so this cannot drift from the names
+            // shown in the sidebar or the list the user form offers.
+            const roleClass = window.UserRoles.getBodyClass(roleNum, user?.TenantId);
+            if (roleClass && roleClass !== 'admin' && roleClass !== 'super-admin') {
+                body.classList.add(roleClass);
             }
         },
 

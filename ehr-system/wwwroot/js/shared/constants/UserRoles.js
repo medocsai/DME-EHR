@@ -7,41 +7,32 @@
  *   UserRoles.canAccessAdmin(2)    // false (Clinician)
  */
 const UserRoles = {
-    // Role enum values (match server-side enum)
+    // Role enum values. These MIRROR Models/Enums/AllEnums.cs and
+    // AllDtos.GetRoleName; when one changes the other has to follow, because a
+    // screen that names a role the server does not recognise is answering a
+    // question about permissions with a guess.
     SUPER_ADMIN: 0,
-    CLINIC_ADMIN: 1,
-    CLINICIAN: 2,
-    FRONT_DESK: 3,
+    ADMIN: 1,
+    INTAKE: 2,
+    DELIVERY: 3,
     BILLER: 4,
-    READ_ONLY: 5,
-    MEDICAL_ASSISTANT: 6,
-    NURSE: 7,
-    PATIENT: 8,
 
     // Role names
     _names: {
         0: 'Super Admin',
-        1: 'Clinic Admin',
-        2: 'Clinician',
-        3: 'Front Desk',
-        4: 'Biller',
-        5: 'Read Only',
-        6: 'Medical Assistant',
-        7: 'Nurse',
-        8: 'Patient'
+        1: 'Admin',
+        2: 'Intake',
+        3: 'Delivery',
+        4: 'Biller'
     },
 
     // Role descriptions
     _descriptions: {
-        0: 'Full platform access across all tenants',
-        1: 'Full clinic management access',
-        2: 'Clinical documentation and patient care',
-        3: 'Scheduling and patient check-in',
-        4: 'Billing and claims management',
-        5: 'View-only access to patient data',
-        6: 'Vitals, CC/HPI documentation, and visit support',
-        7: 'Vitals, CC/HPI documentation, and visit support',
-        8: 'Patient portal - view-only access to own records'
+        0: 'Medocs, across every supplier',
+        1: 'The supplier, end to end',
+        2: 'Customers, orders and insurance. Not money.',
+        3: 'Deliveries, proof of delivery and stock. Not billing.',
+        4: 'Claims, payments and denials. Not stock.'
     },
 
     /**
@@ -51,7 +42,10 @@ const UserRoles = {
      */
     getName(role) {
         const r = parseInt(role, 10);
-        return this._names[r] || 'User';
+        // Not 'User'. An unrecognised number is bad data, and saying so is more
+        // use than a friendly word that hides it. Matches the server's
+        // 'Unknown' fall-through exactly.
+        return this._names[r] || 'Unknown';
     },
 
     /**
@@ -239,13 +233,9 @@ const UserRoles = {
     getBodyClass(role, tenantId = null) {
         if (role === 0 && !tenantId) return 'super-admin';
         if (role === 0 || role === 1) return 'admin';
-        if (role === 2) return 'clinician';
-        if (role === 3) return 'front-desk';
+        if (role === 2) return 'intake';
+        if (role === 3) return 'delivery';
         if (role === 4) return 'biller';
-        if (role === 5) return 'read-only';
-        if (role === 6) return 'medical-assistant';
-        if (role === 7) return 'nurse';
-        if (role === 8) return 'patient';
         return '';
     },
 

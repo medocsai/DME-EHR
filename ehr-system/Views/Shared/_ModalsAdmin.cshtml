@@ -229,13 +229,12 @@
                         <div class="col-md-6">
                             <label class="form-label">Role *</label>
                             <select class="form-select" name="Role" required id="userRoleSelect">
-                                <option value="1">Clinic Admin</option>
-                                <option value="2">Clinician</option>
-                                <option value="3">Front Desk</option>
+                                @* Five roles, and no Super Admin: that one belongs to
+                                   Medocs and is not something a supplier hands out. *@
+                                <option value="1">Admin</option>
+                                <option value="2">Intake</option>
+                                <option value="3">Delivery</option>
                                 <option value="4">Biller</option>
-                                <option value="5">Read Only</option>
-                                <option value="6">Medical Assistant</option>
-                                <option value="7">Nurse</option>
                             </select>
                         </div>
                         <div class="col-md-6 new-user-password">
@@ -267,28 +266,22 @@
                                 orders and stock of the branches ticked here.
                             </small>
                         </div>
-                        <div class="col-12">
-                            <hr class="my-2">
-                            <div class="card bg-light border-0 shadow-sm">
-                                <div class="card-header bg-info bg-opacity-10 border-0 py-2">
-                                    <h6 class="mb-0 small"><i class="bi bi-link-45deg me-2"></i>Provider Association</h6>
-                                </div>
-                                <div class="card-body py-2">
-                                    <div class="row align-items-center">
-                                        <div class="col-md-8">
-                                            <label class="form-label mb-1 small">Link to Provider</label>
-                                            <select class="form-select form-select-sm" name="ProviderId" id="userProviderSelect">
-                                                <option value="">-- No Provider (Non-Clinician Account) --</option>
-                                            </select>
-                                            <small class="text-muted">Select a provider if this user is a clinician account</small>
-                                        </div>
-                                        <div class="col-md-4 text-end">
-                                            <span class="badge bg-secondary" id="userProviderBadge">No Provider</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        @* Provider Association is hidden, not deleted.
+
+                           A "provider" is a clinician, which a DME supplier does not
+                           employ: the prescriber is somebody else's doctor and lives
+                           on /Dme/Doctors. The list behind this picker came from
+                           /api/providers, which went with the clinical schema on
+                           2026-08-25, so it could only ever have offered an empty
+                           dropdown and a badge reading "No Provider".
+
+                           The hidden inputs stay so the JavaScript that reads and
+                           writes them keeps working untouched. Removing that code is
+                           a separate cleanup; see docs/OPEN-THREADS.md. *@
+                        <select name="ProviderId" id="userProviderSelect" hidden>
+                            <option value=""></option>
+                        </select>
+                        <span id="userProviderBadge" hidden></span>
                         <div class="col-md-6">
                             <div class="form-check mt-2">
                                 <input class="form-check-input" type="checkbox" name="IsActive" id="userIsActive" checked>

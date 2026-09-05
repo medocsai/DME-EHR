@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using EHR.Helpers;
 
 namespace EHR.Controllers;
 
@@ -48,9 +49,15 @@ public class HomeController : Controller
 
     /// <summary>
     /// Staff user management. Linked from the navigation as /UserManagement.
-    /// The data behind it is UsersController, which is role gated to
-    /// SuperAdmin and ClinicAdmin.
+    ///
+    /// The guard used to live only on UsersController, and this comment used to
+    /// say that was enough. It was not: an Intake user who typed the URL got the
+    /// page, the toolbar and the Add User button, and an empty table where the
+    /// API had refused them. Being shown an administration screen and left to
+    /// work out from a blank grid that you are not an administrator is not a
+    /// permission model. The page now answers the same way its data does.
     /// </summary>
+    [Authorize(Roles = DmeRoles.Admin)]
     public IActionResult Users()
     {
         ViewData["Title"] = "User Management";

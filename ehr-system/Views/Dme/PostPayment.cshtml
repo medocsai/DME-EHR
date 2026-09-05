@@ -60,8 +60,12 @@
                     </div>
                     <div class="col-md-2">
                         <label class="form-label">Posted date</label>
-                        <input type="date" name="postedDate" class="form-control" required
-                               value="@DateTime.Today.ToString("yyyy-MM-dd")" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                        @* Plain text, like every other date a human types here. The
+                           max= that used to sit on the native control is not lost: a
+                           future posting date is refused by DmePaymentService, which is
+                           where the rule belongs anyway. *@
+                        <input name="postedDate" class="form-control js-dateinput" required
+                               placeholder="mm/dd/yyyy" value="@DateTime.Today.ToString("MM/dd/yyyy")" />
                         <div class="form-text" style="font-size:11px">The date you received it. This is the month it counts in.</div>
                     </div>
                     <div class="col-md-2">

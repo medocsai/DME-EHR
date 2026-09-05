@@ -1,0 +1,191 @@
+@using EHR.Helpers
+@using EHR.Services
+@{
+    ViewData["ActivePage"] = "doctors";
+    var doctors = (IReadOnlyList<Doctor>)ViewBag.Doctors;
+    var live = doctors.Count(d => !d.IsRetired);
+}
+
+<div class="dme-wrap">
+    <div class="dme-head">
+        <div>
+            <h1>Referring doctors</h1>
+            <div class="dme-sub">Who prescribes for your customers &middot; @live in service</div>
+        </div>
+    </div>
+
+    @if (ViewBag.DoctorError != null)
+    {
+        <div class="dme-banner" style="background:#fdecea;color:#8a1c13">
+            <i class="bi bi-exclamation-triangle"></i> @ViewBag.DoctorError
+        </div>
+    }
+
+    <div class="dme-banner">
+        <i class="bi bi-info-circle"></i>
+        The ordering physician goes in boxes 17 and 17b of the CMS-1500. A DMEPOS claim
+        without their name and NPI is rejected, so every doctor you take orders from
+        needs to be here.
+    </div>
+
+    <div class="dme-grid2">
+        <div class="dme-card">
+            <div class="dme-card-head"><h2>Your doctors</h2></div>
+            <div class="dme-card-body">
+                @if (doctors.Count == 0)
+                {
+                    <div class="dme-empty">None yet. Add the first one to raise an order.</div>
+                }
+                else
+                {
+                    <table class="dme-table">
+                        <thead>
+                            <tr><th>Name</th><th>NPI</th><th>Specialty</th><th>Status</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var d in doctors)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@d.DisplayName</strong>
+                                    @if (!string.IsNullOrWhiteSpace(d.Phone))
+                                    {
+                                        <div class="dme-muted" style="font-size:12px">@d.Phone</div>
+                                    }
+                                </td>
+                                <td class="dme-mono">@(string.IsNullOrWhiteSpace(d.Npi) ? "—" : d.Npi)</td>
+                                <td class="dme-muted">@(string.IsNullOrWhiteSpace(d.Specialty) ? "—" : d.Specialty)</td>
+                                <td>
+                                    @if (d.IsRetired)
+                                    {
+                                        <span class="dme-chip gray">Out of service</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="dme-chip teal">In service</span>
+                                    }
+                                </td>
+                                <td style="text-align:right">
+                                    @* Retired doctors stay editable: a misspelled name still
+                                       shows on every old order that names them. *@
+                                    <button type="button" class="dme-btn dme-btn-light dme-btn-sm js-edit-doc"
+                                            data-id="@d.DoctorId"
+                                            data-first="@d.FirstName"
+                                            data-last="@d.LastName"
+                                            data-npi="@d.Npi"
+                                            data-specialty="@d.Specialty"
+                                            data-phone="@d.Phone">edit</button>
+
+                                    @* Retired, never deleted: past orders and the claims billed
+                                       from them name this prescriber. *@
+                                    @if (d.IsRetired)
+                                    {
+                                        <form method="post" action="/Dme/RestoreDoctor" style="display:inline">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="id" value="@d.DoctorId" />
+                                            <button type="submit" class="dme-btn dme-btn-light dme-btn-sm">Bring back</button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <form method="post" action="/Dme/RetireDoctor" style="display:inline">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="id" value="@d.DoctorId" />
+                                            <button type="submit" class="dme-btn dme-btn-light dme-btn-sm">Take out of service</button>
+                                        </form>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+
+        <div class="dme-card">
+            <div class="dme-card-head"><h2 id="docCardTitle">Add a doctor</h2></div>
+            <div class="dme-card-body">
+                <form method="post" action="/Dme/AddDoctor" id="docForm">
+                    @Html.AntiForgeryToken()
+                    @* Empty when adding; filled by the edit buttons, which also point
+                       the form at EditDoctor. *@
+                    <input type="hidden" name="id" id="docId" value="" />
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">First name <span style="color:#d6453f">*</span></label>
+                            <input name="firstName" class="form-control js-name" required placeholder="Aisha" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Last name <span style="color:#d6453f">*</span></label>
+                            <input name="lastName" class="form-control js-name" required placeholder="Patel" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">NPI</label>
+                            <input name="npi" class="form-control js-digits" inputmode="numeric"
+                                   maxlength="10" placeholder="1093847562" />
+                            <div class="form-text" style="font-size:11px">
+                                Ten digits. Goes in box 17b of the claim.
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Specialty</label>
+                            <input name="specialty" class="form-control" placeholder="Pulmonology" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Phone</label>
+                            <input name="phone" type="tel" inputmode="tel" class="form-control js-phone"
+                                   placeholder="(214) 555-0180" />
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-end gap-2 mt-3">
+                        <button type="button" class="dme-btn dme-btn-light" id="docCancel" hidden>Cancel</button>
+                        <button type="submit" class="dme-btn dme-btn-primary" id="docSubmit">
+                            <i class="bi bi-plus-lg"></i> Add
+                        </button>
+                    </div>
+                </form>
+
+<script>
+    (function () {
+        var form   = document.getElementById('docForm');
+        var title  = document.getElementById('docCardTitle');
+        var submit = document.getElementById('docSubmit');
+        var cancel = document.getElementById('docCancel');
+        var idBox  = document.getElementById('docId');
+
+        function val(n, v) { form.querySelector('[name="' + n + '"]').value = v || ''; }
+
+        function addMode() {
+            form.action = '/Dme/AddDoctor';
+            title.textContent = 'Add a doctor';
+            submit.innerHTML = '<i class="bi bi-plus-lg"></i> Add';
+            cancel.hidden = true;
+            idBox.value = '';
+            ['firstName', 'lastName', 'npi', 'specialty', 'phone'].forEach(function (n) { val(n, ''); });
+        }
+
+        cancel.addEventListener('click', addMode);
+
+        Array.prototype.forEach.call(document.querySelectorAll('.js-edit-doc'), function (b) {
+            b.addEventListener('click', function () {
+                form.action = '/Dme/EditDoctor';
+                title.textContent = 'Edit Dr. ' + b.dataset.first + ' ' + b.dataset.last;
+                submit.innerHTML = '<i class="bi bi-check-lg"></i> Save changes';
+                cancel.hidden = false;
+                idBox.value = b.dataset.id;
+                val('firstName', b.dataset.first);
+                val('lastName', b.dataset.last);
+                val('npi', b.dataset.npi);
+                val('specialty', b.dataset.specialty);
+                val('phone', b.dataset.phone);
+                form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                form.querySelector('[name="firstName"]').focus();
+            });
+        });
+    })();
+</script>
+            </div>
+        </div>
+    </div>
+</div>

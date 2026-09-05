@@ -12,6 +12,8 @@
  *      how the wrong payer ends up on a claim.
  *   2. A slower earlier request must not overwrite a newer one. Every request
  *      carries a sequence number and a late reply is dropped.
+ *   3. The list must still be there when the click arrives. It used to close on
+ *      a timer, which worked with a mouse and failed on a laptop trackpad.
  *
  * The visible input is only a search box. The hidden input carries the id or
  * code, and the server re-reads the name from the catalog, so nothing the
@@ -125,8 +127,29 @@
             }, DEBOUNCE_MS);
         });
 
-        // A short delay, so a click on a result lands before the list closes.
-        input.addEventListener('blur', function () { setTimeout(hide, 150); });
+        // WHY THE LIST DOES NOT CLOSE ON A TIMER
+        //
+        // It used to. Leaving the box closed the list 150ms later, which was
+        // meant to give a click on a result time to land first. That is a race,
+        // and it was lost on every laptop trackpad we tried:
+        //
+        //   mouse     mousedown -> mouseup -> click, all inside ~20ms. Wins.
+        //   trackpad  a tap has to be RECOGNISED as a tap before the click is
+        //             synthesised, and any finger movement during it pushes that
+        //             further out. Past 150ms the list has already been emptied,
+        //             so the button the click was aimed at no longer exists and
+        //             nothing happens at all.
+        //
+        // The operator sees a dropdown that ignores them, works when they plug a
+        // mouse in, and gives no clue why. Reproduced by firing blur and then
+        // clicking 250ms later, which is what the browser does on a tap.
+        //
+        // Preventing the default on mousedown stops the focus from moving, so
+        // blur never fires while somebody is picking. There is nothing left to
+        // race: the list closes when focus actually leaves, or on Escape.
+        list.addEventListener('mousedown', function (e) { e.preventDefault(); });
+
+        input.addEventListener('blur', hide);
         input.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); });
     };
 })(window);

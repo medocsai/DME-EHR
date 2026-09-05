@@ -101,7 +101,54 @@ public class DmeIcdCatalogTests
 
         Params(calls[0].Prms)["exact"].Should().Be("E669",
             "the comparison is done undotted on both sides");
-        calls[0].Sql.Should().Contain("REPLACE(Code,'.','')");
+        // CodeBare is a PERSISTED computed column holding the undotted code.
+        // REPLACE() in the WHERE clause did the same job but defeated the index,
+        // so one lookup scanned all 74,719 rows and timed out on screen as
+        // "No diagnosis matches that".
+        calls[0].Sql.Should().Contain("CodeBare");
+        calls[0].Sql.Should().NotContain("REPLACE(Code",
+            "a function on the column makes the index unusable");
+    }
+
+    /// <summary>
+    /// Each word searches ONE column, chosen by what the word looks like.
+    ///
+    /// It used to search both and OR them together, which threw away the index:
+    /// an OR between an indexed predicate and an unindexed one has to scan. One
+    /// lookup measured 23 seconds through the app, and a timed-out lookup renders
+    /// as "No diagnosis matches that" — the search reporting that a real code
+    /// does not exist.
+    /// </summary>
+    [Fact]
+    public void ACodeWordSearchesTheCodeColumnAsAPrefix()
+    {
+        var (catalog, _, calls) = Build(("E86.0", "Dehydration"));
+
+        catalog.Search("E86");
+
+        // Prefix, so the index can seek. "%E86%" could not, whatever it is
+        // indexed on, and nobody searches for the middle of a diagnosis code.
+        Params(calls[0].Prms)["w0"].Should().Be("E86%");
+
+        calls[0].Sql.Should().Contain("CodeBare LIKE @w0")
+            .And.NotContain("Description LIKE @w0",
+                "no description contains a code, so searching both is pure scan");
+    }
+
+    [Fact]
+    public void AWordingWordSearchesTheDescriptionAnywhereInIt()
+    {
+        var (catalog, _, calls) = Build(("E86.0", "Dehydration"));
+
+        catalog.Search("dehydration");
+
+        // Wildcards both sides, because wording has to match anywhere:
+        // "dehydration" must find "Dehydration of newborn".
+        Params(calls[0].Prms)["w0"].Should().Be("%dehydration%");
+
+        calls[0].Sql.Should().Contain("Description LIKE @w0")
+            .And.NotContain("CodeBare LIKE @w0",
+                "no code contains an English word");
     }
 
     [Fact]
@@ -171,8 +218,9 @@ public class DmeIcdCatalogTests
         // row whatever it is asked for, so the PARAMETER is the evidence.
         var sent = calls[0].Prms!.GetType().GetProperty("code")!.GetValue(calls[0].Prms)!.ToString();
         sent.Should().Be("E669", "a code typed either way must reach the same row");
-        calls[0].Sql.Should().Contain("REPLACE(Code,'.','')",
-            "and the stored side has to be compared undotted too");
+        calls[0].Sql.Should().Contain("CodeBare",
+            "and the stored side has to be compared undotted too, through the "
+            + "indexed computed column rather than a function on Code");
     }
 
     // ------------------------------------------------- the catalog stays global
@@ -243,8 +291,34 @@ public class DmeIcdCatalogTests
         insert.Should().Contain("diagnosis.Code").And.Contain("diagnosis.Description",
             "both facts come from the catalog lookup, not from a posted form field");
 
-        controller.Should().Contain("_icd.Find(dxCode)",
+        controller.Should().Contain("_icd.Find(code)",
             "an invalid code must file no diagnosis at all");
+    }
+
+    /// <summary>
+    /// One diagnosis was never enough. CMS-1500 carries up to twelve pointers,
+    /// and DME routinely needs two or three: oxygen justified by COPD alone is
+    /// thin, and thin medical necessity comes back as CO-50.
+    /// </summary>
+    /// <summary>
+    /// The loop lives in SaveCustomerDiagnoses now, which CreateCustomer and
+    /// UpdateCustomer both call, because New Customer and Edit customer are one
+    /// form. The rules it pins are unchanged.
+    /// </summary>
+    [Fact]
+    public void EveryDiagnosisIsTakenAndTheFirstIsPrimary()
+    {
+        var controller = Read("Controllers", "DmeController.cs");
+
+        controller.Should().Contain("string[]? dxCodes",
+            "the form posts one code per chip, in the order they were added");
+
+        controller.Should().Contain("primary = diagnosis.Code == codes[0]",
+            "the first one filed is the primary; on a claim that decides which "
+            + "diagnosis a service line points at");
+
+        controller.Should().Contain("filed.Any(f => f.Code == diagnosis.Code)",
+            "the same code twice is a repeated pointer, not a stronger case");
     }
 
     /// <summary>

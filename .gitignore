@@ -52,3 +52,12 @@ ehr-system/App_Data/storage/
 
 # Verification-code emails written when Email:Enabled is false
 emails_sent/
+
+# Database backups. DMEEHR.bak is 115MB of customer PHI and belongs nowhere
+# near a git history: it cannot be removed later without rewriting every
+# commit after it.
+*.bak
+
+# dotnet publish output. Build product, not source.
+publish/
+pub/

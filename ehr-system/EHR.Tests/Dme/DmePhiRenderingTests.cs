@@ -47,7 +47,18 @@ public class DmePhiRenderingTests
     /// Actions that legitimately read those tables without touching names:
     /// existence checks and id lookups that select no PHI column.
     /// </summary>
-    private static readonly string[] ExemptActions = { "CreateOrder", "Submit" };
+    /// ArchiveCustomer is here for the same reason: it selects CustomerId,
+    /// AccountNo and Status from DmeCustomers, none of which are encrypted
+    /// (AccountNo is deliberately excluded from DmeCustomerPhi.EncryptedColumns),
+    /// and it counts rows in vDmeRentals without naming a column. Nothing it
+    /// reads could render as base64.
+    /// UpdateOrder is exempt for exactly the reason CreateOrder is: it selects
+    /// CustomerId from DmeCustomers as an existence check, names no encrypted
+    /// column, and redirects rather than rendering. The GET beside it,
+    /// EditOrder, reads vDmeOrders and DOES decrypt, which is the half that
+    /// could have gone wrong and did until this test caught it.
+    private static readonly string[] ExemptActions =
+        { "CreateOrder", "UpdateOrder", "Submit", "ArchiveCustomer" };
 
     [Fact]
     public void EveryActionReadingCustomerData_AlsoDecryptsIt()

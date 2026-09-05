@@ -1,0 +1,30 @@
+@using EHR.Helpers
+@*
+    The heading and the error banner. Everything else is _CustomerForm, which
+    New Customer renders too: see the note at the top of that file for why
+    these two screens are one form.
+*@
+@{
+    ViewData["ActivePage"] = "customers";
+    var c = (Dictionary<string, object?>)ViewBag.Customer;
+    var id = F.I(c["CustomerId"]);
+}
+
+<div class="dme-wrap">
+    <a href="/Dme/Customer/@id" class="dme-muted" style="font-size:13px;text-decoration:none"><i class="bi bi-arrow-left"></i> Back to customer</a>
+    <div class="dme-head" style="margin-top:6px">
+        <div>
+            <h1>Edit customer</h1>
+            <div class="dme-sub">@F.S(c["AccountNo"])</div>
+        </div>
+    </div>
+
+    @if (TempData["CustomerError"] != null)
+    {
+        <div class="dme-banner" style="background:#fdecea;color:#8a1c13">
+            <i class="bi bi-exclamation-triangle"></i> @TempData["CustomerError"]
+        </div>
+    }
+
+    @await Html.PartialAsync("_CustomerForm")
+</div>

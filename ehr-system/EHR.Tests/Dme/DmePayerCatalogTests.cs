@@ -256,8 +256,14 @@ public class DmePayerCatalogTests
             "a payer NAME posted from the browser must not reach the insurance record");
     }
 
+    /// <summary>
+    /// The insert lives in SaveCustomerInsurance now, which CreateCustomer and
+    /// UpdateCustomer both call, because New Customer and Edit customer are one
+    /// form. The rule it pins is unchanged: the payer's name and the Payer ID a
+    /// claim is addressed to are read from the catalog, never from the browser.
+    /// </summary>
     [Fact]
-    public void CreateCustomer_ResolvesTheInsuranceRowFromTheCatalog()
+    public void TheInsuranceRowIsResolvedFromTheCatalog()
     {
         var controller = Read("Controllers", "DmeController.cs");
 
@@ -266,8 +272,17 @@ public class DmePayerCatalogTests
             RegexOptions.Singleline).Value;
 
         insert.Should().NotBeEmpty("the insurance insert should still be there");
-        insert.Should().Contain("payer.Name").And.Contain("payer.PayerCode",
+        insert.Should().Contain("chosen!.Name").And.Contain("chosen.PayerCode",
             "both facts come from the catalog lookup, not from posted form fields");
+
+        // And an EDIT cannot smuggle one in either: the update takes the payer
+        // from the catalog or from the row already on file, never from a field.
+        var update = Regex.Match(controller,
+            @"UPDATE dbo\.DmeCustomerInsurances.*?\}\);",
+            RegexOptions.Singleline).Value;
+
+        update.Should().NotBeEmpty("editing a customer must reach the same row");
+        update.Should().Contain("pn = name").And.Contain("pid = code");
     }
 
     [Fact]

@@ -91,31 +91,87 @@ public sealed class DmeIcdCatalog : IDmeIcdCatalog
             ["starts"] = SearchTerm.EscapeLike(Undotted(q)) + "%"
         };
 
+        // Each word searches ONE column, chosen by what the word looks like.
+        //
+        // It used to search both and OR them together. That was the whole
+        // performance problem: an OR between an indexed predicate and an
+        // unindexed one throws away the index, so every keystroke scanned all
+        // 74,719 rows and then sorted them. One lookup of E86.0 measured 23
+        // SECONDS through the app, and a timed-out lookup renders as
+        // "No diagnosis matches that" — the search telling the operator that a
+        // real code does not exist.
+        //
+        // Splitting it costs nothing, because the OR was never useful: no
+        // description contains "E86.0", and no code contains "dehydration".
         var clauses = new List<string>();
+        var anyCodeWord = false;
+
         for (var i = 0; i < words.Count; i++)
         {
-            var word = $"w{i}";
-            var bare = $"b{i}";
-            prms[word] = "%" + SearchTerm.EscapeLike(words[i]) + "%";
-            prms[bare] = "%" + SearchTerm.EscapeLike(Undotted(words[i])) + "%";
+            var name = $"w{i}";
 
-            clauses.Add($"(Description LIKE @{word} ESCAPE '\\' OR REPLACE(Code,'.','') LIKE @{bare} ESCAPE '\\')");
+            if (LooksLikeACode(words[i]))
+            {
+                anyCodeWord = true;
+
+                // Prefix, not contains: "%E86%" cannot seek whatever it is
+                // indexed on, and prefix is what is meant anyway — E86 should
+                // find E86.0, E86.1 and E86.9. Nobody searches for the middle of
+                // a diagnosis code.
+                prms[name] = SearchTerm.EscapeLike(Undotted(words[i])) + "%";
+                clauses.Add($"CodeBare LIKE @{name} ESCAPE '\\'");
+            }
+            else
+            {
+                // Wording matches anywhere, because it has to: "dehydration"
+                // must find "Dehydration of newborn".
+                prms[name] = "%" + SearchTerm.EscapeLike(words[i]) + "%";
+                clauses.Add($"Description LIKE @{name} ESCAPE '\\'");
+            }
         }
 
         // An exact code first: somebody who typed a whole code knows what they
-        // want and should not have to hunt for it under a wordier description.
+        // want and should not hunt for it under a wordier description. Only
+        // worth ranking when a code was actually typed; on a wording search the
+        // CASE matches nothing and merely forces a sort of everything found.
+        var order = anyCodeWord
+            ? @"ORDER BY CASE
+                           WHEN CodeBare = @exact THEN 0
+                           WHEN CodeBare LIKE @starts ESCAPE '\' THEN 1
+                           ELSE 2
+                        END,
+                        Code"
+            : "ORDER BY Code";
+
         var rows = _db.Query(@"
             SELECT TOP (@take) Code, Description
             FROM dbo.IcdCodes
             WHERE " + string.Join(" AND ", clauses) + @"
-            ORDER BY CASE
-                        WHEN REPLACE(Code,'.','') = @exact THEN 0
-                        WHEN REPLACE(Code,'.','') LIKE @starts ESCAPE '\' THEN 1
-                        ELSE 2
-                     END,
-                     Code", prms);
+            " + order, prms);
 
         return rows.Select(r => new IcdMatch(F.S(r["Code"]), F.S(r["Description"]))).ToList();
+    }
+
+    /// <summary>
+    /// Whether a word is somebody reaching for a CODE rather than a description.
+    ///
+    /// ICD-10-CM codes are a letter, then two alphanumerics, then optionally a
+    /// dot and up to four more: E66.9, J44.9, M17.0, S72.001A. Nothing in a
+    /// description looks like that, and no code contains an English word, which
+    /// is why searching both columns for every word was pure waste.
+    ///
+    /// Deliberately loose at the short end: "E8" is not a whole code, but
+    /// somebody typing it is clearly working towards one, and a typeahead has to
+    /// answer while they are still typing.
+    /// </summary>
+    private static bool LooksLikeACode(string word)
+    {
+        var bare = Undotted(word);
+
+        if (bare.Length is < 2 or > 8) return false;
+        if (!char.IsLetter(bare[0])) return false;
+
+        return bare.Skip(1).All(char.IsLetterOrDigit) && bare.Any(char.IsDigit);
     }
 
     /// <inheritdoc />
@@ -126,7 +182,8 @@ public sealed class DmeIcdCatalog : IDmeIcdCatalog
         // Matched without dots so a code typed either way resolves, and the
         // STORED spelling is what comes back and gets filed.
         var r = _db.QueryOne(
-            "SELECT Code, Description FROM dbo.IcdCodes WHERE REPLACE(Code,'.','') = @code",
+            // Find is an exact lookup, so it seeks the indexed column too.
+            "SELECT Code, Description FROM dbo.IcdCodes WHERE CodeBare = @code",
             new { code = Undotted(code) });
 
         return r == null ? null : new IcdMatch(F.S(r["Code"]), F.S(r["Description"]));

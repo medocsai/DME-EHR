@@ -3,7 +3,7 @@
     ViewData["ActivePage"] = "hcpcs";
 }
 
-<div style="padding:22px 26px;">
+<div class="dme-wrap" style="padding:22px 26px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">
         <div>
             <h1 style="font-size:22px;font-weight:700;margin:0;">HCPCS Catalog</h1>
@@ -33,10 +33,13 @@
        add a 23rd, which is what the client reported. What is saved here is the
        supplier's own fact: their name for the item, their price, their terms. *@
     <div class="dme-card" id="addItemCard" style="display:none;">
-        <div class="dme-card-head"><h2>Add an item to your catalog</h2></div>
+        <div class="dme-card-head"><h2 id="itemCardTitle">Add an item to your catalog</h2></div>
         <div class="dme-card-body">
-            <form method="post" action="/Hcpcs/AddItem">
+            <form method="post" action="/Hcpcs/AddItem" id="itemForm">
                 @Html.AntiForgeryToken()
+                @* Empty when adding. Filled by the edit button, which also points
+                   the form at EditItem. *@
+                <input type="hidden" name="id" id="itemId" value="" />
                 <div class="row g-3">
                     <div class="col-md-8">
                         <label class="form-label">HCPCS code</label>
@@ -47,6 +50,9 @@
                             <div id="hcpcsResults" class="dme-typeahead-list" hidden></div>
                         </div>
                         <div id="hcpcsChosen" class="form-text" style="font-size:11px" hidden></div>
+                        @* Shown instead of the picker while editing. The code is CMS's and
+                           past orders point at it, so it is not something to retype. *@
+                        <div id="hcpcsFixed" class="form-text dme-mono" style="font-size:13px" hidden></div>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Category</label>
@@ -96,7 +102,7 @@
                 </div>
                 <div class="d-flex justify-content-end gap-2 mt-3">
                     <button type="button" class="dme-btn dme-btn-light" id="addItemCancel">Cancel</button>
-                    <button type="submit" class="dme-btn dme-btn-primary"><i class="bi bi-check-lg"></i> Add to catalog</button>
+                    <button type="submit" class="dme-btn dme-btn-primary" id="itemSubmit"><i class="bi bi-check-lg"></i> Add to catalog</button>
                 </div>
             </form>
         </div>
@@ -114,6 +120,7 @@
                     <th style="padding:12px 14px;">Cap</th>
                     <th style="padding:12px 14px;">On hand</th>
                     <th style="padding:12px 14px;">Mods</th>
+                    <th style="padding:12px 14px;"></th>
                 </tr>
             </thead>
             <tbody>
@@ -136,7 +143,7 @@
                         <td style="padding:11px 14px;font-variant-numeric:tabular-nums;">
                             @if (i.Purchasable)
                             {
-                                <span>Buy $@i.PurchasePrice.ToString("N2")</span>
+                                <span>Sell $@i.PurchasePrice.ToString("N2")</span>
                             }
                             @if (i.Rentable)
                             {
@@ -146,12 +153,29 @@
                         <td style="padding:11px 14px;color:#6b7280;">@(i.CappedRentalMonths > 0 ? i.CappedRentalMonths + " mo" : "—")</td>
                         <td style="padding:11px 14px;font-variant-numeric:tabular-nums;">
                             @i.OnHand
-                            @if (i.OnHand <= 5)
+                            @if (i.ReorderPoint > 0 && i.OnHand <= i.ReorderPoint)
                             {
                                 <span style="background:#faeeda;color:#854f0b;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:4px;">reorder</span>
                             }
                         </td>
                         <td style="padding:11px 14px;color:#6b7280;font-size:12px;">@i.Modifiers</td>
+                        <td style="padding:11px 14px;text-align:right;">
+                            @* Everything the form needs travels on the button, so opening it
+                               costs no round trip. The HCPCS code is shown, never posted. *@
+                            <button type="button" class="dme-btn dme-btn-light dme-btn-sm js-edit-item requires-admin"
+                                    data-id="@i.HcpcsCodeId"
+                                    data-code="@i.Hcpcs"
+                                    data-name="@i.Name"
+                                    data-category="@i.Category"
+                                    data-buy="@i.PurchasePrice.ToString("0.00")"
+                                    data-rate="@i.MonthlyRate.ToString("0.00")"
+                                    data-cap="@i.CappedRentalMonths"
+                                    data-reorder="@i.ReorderPoint"
+                                    data-mods="@i.Modifiers"
+                                    data-purchasable="@(i.Purchasable ? "1" : "0")"
+                                    data-rentable="@(i.Rentable ? "1" : "0")"
+                                    data-serialized="@(i.IsSerialized ? "1" : "0")">edit</button>
+                        </td>
                     </tr>
                 }
             </tbody>
@@ -167,12 +191,83 @@
 <script>
     (function () {
         var card = document.getElementById('addItemCard');
+        // One card, two jobs. addMode() is what the card looks like for a new
+        // item; the edit buttons switch it over and back.
+        var form   = document.getElementById('itemForm');
+        var title  = document.getElementById('itemCardTitle');
+        var submit = document.getElementById('itemSubmit');
+        var idBox  = document.getElementById('itemId');
+        var picker = document.querySelector('.dme-typeahead');
+        var fixed_ = document.getElementById('hcpcsFixed');
+
+        function setChecked(id, on) { document.getElementById(id).checked = on; }
+        function setValue(name, v)  { form.querySelector('[name="' + name + '"]').value = v; }
+
+        function addMode() {
+            form.action = '/Hcpcs/AddItem';
+            title.textContent = 'Add an item to your catalog';
+            submit.innerHTML = '<i class="bi bi-check-lg"></i> Add to catalog';
+            idBox.value = '';
+
+            // The code picker only belongs in add mode.
+            picker.hidden = false;
+            fixed_.hidden = true;
+            document.getElementById('hcpcsSearch').value = '';
+            document.getElementById('hcpcsCode').value = '';
+            document.getElementById('hcpcsChosen').hidden = true;
+
+            ['name', 'category', 'modifiers'].forEach(function (n) { setValue(n, ''); });
+            ['purchasePrice', 'monthlyRate', 'cappedRentalMonths', 'reorderPoint']
+                .forEach(function (n) { setValue(n, '0'); });
+            setChecked('chkBuy', true);
+            setChecked('chkRent', false);
+            setChecked('chkSer', false);
+        }
+
+        function editMode(b) {
+            form.action = '/Hcpcs/EditItem';
+            title.textContent = 'Edit ' + b.dataset.code;
+            submit.innerHTML = '<i class="bi bi-check-lg"></i> Save changes';
+            idBox.value = b.dataset.id;
+
+            // The code is CMS's and past orders point at it, so it is shown, not
+            // offered for editing. Changing a code is really "retire this item
+            // and add the right one".
+            picker.hidden = true;
+            fixed_.hidden = false;
+            fixed_.textContent = b.dataset.code;
+
+            setValue('name', b.dataset.name);
+            setValue('category', b.dataset.category);
+            setValue('purchasePrice', b.dataset.buy);
+            setValue('monthlyRate', b.dataset.rate);
+            setValue('cappedRentalMonths', b.dataset.cap);
+            setValue('reorderPoint', b.dataset.reorder);
+            setValue('modifiers', b.dataset.mods);
+            setChecked('chkBuy', b.dataset.purchasable === '1');
+            setChecked('chkRent', b.dataset.rentable === '1');
+            setChecked('chkSer', b.dataset.serialized === '1');
+        }
+
         document.getElementById('addItemToggle').addEventListener('click', function () {
-            card.style.display = card.style.display === 'none' ? '' : 'none';
-            if (card.style.display === '') document.getElementById('hcpcsSearch').focus();
+            var opening = card.style.display === 'none';
+            addMode();
+            card.style.display = opening ? '' : 'none';
+            if (opening) document.getElementById('hcpcsSearch').focus();
         });
+
         document.getElementById('addItemCancel').addEventListener('click', function () {
             card.style.display = 'none';
+            addMode();
+        });
+
+        Array.prototype.forEach.call(document.querySelectorAll('.js-edit-item'), function (b) {
+            b.addEventListener('click', function () {
+                editMode(b);
+                card.style.display = '';
+                card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                form.querySelector('[name="name"]').focus();
+            });
         });
     })();
 

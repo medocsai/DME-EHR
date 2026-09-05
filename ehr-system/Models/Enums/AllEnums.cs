@@ -47,14 +47,18 @@ namespace EHR.Models
     /// </summary>
     public enum UserRole
     {
-        SuperAdmin = 0,
-        ClinicAdmin = 1,
-        Clinician = 2,
-        FrontDesk = 3,
-        Biller = 4,
-        ReadOnly = 5,
-        MedicalAssistant = 6,
-        Nurse = 7,
-        Patient = 8
+        // The five a DME supplier actually has. Clinician, Front Desk, Read
+        // Only, Medical Assistant, Nurse and Patient came across with the
+        // clinical fork and describe a clinic, not an equipment supplier.
+        //
+        // The NUMBERS are deliberately unchanged. Twenty eight [Authorize]
+        // attributes name them and twenty eight live accounts carry them, so
+        // renumbering to tidy the list would silently change what people can do.
+        // Only the words change; 2 and 3 keep their meaning in the code.
+        SuperAdmin = 0,   // Medocs, across every supplier
+        Admin = 1,        // the supplier's own owner
+        Intake = 2,       // customers, orders, insurance. Not money.
+        Delivery = 3,     // deliveries, proof of delivery, stock. Not billing.
+        Biller = 4        // claims, payments, denials. Not stock.
     }
 }

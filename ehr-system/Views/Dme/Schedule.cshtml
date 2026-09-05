@@ -2,7 +2,7 @@
 
 <div class="dme-wrap">
     <div class="dme-head">
-        <div><h1>Schedule</h1><div class="dme-sub">Deliveries · pickups · setups · service visits</div></div>
+        <div><h1>Schedule</h1><div class="dme-sub">Scheduled deliveries and the dates rentals are due to bill</div></div>
         <a href="/Dme/NewOrder" class="dme-btn dme-btn-primary"><i class="bi bi-truck"></i> New Delivery</a>
     </div>
 
@@ -10,9 +10,9 @@
         <div class="dme-card-body">
             <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:12px;font-size:12.5px" class="dme-muted">
                 <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#2f6bdf;vertical-align:middle"></span> Delivery</span>
-                <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#ba7517;vertical-align:middle"></span> Pickup</span>
-                <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#0c7d72;vertical-align:middle"></span> Maintenance / O2 check</span>
-                <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#7a3ff2;vertical-align:middle"></span> Setup / Rental billing</span>
+                @* Only what the calendar can actually show. Pickup, maintenance
+                   and setup were listed here for events the product cannot record. *@
+                <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#7a3ff2;vertical-align:middle"></span> Rental billing</span>
             </div>
             <div id="dmeCalendar"></div>
         </div>

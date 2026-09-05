@@ -27,6 +27,13 @@ public interface IAuthService
     /// token would leave a page looking signed in and 401ing on every action.
     /// </summary>
     int SessionTimeoutMinutes { get; }
+
+    /// <summary>
+    /// Re-signs an already validated identity with a fresh expiry. Used by the
+    /// sliding session, so a session ends after idleness rather than a fixed
+    /// wall-clock run from sign in.
+    /// </summary>
+    string RenewToken(System.Security.Claims.ClaimsPrincipal principal);
 }
 
 public class AuthService : IAuthService
@@ -796,6 +803,34 @@ public class AuthService : IAuthService
         await _context.SaveChangesAsync();
 
         return true;
+    }
+
+    /// <summary>
+    /// Issues a new token carrying exactly the claims the caller already proved,
+    /// with the clock restarted. Nothing is looked up again on purpose: reading
+    /// the user back would recompute the default location and silently move a
+    /// biller who is working in one branch back to the primary one, which is
+    /// what makes RefreshTokenAsync the wrong tool for this job.
+    /// </summary>
+    public string RenewToken(System.Security.Claims.ClaimsPrincipal principal)
+    {
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
+        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        // The registered claims are written by the handler. Copying them across
+        // would put a second exp in the token, and the older one decides.
+        var reserved = new HashSet<string> { "exp", "nbf", "iat", "iss", "aud" };
+        var claims = principal.Claims.Where(c => !reserved.Contains(c.Type)).ToList();
+
+        var token = new JwtSecurityToken(
+            issuer: _config["Jwt:Issuer"],
+            audience: _config["Jwt:Audience"],
+            claims: claims,
+            expires: DateTime.UtcNow.AddMinutes(SessionMinutes),
+            signingCredentials: credentials
+        );
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
     public string GenerateToken(User user, Tenant? tenant, Location? location = null)

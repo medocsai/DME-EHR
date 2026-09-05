@@ -458,6 +458,28 @@ class AuthModule {
         this._emit('auth:login', { user: this.currentUser });
     }
 
+    /**
+     * Accept a token the server renewed underneath us.
+     *
+     * The session slides on activity (SlidingSessionMiddleware), and the server
+     * hands the new token back on the X-Session-Token header. Without storing it
+     * here the cookie half of the session would keep sliding while this copy,
+     * the one sent as a Bearer header, quietly expired on the original clock.
+     *
+     * Only the token moves. Who is signed in has not changed.
+     */
+    applyRenewedToken(token) {
+        if (!token || token === this.authToken || !this.isAuthenticated) return;
+
+        this.authToken = token;
+        try {
+            localStorage.setItem('authToken', token);
+        } catch (e) {
+            // A browser refusing storage is not a reason to drop the request
+            // that carried the renewal; the in-memory copy still works.
+        }
+    }
+
     _setSession(token, user) {
         this.authToken = token;
         this.currentUser = user;
@@ -536,8 +558,11 @@ class AuthModule {
     }
 
     getRoleName(role) {
-        const roleNames = ['Super Admin', 'Clinic Admin', 'Clinician', 'Front Desk', 'Biller', 'Read Only'];
-        return roleNames[role] || 'User';
+        // The sidebar reads this one. It used to carry its own array, which
+        // still said 'Clinician' and 'Front Desk' long after the roles were
+        // renamed, so a person signed in as Intake was told they were a
+        // Clinician by the only label they ever see. UserRoles is the list.
+        return window.UserRoles.getName(role);
     }
 
     _escape(str) {

@@ -61,12 +61,28 @@
                                 <td style="text-align:right">
                                     @* Retired, never deleted: past orders are the record of who
                                        shipped them, and that has to survive the relationship ending. *@
+                                    <button type="button" class="dme-btn dme-btn-light dme-btn-sm js-edit-dist"
+                                            data-id="@d.DistributorId"
+                                            data-name="@d.Name"
+                                            data-account="@d.AccountNo"
+                                            data-phone="@d.Phone"
+                                            data-email="@d.Email">edit</button>
                                     @if (!d.IsRetired)
                                     {
                                         <form method="post" action="/Dme/RetireDistributor" style="display:inline">
                                             @Html.AntiForgeryToken()
                                             <input type="hidden" name="id" value="@d.DistributorId" />
                                             <button type="submit" class="dme-btn dme-btn-light dme-btn-sm">Take out of service</button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        @* Retiring was one click with no way back, so a mis-click
+                                           hid a distributor from every picker for good. *@
+                                        <form method="post" action="/Dme/RestoreDistributor" style="display:inline">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="id" value="@d.DistributorId" />
+                                            <button type="submit" class="dme-btn dme-btn-light dme-btn-sm">Bring back</button>
                                         </form>
                                     }
                                 </td>
@@ -79,10 +95,13 @@
         </div>
 
         <div class="dme-card">
-            <div class="dme-card-head"><h2>Add a distributor</h2></div>
+            <div class="dme-card-head"><h2 id="distCardTitle">Add a distributor</h2></div>
             <div class="dme-card-body">
-                <form method="post" action="/Dme/AddDistributor">
+                <form method="post" action="/Dme/AddDistributor" id="distForm">
                     @Html.AntiForgeryToken()
+                    @* Empty when adding; filled by the edit buttons, which also point
+                       the form at EditDistributor. *@
+                    <input type="hidden" name="id" id="distId" value="" />
                     <div class="row g-3">
                         <div class="col-12">
                             <label class="form-label">Name <span style="color:#d6453f">*</span></label>
@@ -94,17 +113,57 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Phone</label>
-                            <input name="phone" class="form-control" />
+                            <input name="phone" type="tel" inputmode="tel" class="form-control js-phone" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Email</label>
                             <input type="email" name="email" class="form-control" />
                         </div>
                     </div>
-                    <div class="d-flex justify-content-end mt-3">
-                        <button type="submit" class="dme-btn dme-btn-primary"><i class="bi bi-plus-lg"></i> Add</button>
+                    <div class="d-flex justify-content-end gap-2 mt-3">
+                        <button type="button" class="dme-btn dme-btn-light" id="distCancel" hidden>Cancel</button>
+                        <button type="submit" class="dme-btn dme-btn-primary" id="distSubmit"><i class="bi bi-plus-lg"></i> Add</button>
                     </div>
                 </form>
+
+<script>
+    (function () {
+        var form   = document.getElementById('distForm');
+        var title  = document.getElementById('distCardTitle');
+        var submit = document.getElementById('distSubmit');
+        var cancel = document.getElementById('distCancel');
+        var idBox  = document.getElementById('distId');
+
+        function val(n, v) { form.querySelector('[name="' + n + '"]').value = v || ''; }
+
+        function addMode() {
+            form.action = '/Dme/AddDistributor';
+            title.textContent = 'Add a distributor';
+            submit.innerHTML = '<i class="bi bi-plus-lg"></i> Add';
+            cancel.hidden = true;
+            idBox.value = '';
+            ['name', 'accountNo', 'phone', 'email'].forEach(function (n) { val(n, ''); });
+        }
+
+        cancel.addEventListener('click', addMode);
+
+        Array.prototype.forEach.call(document.querySelectorAll('.js-edit-dist'), function (b) {
+            b.addEventListener('click', function () {
+                form.action = '/Dme/EditDistributor';
+                title.textContent = 'Edit ' + b.dataset.name;
+                submit.innerHTML = '<i class="bi bi-check-lg"></i> Save changes';
+                cancel.hidden = false;
+                idBox.value = b.dataset.id;
+                val('name', b.dataset.name);
+                val('accountNo', b.dataset.account);
+                val('phone', b.dataset.phone);
+                val('email', b.dataset.email);
+                form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                form.querySelector('[name="name"]').focus();
+            });
+        });
+    })();
+</script>
             </div>
         </div>
     </div>

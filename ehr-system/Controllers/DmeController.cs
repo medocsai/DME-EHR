@@ -30,16 +30,22 @@ public class DmeController : Controller
     private readonly IDmePayerCatalog _payers;
     private readonly IDmeIcdCatalog _icd;
     private readonly IDmeDistributors _distributors;
+    private readonly IDmeDoctors _doctors;
     private readonly IDmeOrderDocuments _documents;
+    private readonly IDmeCustomerDocuments _customerDocs;
 
     public DmeController(IDmeDb db, IDmeAudit audit, DmeCustomerPhi phi,
                          IDmePaymentService payments, IDmeSftpAccountService sftp,
                          IDmePayerCatalog payers, IDmeIcdCatalog icd,
-                         IDmeDistributors distributors, IDmeOrderDocuments documents)
+                         IDmeDistributors distributors, IDmeOrderDocuments documents,
+                         IDmeCustomerDocuments customerDocs,
+                         IDmeDoctors doctors)
     {
         _icd = icd;
         _distributors = distributors;
+        _doctors = doctors;
         _documents = documents;
+        _customerDocs = customerDocs;
         _db = db;
         _audit = audit;
         _phi = phi;
@@ -149,29 +155,15 @@ public class DmeController : Controller
         ViewData["Title"] = "Schedule";
         ViewData["ActivePage"] = "schedule";
 
-        const string BLUE = "#2f6bdf", AMBER = "#ba7517", TEAL = "#0c7d72", PURPLE = "#7a3ff2";
-        var today = DateTime.Today;
+        // Two colours, because two things are on this calendar and both come out
+        // of the database. There used to be a hardcoded week of pickups, setups
+        // and service visits here to make the screen look busy: names that were
+        // not customers, for work the product cannot record. A calendar that
+        // invents its own entries is worse than a thin one, because the first
+        // question anybody asks is how to add another.
+        const string BLUE = "#2f6bdf", PURPLE = "#7a3ff2";
         var ev = new List<object>();
         string Iso(DateTime d) => d.ToString("yyyy-MM-ddTHH:mm:ss");
-        void Timed(string title, int dayOff, int hour, int min, int dur, string color, string type)
-        {
-            var s = today.AddDays(dayOff).AddHours(hour).AddMinutes(min);
-            ev.Add(new { title, start = Iso(s), end = Iso(s.AddMinutes(dur)), backgroundColor = color, borderColor = color, extendedProps = new { type } });
-        }
-
-        // Realistic week of DME logistics (demo)
-        Timed("Delivery · Margaret Ellis — O2 concentrator", 0, 9, 0, 60, BLUE, "Delivery");
-        Timed("Pickup · Walker return — J. Carter", 0, 11, 30, 45, AMBER, "Pickup");
-        Timed("Setup · Hospital bed — D. Fairbanks", 0, 14, 0, 90, PURPLE, "Setup");
-        Timed("O2 concentrator check · Frank Marsh", 1, 10, 0, 30, TEAL, "Maintenance");
-        Timed("Delivery · Robert Nguyen — CPAP supplies", 1, 13, 0, 60, BLUE, "Delivery");
-        Timed("Delivery · Diabetic supplies route (4 stops)", 2, 9, 0, 120, BLUE, "Delivery");
-        Timed("Pickup · Hospital bed return", 2, 15, 0, 45, AMBER, "Pickup");
-        Timed("Maintenance · Power wheelchair service", 3, 11, 0, 45, TEAL, "Maintenance");
-        Timed("Delivery · John Doe — Wheelchair", 3, 9, 30, 60, BLUE, "Delivery");
-        Timed("Setup · BiPAP — new patient", 4, 10, 30, 60, PURPLE, "Setup");
-        Timed("Delivery · Oxygen tanks — refill route", 4, 13, 30, 90, BLUE, "Delivery");
-        Timed("Pickup · CPAP swap", -1, 10, 0, 45, AMBER, "Pickup");
 
         // Real order deliveries from the DB
         var deliveries = _db.Query("SELECT CustomerFirstName, CustomerLastName, DeliveryDate FROM dbo.vDmeOrders WHERE DeliveryDate IS NOT NULL AND" + LocationFilter);
@@ -194,7 +186,7 @@ public class DmeController : Controller
     }
 
     // ---------------------------------------------------------------- Customers
-    public IActionResult Customers(string? q = null)
+    public IActionResult Customers(string? q = null, string? status = null)
     {
         ViewData["Title"] = "Customers";
         ViewData["ActivePage"] = "customers";
@@ -210,6 +202,19 @@ public class DmeController : Controller
             FROM dbo.DmeCustomers c
             LEFT JOIN dbo.Locations l ON l.LocationId = c.LocationId
             WHERE " + _db.LocationScope("c.LocationId");
+
+        // Archived customers are hidden unless asked for. A list that shows
+        // everybody who ever bought something stops being a working list within
+        // a year, which is why archiving exists at all.
+        var view = status switch
+        {
+            "archived" => "archived",
+            "all" => "all",
+            _ => "active"
+        };
+
+        if (view != "all")
+            baseSql += " AND c.Status = '" + view + "'";
 
         List<Dictionary<string, object?>> rows;
         if (!string.IsNullOrWhiteSpace(q))
@@ -243,7 +248,74 @@ public class DmeController : Controller
             .ToList();
 
         ViewBag.Query = q ?? "";
+        ViewBag.StatusView = view;
         return View(rows);
+    }
+
+    /// <summary>
+    /// Take a customer off the working list without destroying them.
+    ///
+    /// Never deleted: their orders, claims and payments are the record of money
+    /// that changed hands, and a customer row that vanished would leave all of
+    /// it pointing at nothing. Archiving is the reversible half of the same
+    /// idea, exactly like retiring a distributor or voiding a payment.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> ArchiveCustomer(int id)
+    {
+        var c = _db.QueryOne(
+            "SELECT CustomerId, AccountNo, Status FROM dbo.DmeCustomers WHERE CustomerId=@id", new { id });
+
+        if (c == null) return NotFound();
+
+        // Somebody still renting equipment is somebody you are still billing.
+        // Archiving them would hide a live obligation from the list the biller
+        // works off, and the rental would go on asking to be billed from a
+        // screen where the customer no longer appears.
+        var live = F.I(_db.Scalar(
+            "SELECT COUNT(*) FROM dbo.vDmeRentals WHERE CustomerId=@id AND Status='active'", new { id }));
+
+        if (live > 0)
+        {
+            TempData["CustomerError"] =
+                $"This customer still has {live} active rental(s). End those first.";
+            return RedirectToAction("Customer", new { id });
+        }
+
+        // Guarded on the current status so two clicks archive once.
+        var done = _db.Execute(
+            "UPDATE dbo.DmeCustomers SET Status='archived' " +
+            "WHERE CustomerId=@id AND TenantId=@TenantId AND Status='active'", new { id }) == 1;
+
+        if (done)
+        {
+            await _audit.RecordAsync("DME_CUSTOMER_ARCHIVED", "DmeCustomer", id,
+                before: new { Status = "active" },
+                after: new { Status = "archived", AccountNo = F.S(c["AccountNo"]) });
+        }
+
+        return RedirectToAction("Customer", new { id });
+    }
+
+    /// <summary>Put an archived customer back on the working list.</summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> RestoreCustomer(int id)
+    {
+        var done = _db.Execute(
+            "UPDATE dbo.DmeCustomers SET Status='active' " +
+            "WHERE CustomerId=@id AND TenantId=@TenantId AND Status='archived'", new { id }) == 1;
+
+        if (done)
+        {
+            await _audit.RecordAsync("DME_CUSTOMER_RESTORED", "DmeCustomer", id,
+                before: new { Status = "archived" }, after: new { Status = "active" });
+        }
+
+        return RedirectToAction("Customer", new { id });
     }
 
     public IActionResult Customer(int id)
@@ -273,6 +345,52 @@ public class DmeController : Controller
     /// Takes PLAINTEXT, because the only place the plaintext legitimately
     /// exists is in the request that supplied it.
     /// </summary>
+    /// <summary>
+    /// The shape rules for a customer, shared by creating and correcting one so
+    /// the two cannot drift apart.
+    ///
+    /// Each is checked only when something was actually typed, because all of
+    /// these are optional: an empty field is a fact ("we do not have it"), a
+    /// malformed one is a mistake.
+    ///
+    /// The browser filters these as they are typed, which is a courtesy and
+    /// nothing more. It is turned off, bypassed, or simply not reached by a form
+    /// posted from anywhere else, so the rule has to live here as well. State
+    /// and ZIP in particular are printed onto the CMS-1500, where a wrong one is
+    /// a denial rather than a cosmetic problem.
+    ///
+    /// Returns null when everything is acceptable.
+    /// </summary>
+    private static string? CustomerFieldProblem(
+        string? dob, string? email, string? ssnLast4, string? state, string? zip)
+    {
+        static bool Filled(string? v) => !string.IsNullOrWhiteSpace(v);
+        static bool Match(string? v, string pattern) =>
+            System.Text.RegularExpressions.Regex.IsMatch(v!.Trim(), pattern);
+
+        // A date of birth is optional, so blank is fine. Something that was
+        // typed and cannot be read is NOT: DateInput.Parse returns null for
+        // both, so without this the customer saves with the date silently
+        // dropped and nobody is told. A missing DOB fails eligibility later, a
+        // long way from the screen where it was lost.
+        if (Filled(dob) && DateInput.Parse(dob) == null)
+            return "That date of birth could not be read. Use mm/dd/yyyy.";
+
+        if (Filled(email) && !Match(email, @"^[^\s@]+@[^\s@]+\.[^\s@]{2,}$"))
+            return "That email address is not valid.";
+
+        if (Filled(ssnLast4) && !Match(ssnLast4, @"^\d{4}$"))
+            return "The SSN box takes the last four digits only.";
+
+        if (Filled(state) && !Match(state, @"^[A-Za-z]{2}$"))
+            return "State is the two letter code, for example TX.";
+
+        if (Filled(zip) && !Match(zip, @"^\d{5}$"))
+            return "ZIP is five digits.";
+
+        return null;
+    }
+
     private void IndexCustomerForSearch(int customerId, string? firstName, string? lastName, string? phone)
     {
         _db.Execute("DELETE FROM dbo.DmeCustomerSearchTokens WHERE CustomerId=@customerId", new { customerId });
@@ -299,6 +417,12 @@ public class DmeController : Controller
         // being viewed; when that is "all branches" there is no sensible default
         // and the picker starts on the primary.
         LoadLocationContext();
+
+        // The kinds, so the picker on the attachments panel is the same list on
+        // both screens even though nothing can be attached until the customer
+        // exists. The panel says so.
+        ViewBag.DocumentKinds = _customerDocs.Kinds;
+
         return View();
     }
 
@@ -310,7 +434,8 @@ public class DmeController : Controller
         string? addressLine1, string? city, string? state, string? zip,
         string? emergencyName, string? emergencyRel, string? emergencyPhone,
         int insPayerId, string? insMemberId, string? insGroup, decimal insCopay, int insCoins, decimal insDeductible,
-        string? dxCode, int locationId = 0)
+        int secPayerId, string? secMemberId, string? secGroup, decimal secCopay, int secCoins, decimal secDeductible,
+        string[]? dxCodes, int locationId = 0)
     {
         if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
             return RedirectToAction("NewCustomer");
@@ -326,6 +451,18 @@ public class DmeController : Controller
         if (branch == null)
         {
             TempData["CustomerError"] = "Choose which location this customer belongs to.";
+            return RedirectToAction("NewCustomer");
+        }
+
+        // A date of birth is optional, so blank is fine. Something that was typed
+        // and cannot be read is NOT fine: DateInput.Parse returns null for both,
+        // so without this the customer saves with the date silently dropped and
+        // nobody is told. A missing DOB fails eligibility later, a long way from
+        // the screen where it was lost.
+        var problem = CustomerFieldProblem(dob, email, ssnLast4, state, zip);
+        if (problem != null)
+        {
+            TempData["CustomerError"] = problem;
             return RedirectToAction("NewCustomer");
         }
 
@@ -366,47 +503,652 @@ public class DmeController : Controller
         // customer stays findable once the row is ciphertext.
         IndexCustomerForSearch(custId, firstName, lastName, phone);
 
-        // The form posts only the catalog id. The payer's name and the Payer ID
-        // an 837 is addressed to are read back from the catalog here, never
-        // taken from the browser: a posted name would let a typo, or a forged
-        // field, become the payer a claim is billed to.
-        //
-        // Both are then STORED on the insurance record rather than referenced by
-        // id, and that is deliberate. It is the point-in-time record of who this
-        // customer was insured with, and it must not move if Office Ally later
-        // corrects a name in the catalog.
-        var payer = _payers.Find(insPayerId);
-        if (payer != null)
-        {
-            _db.Execute(@"INSERT INTO dbo.DmeCustomerInsurances (CustomerId,Kind,PayerName,PayerId,MemberId,GroupNumber,Copay,Coinsurance,Deductible,SubscriberRel,EligStatus,TenantId)
-                            VALUES (@cid,'primary',@pn,@pid,@mid,@grp,@copay,@coins,@ded,'Self','active',@TenantId)",
-                new { cid = custId, pn = payer.Name, pid = payer.PayerCode, mid = (object?)insMemberId ?? DBNull.Value,
-                      grp = (object?)insGroup ?? DBNull.Value, copay = insCopay, coins = insCoins, ded = insDeductible });
-        }
+        // The payer and the diagnoses are filed by the same two methods
+        // UpdateCustomer calls, because New Customer and Edit customer are one
+        // form. Their rules, and the reasons for them, are written once above
+        // each method rather than twice here.
+        var payer = SaveCustomerInsurance(
+            custId, "primary", insPayerId, insMemberId, insGroup, insCopay, insCoins, insDeductible);
 
-        // Same rule as the payer: the browser posts a code, and the description
-        // filed against the customer is read out of the catalog. A code that is
-        // not valid ICD-10-CM files no diagnosis at all rather than one with a
-        // blank description, which is what the old hardcoded list produced for
-        // anything outside its twelve entries.
-        //
-        // The description is STORED, not joined, because it is the point-in-time
-        // record of what was billed: CMS rewords codes every October.
-        var diagnosis = _icd.Find(dxCode);
-        if (diagnosis != null)
-        {
-            _db.Execute("INSERT INTO dbo.DmeCustomerDiagnoses (CustomerId,IcdCode,Description,IsPrimary,TenantId) VALUES (@cid,@code,@desc,1,@TenantId)",
-                new { cid = custId, code = diagnosis.Code, desc = diagnosis.Description });
-        }
+        // Secondary is optional and usually absent, so a form with nothing in it
+        // writes no row at all rather than an empty one.
+        var secondary = SaveCustomerInsurance(
+            custId, "secondary", secPayerId, secMemberId, secGroup, secCopay, secCoins, secDeductible);
+
+        var filed = SaveCustomerDiagnoses(custId, dxCodes);
 
         // Creation has no "before" state. Record the identifying fields only:
         // the full row is retrievable from the customer record, and copying PHI
         // into the audit log would widen the blast radius of a log leak.
         await _audit.RecordAsync("DME_CUSTOMER_CREATED", "DmeCustomer", custId,
             before: null,
-            after: new { AccountNo = acct, Payer = payer?.Name, PrimaryDx = diagnosis?.Code });
+            after: new { AccountNo = acct, Payer = payer, Secondary = secondary,
+                         PrimaryDx = filed.FirstOrDefault(), DxCount = filed.Count });
 
         return RedirectToAction("Customer", new { id = custId });
+    }
+
+    /// <summary>
+    /// The referring doctors this supplier takes orders from.
+    ///
+    /// The table was seeded with three rows and had no way to add a fourth. The
+    /// ordering physician is not optional on DMEPOS: their name and NPI go in
+    /// boxes 17 and 17b of the CMS-1500, and a claim missing them is rejected.
+    /// </summary>
+    public IActionResult Doctors()
+    {
+        ViewData["Title"] = "Referring doctors";
+        ViewData["ActivePage"] = "doctors";
+        LoadLocationContext();
+
+        ViewBag.Doctors = _doctors.All(includeRetired: true);
+        ViewBag.DoctorError = TempData["DoctorError"];
+        return View();
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> AddDoctor(
+        string? firstName, string? lastName, string? npi, string? specialty, string? phone)
+    {
+        var id = _doctors.Add(firstName, lastName, npi, specialty, phone);
+        if (id == null)
+        {
+            TempData["DoctorError"] = _doctors.LastProblem ?? "That doctor could not be added.";
+            return RedirectToAction("Doctors");
+        }
+
+        await _audit.RecordAsync("DME_DOCTOR_ADDED", "DmeDoctor", id.Value,
+            before: null,
+            after: new { Name = $"{firstName?.Trim()} {lastName?.Trim()}", Npi = npi, Specialty = specialty });
+
+        return RedirectToAction("Doctors");
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> EditDoctor(
+        int id, string? firstName, string? lastName, string? npi, string? specialty, string? phone)
+    {
+        var before = _doctors.Find(id);
+        if (before == null)
+        {
+            TempData["DoctorError"] = "That doctor is not on your list.";
+            return RedirectToAction("Doctors");
+        }
+
+        if (!_doctors.Update(id, firstName, lastName, npi, specialty, phone))
+        {
+            TempData["DoctorError"] = _doctors.LastProblem ?? "That doctor could not be updated.";
+            return RedirectToAction("Doctors");
+        }
+
+        await _audit.RecordAsync("DME_DOCTOR_EDITED", "DmeDoctor", id,
+            before: new { before.FirstName, before.LastName, before.Npi, before.Specialty },
+            after: new { FirstName = firstName?.Trim(), LastName = lastName?.Trim(), Npi = npi, Specialty = specialty });
+
+        return RedirectToAction("Doctors");
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> RetireDoctor(int id)
+    {
+        if (!_doctors.Retire(id))
+        {
+            TempData["DoctorError"] = "That doctor is already out of service.";
+            return RedirectToAction("Doctors");
+        }
+
+        await _audit.RecordAsync("DME_DOCTOR_RETIRED", "DmeDoctor", id,
+            before: new { Retired = false }, after: new { Retired = true });
+
+        return RedirectToAction("Doctors");
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> RestoreDoctor(int id)
+    {
+        if (!_doctors.Restore(id))
+        {
+            TempData["DoctorError"] = "That doctor is already in service.";
+            return RedirectToAction("Doctors");
+        }
+
+        await _audit.RecordAsync("DME_DOCTOR_RESTORED", "DmeDoctor", id,
+            before: new { Retired = true }, after: new { Retired = false });
+
+        return RedirectToAction("Doctors");
+    }
+
+    /// <summary>
+    /// Stop a rental, and put the equipment back where it came from.
+    ///
+    /// A rental could be started and never stopped, so equipment that came back
+    /// went on asking to be billed every month from the Rentals screen. Billing
+    /// a returned item is a claim for something the customer does not have.
+    ///
+    /// Three things happen together, and none of them make sense alone:
+    ///   the rental stops,
+    ///   a serialised unit goes back to stock and stops belonging to anybody,
+    ///   the stock ledger gains the item back.
+    ///
+    /// The ledger entry matters most. On-hand is a SUM over that ledger, not a
+    /// counter, so without this row the returned item is invisible to the
+    /// business: on the shelf but not in the figures.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> EndRental(int id, string? reason, bool backToStock = true)
+    {
+        var r = _db.QueryOne("SELECT * FROM dbo.vDmeRentals WHERE RentalId=@id", new { id });
+        if (r == null) return NotFound();
+        _phi.ComposeCustomerName(r);
+
+        if (F.S(r["Status"]) != "active")
+        {
+            TempData["RentalError"] = "That rental has already ended.";
+            return RedirectToAction("Rentals");
+        }
+
+        // A reason, for the same purpose voiding a payment needs one: months
+        // from now somebody has to be able to say why the billing stopped.
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            TempData["RentalError"] = "Say why the rental is ending.";
+            return RedirectToAction("Rentals");
+        }
+
+        // Guarded on EndedAt IS NULL so two clicks end it once and the date
+        // stays the first one. Same shape as retiring a distributor.
+        var done = _db.Execute(@"
+            UPDATE dbo.DmeRentals
+               SET EndedAt = SYSUTCDATETIME(), EndReason = @reason, EndedBy = @userId
+             WHERE RentalId=@id AND TenantId=@TenantId AND EndedAt IS NULL",
+            new { id, reason = reason.Trim(), userId = CurrentUserId() }) == 1;
+
+        if (!done)
+        {
+            TempData["RentalError"] = "That rental has already ended.";
+            return RedirectToAction("Rentals");
+        }
+
+        var serial = F.S(r["Serial"]);
+        var hcpcs = F.S(r["Hcpcs"]);
+
+        // backToStock is false when the equipment is not coming back: written
+        // off, kept by the customer at the end of a cap, or lost. Saying so is
+        // the point. Putting it back regardless would inflate on-hand with
+        // equipment nobody has.
+        if (backToStock)
+        {
+            // The unit stops belonging to a customer. "—" is what Deliver
+            // writes for a bulk item, which has no unit to return.
+            if (!string.IsNullOrWhiteSpace(serial) && serial != "—")
+            {
+                _db.Execute(@"
+                    UPDATE dbo.DmeSerializedUnits
+                       SET Status='in-stock', CustomerId=NULL
+                     WHERE SerialNumber=@serial AND TenantId=@TenantId",
+                    new { serial });
+            }
+
+            // The branch the customer belongs to is where it comes back to,
+            // which is where it went out from.
+            var backTo = _db.Scalar(
+                "SELECT LocationId FROM dbo.DmeCustomers WHERE CustomerId=@cid",
+                new { cid = F.I(r["CustomerId"]) });
+
+            if (backTo != null)
+            {
+                _db.Execute(@"INSERT INTO dbo.DmeStockMovements (TenantId,LocationId,Hcpcs,Qty,Reason,RefType,RefId,Note)
+                              VALUES (@TenantId,@backTo,@h,1,'return','DmeRental',@id,@note)",
+                    new { backTo = Convert.ToInt32(backTo), h = hcpcs, id, note = "Returned from rental: " + reason.Trim() });
+            }
+        }
+
+        await _audit.RecordAsync("DME_RENTAL_ENDED", "DmeRental", id,
+            before: new { Status = "active", MonthsBilled = F.I(r["MonthsBilled"]) },
+            after: new
+            {
+                Status = "ended",
+                Reason = reason.Trim(),
+                ReturnedToStock = backToStock,
+                Hcpcs = hcpcs,
+                Serial = serial
+            });
+
+        return RedirectToAction("Rentals");
+    }
+
+    /// <summary>
+    /// Call off an order that has not been delivered.
+    ///
+    /// A wrong customer, a wrong item, a prescription withdrawn: until now the
+    /// order simply stayed on the list for good, and the Open orders tile went
+    /// on counting it as work outstanding.
+    ///
+    /// A DELIVERED order is never cancellable. Delivering wrote a claim, a
+    /// rental, a stock movement and a serialised unit; cancelling the order
+    /// would leave all of it pointing at something that officially never
+    /// happened. Undoing a delivery is a different, larger act: void the
+    /// payment, end the rental, correct the stock. Not this button.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> CancelOrder(int id, string? reason)
+    {
+        var o = _db.QueryOne(
+            "SELECT OrderId, OrderNumber, Status, Stage FROM dbo.DmeOrders WHERE OrderId=@id", new { id });
+
+        if (o == null) return NotFound();
+
+        if (F.S(o["Status"]) == "delivered")
+        {
+            TempData["OrderError"] =
+                "A delivered order cannot be cancelled. It has already produced a claim and, "
+                + "for a rental, a billing schedule.";
+            return RedirectToAction("Order", new { id });
+        }
+
+        // A reason, for the same purpose voiding a payment needs one: somebody
+        // will ask why this order stops at nothing months from now.
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            TempData["OrderError"] = "Say why the order is being cancelled.";
+            return RedirectToAction("Order", new { id });
+        }
+
+        // Guarded on the current status so two clicks cancel once.
+        var done = _db.Execute(
+            "UPDATE dbo.DmeOrders SET Status='cancelled' " +
+            "WHERE OrderId=@id AND TenantId=@TenantId AND Status <> 'delivered' AND Status <> 'cancelled'",
+            new { id }) == 1;
+
+        if (done)
+        {
+            await _audit.RecordAsync("DME_ORDER_CANCELLED", "DmeOrder", id,
+                before: new { Status = F.S(o["Status"]), Stage = F.S(o["Stage"]) },
+                after: new { Status = "cancelled", OrderNumber = F.S(o["OrderNumber"]), Reason = reason.Trim() });
+        }
+
+        return RedirectToAction("Order", new { id });
+    }
+
+    /// <summary>Put a cancelled order back. Cancelling is one click, so it needs a way back.</summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> RestoreOrder(int id)
+    {
+        // Back to draft, not to whatever it was. Confirmed means somebody
+        // checked eligibility and stock, and that check is stale by now.
+        var done = _db.Execute(
+            "UPDATE dbo.DmeOrders SET Status='draft', Stage='receive-order' " +
+            "WHERE OrderId=@id AND TenantId=@TenantId AND Status='cancelled'",
+            new { id }) == 1;
+
+        if (done)
+        {
+            await _audit.RecordAsync("DME_ORDER_RESTORED", "DmeOrder", id,
+                before: new { Status = "cancelled" }, after: new { Status = "draft" });
+        }
+
+        return RedirectToAction("Order", new { id });
+    }
+
+    /// <summary>
+    /// The customer form, filled in.
+    ///
+    /// Until now a customer could be created and never corrected: a phone typed
+    /// wrong, a house moved, a name misspelled off a referral. All of it is on
+    /// the CMS-1500, so a wrong address is a denied claim, not a cosmetic
+    /// blemish.
+    ///
+    /// It is the SAME form as New Customer, rendered from the same partial, and
+    /// that is the point. It used to be a second file carrying Basic Info and
+    /// Emergency Contact only, with a note saying insurance and diagnosis "are
+    /// changed from the customer's own page". They were not: no action anywhere
+    /// in the product changed either, so a payer entered wrong stayed wrong.
+    /// </summary>
+    [HttpGet]
+    public IActionResult EditCustomer(int id)
+    {
+        var c = _db.QueryOne("SELECT * FROM dbo.DmeCustomers WHERE CustomerId=@id", new { id });
+        if (c == null) return NotFound();
+
+        // Decrypted in memory for the form. The row on disk stays ciphertext.
+        _phi.DecryptRow(c);
+
+        ViewData["Title"] = "Edit customer";
+        ViewData["ActivePage"] = "customers";
+        ViewBag.Customer = c;
+        ViewBag.Locations = _db.Query(
+            "SELECT LocationId, Name, IsPrimary FROM dbo.Locations " +
+            "WHERE TenantId=@TenantId AND IsActive=1 AND" + _db.LocationGrants("LocationId") +
+            " ORDER BY IsPrimary DESC, Name");
+
+        // The primary insurance and the diagnoses on file, so the form opens
+        // showing what is there rather than empty boxes over stored values. The
+        // form is the same partial New Customer uses, and it reads both as null
+        // when they are absent, which is exactly the New case.
+        ViewBag.Insurance = Insurance(id, "primary");
+        ViewBag.SecondaryInsurance = Insurance(id, "secondary");
+        ViewBag.Documents = _customerDocs.ForCustomer(id);
+        ViewBag.DocumentKinds = _customerDocs.Kinds;
+        ViewBag.Diagnoses = _db.Query(
+            "SELECT IcdCode, Description, IsPrimary FROM dbo.DmeCustomerDiagnoses " +
+            "WHERE CustomerId=@id ORDER BY IsPrimary DESC, DiagnosisId", new { id });
+
+        return View();
+    }
+
+    /// <summary>
+    /// One insurance row of the given kind, or null.
+    ///
+    /// UX_DmeCustomerInsurances_Kind makes "one of each per customer" a rule the
+    /// database enforces, so this returns at most one row by construction rather
+    /// than by hope. The TOP 1 stays because a query that returned two would be
+    /// a bug worth surviving rather than an exception on a customer screen.
+    /// </summary>
+    private Dictionary<string, object?>? Insurance(int customerId, string kind) => _db.QueryOne(
+        "SELECT TOP 1 * FROM dbo.DmeCustomerInsurances " +
+        "WHERE CustomerId=@customerId AND Kind=@kind ORDER BY InsuranceId",
+        new { customerId, kind });
+
+    /// <summary>
+    /// File the customer's primary insurance. Returns the payer now on the
+    /// record, or null if there is none.
+    ///
+    /// WHO CALLS IT
+    /// CreateCustomer and UpdateCustomer, which are one form. It exists because
+    /// they were about to become two copies of the same rules, and the last time
+    /// this product had two copies of one thing the edit screen quietly lost
+    /// three of the five cards the new screen had.
+    ///
+    /// THE RULES
+    /// The form posts a catalog id and nothing else. The payer's name and the
+    /// Payer ID an 837 is addressed to are read back from the catalog here,
+    /// never taken from the browser: a posted name would let a typo, or a forged
+    /// field, become the payer a claim is billed to.
+    ///
+    /// Both are then STORED on the insurance record rather than referenced by
+    /// id, and that is deliberate. It is the point-in-time record of who this
+    /// customer was insured with, and it must not move if Office Ally later
+    /// corrects a name in the catalog.
+    ///
+    /// A posted id of 0 means KEEP the payer already on file, not "remove the
+    /// insurance". The picker cannot start on the stored payer, because what is
+    /// stored is a name and a code and the catalog id is recoverable from
+    /// neither: Office Ally issues ALLCA to two different payers. So an
+    /// untouched picker posts 0, and 0 has to mean "unchanged" or opening the
+    /// edit screen to fix a phone number would drop the customer's insurance.
+    ///
+    /// <paramref name="remove"/> is how a SECONDARY policy ends, and there is
+    /// deliberately no equivalent for the primary. A secondary genuinely lapses:
+    /// a spouse changes job, COBRA runs out, and "they no longer have one" is a
+    /// fact the record has to be able to hold. A supplier with no primary cannot
+    /// bill at all, so removing it is not a state worth building a button for;
+    /// it is a different payer, which is what the picker is for.
+    ///
+    /// Deleting is safe here, and only here, because a claim carries its own
+    /// PayerName copied at the moment it was raised. Ending a policy today
+    /// cannot change what a claim says it was billed under.
+    /// </summary>
+    private string? SaveCustomerInsurance(
+        int customerId, string kind, int insPayerId, string? memberId, string? group,
+        decimal copay, int coins, decimal deductible, bool remove = false)
+    {
+        var chosen = _payers.Find(insPayerId);
+        var existing = Insurance(customerId, kind);
+
+        if (remove)
+        {
+            if (existing != null)
+            {
+                _db.Execute("DELETE FROM dbo.DmeCustomerInsurances WHERE InsuranceId=@insuranceId AND TenantId=@TenantId",
+                    new { insuranceId = F.I(existing["InsuranceId"]) });
+            }
+
+            return null;
+        }
+
+        // No payer chosen and none on file: there is nothing to write. The other
+        // boxes are meaningless without a payer, so they are not filed either.
+        if (chosen == null && existing == null) return null;
+
+        var mid = (object?)memberId ?? DBNull.Value;
+        var grp = (object?)group ?? DBNull.Value;
+
+        if (existing == null)
+        {
+            _db.Execute(@"INSERT INTO dbo.DmeCustomerInsurances (CustomerId,Kind,PayerName,PayerId,MemberId,GroupNumber,Copay,Coinsurance,Deductible,SubscriberRel,EligStatus,TenantId)
+                            VALUES (@customerId,@kind,@pn,@pid,@mid,@grp,@copay,@coins,@ded,'Self','active',@TenantId)",
+                new { customerId, kind, pn = chosen!.Name, pid = chosen.PayerCode,
+                      mid, grp, copay, coins, ded = deductible });
+
+            return chosen.Name;
+        }
+
+        // Keep what is stored when the picker was not touched, which is the
+        // common case: somebody opened this screen to fix a phone number.
+        var name = chosen?.Name ?? F.S(existing["PayerName"]);
+        var code = chosen?.PayerCode ?? F.S(existing["PayerId"]);
+
+        _db.Execute(@"UPDATE dbo.DmeCustomerInsurances
+                         SET PayerName=@pn, PayerId=@pid, MemberId=@mid, GroupNumber=@grp,
+                             Copay=@copay, Coinsurance=@coins, Deductible=@ded
+                       WHERE InsuranceId=@insuranceId AND TenantId=@TenantId",
+            new { insuranceId = F.I(existing["InsuranceId"]), pn = name, pid = code,
+                  mid, grp, copay, coins, ded = deductible });
+
+        return name;
+    }
+
+    /// <summary>
+    /// File the customer's diagnoses. Returns the codes now on the record, in
+    /// order; the first is the primary.
+    ///
+    /// WHO CALLS IT
+    /// CreateCustomer and UpdateCustomer, for the same reason as the insurance
+    /// above: they are one form.
+    ///
+    /// THE RULES
+    /// The browser posts codes, and the description filed against the customer
+    /// is read out of the catalog. A code that is not valid ICD-10-CM files no
+    /// diagnosis at all rather than one with a blank description, which is what
+    /// the old hardcoded list produced for anything outside its twelve entries.
+    ///
+    /// The description is STORED, not joined, because it is the point-in-time
+    /// record of what was billed: CMS rewords codes every October.
+    ///
+    /// More than one, because one was never enough. CMS-1500 carries up to
+    /// twelve diagnosis pointers, and DME routinely needs two or three: oxygen
+    /// justified by COPD alone is thin, and thin medical necessity is what comes
+    /// back as CO-50. The FIRST is primary. The order is the operator's, and it
+    /// decides which diagnosis a service line points at on the claim.
+    ///
+    /// The posted list REPLACES what is on file, so removing a chip removes a
+    /// diagnosis. That is only safe because the chips are rendered by the
+    /// server: a page whose script failed to run still posts the list it was
+    /// given, so a dead script leaves the record exactly as it was rather than
+    /// emptying it.
+    ///
+    /// An unchanged list is not rewritten. Nothing points at DiagnosisId, so
+    /// churning the rows would be harmless and still wrong: it would make every
+    /// saved phone number look like a clinical change in the audit log.
+    /// </summary>
+    private IReadOnlyList<string> SaveCustomerDiagnoses(int customerId, string[]? dxCodes)
+    {
+        var filed = new List<IcdMatch>();
+
+        foreach (var code in dxCodes ?? Array.Empty<string>())
+        {
+            var diagnosis = _icd.Find(code);
+
+            // An unknown code files nothing, rather than a diagnosis with blank
+            // wording. A duplicate is dropped: the same code twice is a repeated
+            // pointer, not a stronger case.
+            if (diagnosis == null || filed.Any(f => f.Code == diagnosis.Code)) continue;
+
+            filed.Add(diagnosis);
+        }
+
+        var codes = filed.Select(f => f.Code).ToList();
+
+        var current = _db.Query(
+                "SELECT IcdCode FROM dbo.DmeCustomerDiagnoses WHERE CustomerId=@customerId " +
+                "ORDER BY IsPrimary DESC, DiagnosisId", new { customerId })
+            .Select(r => F.S(r["IcdCode"]))
+            .ToList();
+
+        if (current.SequenceEqual(codes)) return codes;
+
+        _db.Execute("DELETE FROM dbo.DmeCustomerDiagnoses WHERE CustomerId=@customerId AND TenantId=@TenantId",
+            new { customerId });
+
+        foreach (var diagnosis in filed)
+        {
+            _db.Execute("INSERT INTO dbo.DmeCustomerDiagnoses (CustomerId,IcdCode,Description,IsPrimary,TenantId) VALUES (@customerId,@code,@desc,@primary,@TenantId)",
+                new { customerId, code = diagnosis.Code, desc = diagnosis.Description,
+                      primary = diagnosis.Code == codes[0] });
+        }
+
+        return codes;
+    }
+
+    /// <summary>
+    /// Save a corrected customer.
+    ///
+    /// Same field rules as creating one, for the same reason: state and ZIP are
+    /// printed onto the claim, so a malformed one is a denial. The blind index
+    /// is rebuilt from the new plaintext, because a renamed customer must stop
+    /// being findable under the old name.
+    ///
+    /// It takes the same insurance and diagnosis arguments CreateCustomer takes,
+    /// because it is the same form. Two things differ, and both are about not
+    /// destroying what is already there:
+    ///
+    ///   insPayerId = 0 means KEEP the payer on file, not "no payer". The stored
+    ///   row holds the payer's name and Payer ID rather than the catalog id, so
+    ///   the picker has nothing to start on and comes back empty when untouched.
+    ///
+    ///   The diagnosis list is REPLACED by what was posted. The chips carrying
+    ///   it are rendered by the server, so an untouched form posts the list back
+    ///   unchanged even with no JavaScript running.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1,2,4")]
+    public async Task<IActionResult> UpdateCustomer(
+        int id, string firstName, string lastName, string? dob, string? gender, string? ssnLast4,
+        int? heightInches, int? weightLbs, string? phone, string? email,
+        string? addressLine1, string? city, string? state, string? zip,
+        string? emergencyName, string? emergencyRel, string? emergencyPhone,
+        int insPayerId, string? insMemberId, string? insGroup, decimal insCopay, int insCoins, decimal insDeductible,
+        int secPayerId, string? secMemberId, string? secGroup, decimal secCopay, int secCoins, decimal secDeductible,
+        bool secRemove,
+        string[]? dxCodes, int locationId = 0)
+    {
+        var existing = _db.QueryOne(
+            "SELECT CustomerId, AccountNo, Status FROM dbo.DmeCustomers WHERE CustomerId=@id", new { id });
+
+        if (existing == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
+        {
+            TempData["CustomerError"] = "First and last name are both required.";
+            return RedirectToAction("EditCustomer", new { id });
+        }
+
+        // Checked against this tenant rather than trusted from the form, exactly
+        // as on create: RLS covers TenantId and would accept a foreign
+        // LocationId sitting beside it.
+        var branch = _db.Scalar(
+            "SELECT LocationId FROM dbo.Locations WHERE LocationId=@locationId AND TenantId=@TenantId AND IsActive=1",
+            new { locationId });
+
+        if (branch == null)
+        {
+            TempData["CustomerError"] = "Choose which location this customer belongs to.";
+            return RedirectToAction("EditCustomer", new { id });
+        }
+
+        var problem = CustomerFieldProblem(dob, email, ssnLast4, state, zip);
+        if (problem != null)
+        {
+            TempData["CustomerError"] = problem;
+            return RedirectToAction("EditCustomer", new { id });
+        }
+
+        object Enc(string? v) => (object?)_phi.Encrypt(v) ?? DBNull.Value;
+
+        _db.Execute(@"
+            UPDATE dbo.DmeCustomers SET
+                FirstName=@fn, LastName=@ln, Dob=@dob, Gender=@g, SsnLast4=@ssn,
+                HeightInches=@h, WeightLbs=@w, Phone=@ph, Email=@em,
+                AddressLine1=@a1, City=@city, State=@st, Zip=@zip,
+                EmergencyName=@en, EmergencyRel=@er, EmergencyPhone=@ep,
+                LocationId=@branchId
+            WHERE CustomerId=@id AND TenantId=@TenantId",
+            new
+            {
+                id,
+                // @branchId, never @locationId: DmeDb injects an @LocationId on
+                // every command holding the branch being VIEWED, and SQL
+                // parameter names are case insensitive. Naming it locationId
+                // here would silently write the viewed branch instead of the
+                // chosen one. Same trap as the insert.
+                branchId = Convert.ToInt32(branch),
+                fn = Enc(firstName), ln = Enc(lastName),
+                dob = Enc(DmeCustomerPhi.FormatDob(DateInput.Parse(dob))),
+                g = (object?)gender ?? DBNull.Value,
+                ssn = Enc(ssnLast4),
+                h = (object?)heightInches ?? DBNull.Value, w = (object?)weightLbs ?? DBNull.Value,
+                ph = Enc(phone), em = Enc(email),
+                a1 = Enc(addressLine1), city = Enc(city), st = Enc(state), zip = Enc(zip),
+                en = Enc(emergencyName), er = Enc(emergencyRel), ep = Enc(emergencyPhone)
+            });
+
+        // Rebuilt, not added to. IndexCustomerForSearch deletes first, so the
+        // old name stops matching: leaving it would be both wrong and a privacy
+        // problem, since the previous name would still be discoverable.
+        IndexCustomerForSearch(id, firstName, lastName, phone);
+
+        var payer = SaveCustomerInsurance(
+            id, "primary", insPayerId, insMemberId, insGroup, insCopay, insCoins, insDeductible);
+
+        var secondary = SaveCustomerInsurance(
+            id, "secondary", secPayerId, secMemberId, secGroup, secCopay, secCoins, secDeductible,
+            remove: secRemove);
+
+        var filed = SaveCustomerDiagnoses(id, dxCodes);
+
+        // No PHI in the audit row, same rule as creation. What changed is
+        // recoverable from the record; what matters here is that it changed.
+        // The payer and the diagnosis list are named because they decide what a
+        // claim is addressed to and whether it establishes medical necessity,
+        // so "somebody edited this customer" is not enough to answer a denial.
+        await _audit.RecordAsync("DME_CUSTOMER_EDITED", "DmeCustomer", id,
+            before: new { AccountNo = F.S(existing["AccountNo"]) },
+            after: new
+            {
+                AccountNo = F.S(existing["AccountNo"]),
+                Branch = Convert.ToInt32(branch),
+                Payer = payer,
+                Secondary = secondary,
+                PrimaryDx = filed.FirstOrDefault(),
+                DxCount = filed.Count
+            });
+
+        return RedirectToAction("Customer", new { id });
     }
 
     // ---------------------------------------------------------------- Inventory
@@ -480,31 +1222,59 @@ public class DmeController : Controller
     {
         ViewData["Title"] = "New Order";
         ViewData["ActivePage"] = "orders";
+        LoadOrderPickers();
+        ViewBag.PreCustomer = customerId;
+        return View();
+    }
+
+    /// <summary>
+    /// The four lists the order form is built from.
+    ///
+    /// WHO CALLS IT
+    /// NewOrder and EditOrder, which render the same partial. A picker loaded on
+    /// one screen and forgotten on the other is a form that renders with an
+    /// empty dropdown and no clue why, so there is one method rather than two
+    /// copies to keep in step.
+    /// </summary>
+    private void LoadOrderPickers()
+    {
         // Decrypt before the picker renders, and sort after, for the same reason
         // the customer list does: names are ciphertext, so an unsorted-looking
         // dropdown of base64 is what you get otherwise.
         // The picker offers the branch you are working in, so an order cannot be
         // raised against a customer from a depot you are not looking at.
-        var customers = _db.Query("SELECT CustomerId, AccountNo, FirstName, LastName FROM dbo.DmeCustomers WHERE " + _db.LocationScope());
+        // Archived customers are off the working list, so they are off this
+        // picker too: raising a new order against somebody you have retired is
+        // never the intent, and letting it happen puts them back in the billing
+        // run without anybody deciding to.
+        var customers = _db.Query(
+            "SELECT CustomerId, AccountNo, FirstName, LastName FROM dbo.DmeCustomers " +
+            "WHERE Status='active' AND " + _db.LocationScope());
         _phi.DecryptRows(customers);
         ViewBag.Customers = customers
             .OrderBy(c => F.S(c["LastName"]), StringComparer.OrdinalIgnoreCase)
             .ThenBy(c => F.S(c["FirstName"]), StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        ViewBag.Doctors = _db.Query("SELECT * FROM dbo.DmeDoctors ORDER BY LastName");
+        // In service only, and through the service rather than its own query, so
+        // the picker and the Doctors screen cannot disagree about who is
+        // available. A retired doctor still resolves on an old order.
+        ViewBag.Doctors = _doctors.All();
         ViewBag.Catalog = _db.Query("SELECT * FROM dbo.vHcpcsCatalog ORDER BY Category, Hcpcs");
         // Live distributors only. A retired one still resolves on an old order,
         // but offering it on a NEW line would file an order against a supplier
         // this business no longer buys from.
         ViewBag.Distributors = _distributors.All();
-        ViewBag.PreCustomer = customerId;
-        return View();
+
+        // And the full list, retired included, purely so an existing LINE can
+        // still print who shipped it. The picker and the label answer different
+        // questions: "who may I choose now" and "who did we use then".
+        ViewBag.AllDistributors = _distributors.All(includeRetired: true);
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CreateOrder(int customerId, int? doctorId, DateTime? deliveryDate, decimal deposit,
+    public async Task<IActionResult> CreateOrder(int customerId, int? doctorId, string? deliveryDate, decimal deposit,
                                      string[]? hcpcs, string[]? mode, int[]? qty,
                                      int[]? distributorId, string[]? distributorRef)
     {
@@ -536,58 +1306,237 @@ public class DmeController : Controller
             new {
                 number, customerId,
                 doctorId = (object?)doctorId ?? DBNull.Value,
-                dd = (object?)deliveryDate ?? DBNull.Value,
+                // Typed or pasted, in any of the spellings DateInput accepts. Never
+                // model binding: that parses under the server's locale, so 03/04/2026
+                // would be March or April depending on the machine.
+                dd = (object?)DateInput.Parse(deliveryDate) ?? DBNull.Value,
                 deposit
             }));
 
-        var lineCount = 0;
-        if (hcpcs != null)
-        {
-            for (int i = 0; i < hcpcs.Length; i++)
-            {
-                if (string.IsNullOrWhiteSpace(hcpcs[i])) continue;
-                var item = _db.QueryOne("SELECT * FROM dbo.HcpcsCodes WHERE Hcpcs=@h", new { h = hcpcs[i] });
-                if (item == null) continue;
-                var m = (mode != null && i < mode.Length) ? mode[i] : "purchase";
-                var q = (qty != null && i < qty.Length && qty[i] > 0) ? qty[i] : 1;
-
-                // Drop shipping. A posted distributor is checked against THIS
-                // tenant before it is filed, the same way the branch on the
-                // customer form is: row level security covers TenantId on the
-                // insert and would happily accept a foreign DistributorId
-                // sitting beside it.
-                //
-                // NULL means "out of our own stock", which is the answer for
-                // almost every line, and the absence is the whole record: there
-                // is no separate is-drop-shipped flag to disagree with it.
-                var postedDist = (distributorId != null && i < distributorId.Length) ? distributorId[i] : 0;
-                var dist = postedDist <= 0 ? null : _db.Scalar(
-                    "SELECT DistributorId FROM dbo.DmeDistributors WHERE DistributorId=@postedDist AND TenantId=@TenantId AND RetiredAt IS NULL",
-                    new { postedDist });
-
-                var distRef = (dist != null && distributorRef != null && i < distributorRef.Length)
-                    ? distributorRef[i] : null;
-
-                _db.Execute(@"INSERT INTO dbo.DmeOrderLines (OrderId,Hcpcs,ItemName,Category,Mode,Qty,UnitPrice,MonthlyRate,Modifiers,IsSerialized,DistributorId,DistributorRef,TenantId)
-                                VALUES (@orderId,@h,@name,@cat,@m,@q,@up,@mr,@mods,@ser,@dist,@distRef,@TenantId)",
-                    new {
-                        orderId, h = hcpcs[i], name = F.S(item["Name"]), cat = F.S(item["Category"]), m, q,
-                        up = m == "purchase" ? F.Dec(item["PurchasePrice"]) : 0m,
-                        mr = m == "purchase" ? 0m : F.Dec(item["MonthlyRate"]),
-                        mods = m == "purchase" ? "NU" : "RR",
-                        ser = F.B(item["IsSerialized"]),
-                        dist = (object?)dist ?? DBNull.Value,
-                        distRef = string.IsNullOrWhiteSpace(distRef) ? DBNull.Value : (object)distRef.Trim()
-                    });
-                lineCount++;
-            }
-        }
+        var lineCount = SaveOrderLines(orderId, hcpcs, mode, qty, distributorId, distributorRef);
 
         await _audit.RecordAsync("DME_ORDER_CREATED", "DmeOrder", orderId,
             before: null,
             after: new { OrderNumber = number, CustomerId = customerId, DoctorId = doctorId, DeliveryDate = deliveryDate, Deposit = deposit, Lines = lineCount });
 
         return RedirectToAction("Order", new { id = orderId });
+    }
+
+    /// <summary>
+    /// File an order's lines. Returns how many were filed.
+    ///
+    /// WHO CALLS IT
+    /// CreateOrder and UpdateOrder, which are one form. It exists so those two
+    /// cannot drift, the same reason SaveCustomerInsurance exists: the customer
+    /// screens were two files describing one thing and had already come apart.
+    ///
+    /// THE RULES
+    /// The browser posts a HCPCS code, a mode and a quantity. Everything a claim
+    /// is built from is read out of the supplier's item master here: the name,
+    /// the category, the price, the modifier, whether the item is serialised. A
+    /// posted price would let the browser decide what a claim is worth.
+    ///
+    /// An unknown code files nothing rather than a line with a blank name, which
+    /// is the same rule the diagnosis picker follows.
+    ///
+    /// It REPLACES what is on the order. That is only safe because nothing in
+    /// the product references a line by id, and because the caller guards on the
+    /// order not being delivered: after delivery the lines have produced stock
+    /// movements, serialised units and claim lines, and rewriting them would
+    /// leave all three pointing at something that no longer exists.
+    /// </summary>
+    private int SaveOrderLines(
+        int orderId, string[]? hcpcs, string[]? mode, int[]? qty,
+        int[]? distributorId, string[]? distributorRef)
+    {
+        _db.Execute("DELETE FROM dbo.DmeOrderLines WHERE OrderId=@orderId AND TenantId=@TenantId",
+            new { orderId });
+
+        var lineCount = 0;
+        if (hcpcs == null) return lineCount;
+
+        for (int i = 0; i < hcpcs.Length; i++)
+        {
+            if (string.IsNullOrWhiteSpace(hcpcs[i])) continue;
+            var item = _db.QueryOne("SELECT * FROM dbo.HcpcsCodes WHERE Hcpcs=@h", new { h = hcpcs[i] });
+            if (item == null) continue;
+            var m = (mode != null && i < mode.Length) ? mode[i] : "purchase";
+            var q = (qty != null && i < qty.Length && qty[i] > 0) ? qty[i] : 1;
+
+            // Drop shipping. A posted distributor is checked against THIS
+            // tenant before it is filed, the same way the branch on the
+            // customer form is: row level security covers TenantId on the
+            // insert and would happily accept a foreign DistributorId
+            // sitting beside it.
+            //
+            // NULL means "out of our own stock", which is the answer for
+            // almost every line, and the absence is the whole record: there
+            // is no separate is-drop-shipped flag to disagree with it.
+            var postedDist = (distributorId != null && i < distributorId.Length) ? distributorId[i] : 0;
+            var dist = postedDist <= 0 ? null : _db.Scalar(
+                "SELECT DistributorId FROM dbo.DmeDistributors WHERE DistributorId=@postedDist AND TenantId=@TenantId AND RetiredAt IS NULL",
+                new { postedDist });
+
+            var distRef = (dist != null && distributorRef != null && i < distributorRef.Length)
+                ? distributorRef[i] : null;
+
+            _db.Execute(@"INSERT INTO dbo.DmeOrderLines (OrderId,Hcpcs,ItemName,Category,Mode,Qty,UnitPrice,MonthlyRate,Modifiers,IsSerialized,DistributorId,DistributorRef,TenantId)
+                            VALUES (@orderId,@h,@name,@cat,@m,@q,@up,@mr,@mods,@ser,@dist,@distRef,@TenantId)",
+                new {
+                    orderId, h = hcpcs[i], name = F.S(item["Name"]), cat = F.S(item["Category"]), m, q,
+                    up = m == "purchase" ? F.Dec(item["PurchasePrice"]) : 0m,
+                    mr = m == "purchase" ? 0m : F.Dec(item["MonthlyRate"]),
+                    mods = m == "purchase" ? "NU" : "RR",
+                    ser = F.B(item["IsSerialized"]),
+                    dist = (object?)dist ?? DBNull.Value,
+                    distRef = string.IsNullOrWhiteSpace(distRef) ? DBNull.Value : (object)distRef.Trim()
+                });
+            lineCount++;
+        }
+
+        return lineCount;
+    }
+
+    /// <summary>
+    /// Statuses an order can still be corrected in.
+    ///
+    /// NOT a list of "draft-like" words. It is the question "has anything
+    /// irreversible happened yet", and the answer is no until Deliver runs.
+    /// Deliver writes stock movements, serialised units, a rental and a claim,
+    /// and none of those can be un-written by editing the order they came from.
+    /// A cancelled order is reopened first, deliberately, because reopening
+    /// resets it to draft and says out loud that the eligibility and stock check
+    /// behind "confirmed" is stale.
+    /// </summary>
+    private static bool IsEditable(string status) => status is not ("delivered" or "cancelled");
+
+    /// <summary>
+    /// The order form, filled in.
+    ///
+    /// It is the SAME form as New Order, rendered from the same partial. Until
+    /// now an order could be raised and never corrected: a quantity typed wrong,
+    /// the wrong HCPCS picked off a similar name, a delivery date moved. The
+    /// only way out was to cancel it and raise another, which spends an order
+    /// number and leaves a cancelled row whose real reason was a typo.
+    /// </summary>
+    [HttpGet]
+    public IActionResult EditOrder(int id)
+    {
+        var o = _db.QueryOne("SELECT * FROM dbo.vDmeOrders WHERE OrderId=@id", new { id });
+        if (o == null) return NotFound();
+
+        // vDmeOrders returns CustomerFirstName and CustomerLastName separately,
+        // both ciphertext, because two ciphertexts concatenated in SQL cannot be
+        // decrypted. Without this the screen renders base64 the moment anything
+        // on it shows a name.
+        _phi.ComposeCustomerName(o);
+
+        if (!IsEditable(F.S(o["Status"])))
+        {
+            TempData["OrderError"] = F.S(o["Status"]) == "delivered"
+                ? "A delivered order cannot be edited. It has already produced a claim and moved stock."
+                : "Reopen this order as a draft before editing it.";
+            return RedirectToAction("Order", new { id });
+        }
+
+        ViewData["Title"] = "Edit order";
+        ViewData["ActivePage"] = "orders";
+        ViewBag.Order = o;
+        ViewBag.Lines = _db.Query(
+            "SELECT * FROM dbo.DmeOrderLines WHERE OrderId=@id ORDER BY LineId", new { id });
+
+        LoadOrderPickers();
+        return View();
+    }
+
+    /// <summary>
+    /// Save a corrected order.
+    ///
+    /// Same rules as raising one, through the same writer, because it is the
+    /// same form. Two things are its own:
+    ///
+    ///   The status is re-read and checked HERE, not trusted from the screen the
+    ///   operator opened. An order can be delivered by somebody else while this
+    ///   form is open, and the delivery is the thing that must win.
+    ///
+    ///   The lines are REPLACED by what was posted. That is safe on an
+    ///   undelivered order because nothing references a line by id, and it is
+    ///   only safe there.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateOrder(
+        int id, int customerId, int? doctorId, string? deliveryDate, decimal deposit,
+        string[]? hcpcs, string[]? mode, int[]? qty,
+        int[]? distributorId, string[]? distributorRef)
+    {
+        var existing = _db.QueryOne(
+            "SELECT OrderId, OrderNumber, Status, DoctorId, DeliveryDate, Deposit FROM dbo.DmeOrders WHERE OrderId=@id",
+            new { id });
+
+        if (existing == null) return NotFound();
+
+        // Re-read, never trusted from the form. Somebody may have delivered this
+        // order while the edit screen was open, and that has to win.
+        if (!IsEditable(F.S(existing["Status"])))
+        {
+            TempData["OrderError"] = F.S(existing["Status"]) == "delivered"
+                ? "This order was delivered while you were editing it. Nothing was changed."
+                : "This order was cancelled. Reopen it before editing.";
+            return RedirectToAction("Order", new { id });
+        }
+
+        // Same guard as creating one, and for the same reason: an order with no
+        // lines is not an order, it is a ticket that later produces a $0.00
+        // claim. The lines are added by JavaScript, so posting with none is a
+        // normal thing for a real person to do.
+        if (hcpcs?.Any(h => !string.IsNullOrWhiteSpace(h)) != true)
+        {
+            TempData["OrderError"] = "An order needs at least one item. Nothing was changed.";
+            return RedirectToAction("EditOrder", new { id });
+        }
+
+        var custExists = _db.Scalar(
+            "SELECT CustomerId FROM dbo.DmeCustomers WHERE CustomerId=@customerId", new { customerId });
+
+        if (custExists == null)
+        {
+            TempData["OrderError"] = "Choose the customer this order is for.";
+            return RedirectToAction("EditOrder", new { id });
+        }
+
+        _db.Execute(@"
+            UPDATE dbo.DmeOrders
+               SET CustomerId=@customerId, DoctorId=@doctorId, DeliveryDate=@dd, Deposit=@deposit
+             WHERE OrderId=@id AND TenantId=@TenantId AND Status NOT IN ('delivered','cancelled')",
+            new
+            {
+                id, customerId,
+                doctorId = (object?)doctorId ?? DBNull.Value,
+                // Never model binding: that parses under the server's locale, so
+                // 03/04/2026 would be March or April depending on the machine.
+                dd = (object?)DateInput.Parse(deliveryDate) ?? DBNull.Value,
+                deposit
+            });
+
+        var lineCount = SaveOrderLines(id, hcpcs, mode, qty, distributorId, distributorRef);
+
+        await _audit.RecordAsync("DME_ORDER_EDITED", "DmeOrder", id,
+            before: new
+            {
+                OrderNumber = F.S(existing["OrderNumber"]),
+                DoctorId = existing["DoctorId"],
+                DeliveryDate = existing["DeliveryDate"],
+                Deposit = F.Dec(existing["Deposit"])
+            },
+            after: new
+            {
+                OrderNumber = F.S(existing["OrderNumber"]),
+                CustomerId = customerId, DoctorId = doctorId,
+                DeliveryDate = deliveryDate, Deposit = deposit, Lines = lineCount
+            });
+
+        return RedirectToAction("Order", new { id });
     }
 
     [HttpPost]
@@ -597,6 +1546,20 @@ public class DmeController : Controller
         var o = _db.QueryOne("SELECT * FROM dbo.vDmeOrders WHERE OrderId=@id", new { id });
         if (o == null) return NotFound();
         _phi.ComposeCustomerName(o);
+
+        // Delivery happens once. This action writes a claim, a rental, a stock
+        // movement and a serialised unit, none of which are guarded against
+        // being written twice, so a second POST (a refreshed confirmation, a
+        // double click, a back button) would bill the customer again for
+        // equipment they were given once.
+        var already = F.S(o["Status"]);
+        if (already is "delivered" or "cancelled")
+        {
+            TempData["OrderError"] = already == "delivered"
+                ? "This order has already been delivered."
+                : "This order was cancelled. Restore it before delivering.";
+            return RedirectToAction("Order", new { id });
+        }
 
         // Snapshot before the update: this action turns an order into a
         // delivered order, a rental, a claim and a serialised unit in one step,
@@ -724,11 +1687,36 @@ public class DmeController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    // Money is the biller's and the owner's. Delivery and Intake never see it:
+    // the person who hands equipment over must not also be the person who
+    // records what was paid for it.
+    [Authorize(Roles = DmeRoles.Money)]
     public async Task<IActionResult> BillNow(int id)
     {
         var r = _db.QueryOne("SELECT * FROM dbo.vDmeRentals WHERE RentalId=@id", new { id });
         if (r == null) return NotFound();
         _phi.ComposeCustomerName(r);
+
+        // An ended rental is equipment that has come back. Billing it is a claim
+        // for something nobody has.
+        if (F.S(r["Status"]) != "active")
+        {
+            TempData["RentalError"] = "That rental has ended and cannot be billed.";
+            return RedirectToAction("Rentals");
+        }
+
+        // The cap is Medicare's rule, not a display. Past it the equipment
+        // belongs to the customer and billing stops; carrying on is money that
+        // gets clawed back with a penalty on top. The screen counted the months
+        // and then let you bill anyway, which is the worst of both.
+        if (F.B(r["CapReached"]))
+        {
+            TempData["RentalError"] =
+                $"This rental has reached its {F.I(r["CapMonths"])} month cap. "
+                + "The equipment now belongs to the customer, so it cannot be billed again.";
+            return RedirectToAction("Rentals");
+        }
+
         var billedThrough = r["NextBillDate"] ?? (object)DateTime.Today;
         var monthsBefore = F.I(r["MonthsBilled"]);
 
@@ -766,6 +1754,10 @@ public class DmeController : Controller
     /// against the claim and is never stored, so it cannot disagree with them.
     /// <paramref name="status"/> filters on either one.
     /// </summary>
+    // Money is the biller's and the owner's. Delivery and Intake never see it:
+    // the person who hands equipment over must not also be the person who
+    // records what was paid for it.
+    [Authorize(Roles = DmeRoles.Money)]
     public IActionResult Billing(string? status = null)
     {
         ViewData["Title"] = "Billing";
@@ -809,6 +1801,10 @@ public class DmeController : Controller
     /// it makes the dashboard's amount-paid tile read low. Showing the gap is
     /// what stops it being invisible.
     /// </summary>
+    // Money is the biller's and the owner's. Delivery and Intake never see it:
+    // the person who hands equipment over must not also be the person who
+    // records what was paid for it.
+    [Authorize(Roles = DmeRoles.Money)]
     public IActionResult Payments()
     {
         ViewData["Title"] = "Payments";
@@ -826,6 +1822,10 @@ public class DmeController : Controller
     /// has already been adjudicated, and what is left.
     /// </summary>
     [HttpGet]
+    // Money is the biller's and the owner's. Delivery and Intake never see it:
+    // the person who hands equipment over must not also be the person who
+    // records what was paid for it.
+    [Authorize(Roles = DmeRoles.Money)]
     public IActionResult PostPayment(int id)
     {
         ViewData["ActivePage"] = "billing";
@@ -857,12 +1857,26 @@ public class DmeController : Controller
     /// </summary>
     [HttpPost]
     [ValidateAntiForgeryToken]
+    // Money is the biller's and the owner's. Delivery and Intake never see it:
+    // the person who hands equipment over must not also be the person who
+    // records what was paid for it.
+    [Authorize(Roles = DmeRoles.Money)]
     public async Task<IActionResult> CreatePayment(
-        int claimId, string source, string? payerName, DateTime postedDate, string method,
+        int claimId, string source, string? payerName, string postedDate, string method,
         string? referenceNumber, decimal amount, string? note,
         int[]? claimLineId, decimal[]? allowed, decimal[]? paid,
         int[]? adjLine, string[]? adjGroup, string[]? adjCode, decimal[]? adjAmount)
     {
+        // Unlike a date of birth this one is required, so an unreadable value is
+        // refused out loud. Defaulting it to today would post real money into the
+        // wrong month without anybody being told.
+        var posted = DateInput.Parse(postedDate);
+        if (posted == null)
+        {
+            TempData["PaymentError"] = "The posting date could not be read. Use mm/dd/yyyy.";
+            return RedirectToAction("PostPayment", new { id = claimId });
+        }
+
         var lines = new List<PaymentLineInput>();
         for (int i = 0; claimLineId != null && i < claimLineId.Length; i++)
         {
@@ -897,7 +1911,7 @@ public class DmeController : Controller
 
         var result = await _payments.PostAsync(new PaymentInput(
             source, source == "payer" ? payerName : null, customerId,
-            postedDate, method, referenceNumber, amount, note, lines));
+            posted.Value, method, referenceNumber, amount, note, lines));
 
         if (!result.Ok)
         {
@@ -916,6 +1930,10 @@ public class DmeController : Controller
     /// </summary>
     [HttpPost]
     [ValidateAntiForgeryToken]
+    // Money is the biller's and the owner's. Delivery and Intake never see it:
+    // the person who hands equipment over must not also be the person who
+    // records what was paid for it.
+    [Authorize(Roles = DmeRoles.Money)]
     public async Task<IActionResult> VoidPayment(int id, string? reason)
     {
         var result = await _payments.VoidAsync(id, reason);
@@ -1024,6 +2042,97 @@ public class DmeController : Controller
     }
 
     /// <summary>
+    /// Attach a document to a customer: the CMN, the prescription, a photo of
+    /// the insurance card, the referral that started the whole thing.
+    ///
+    /// Separate from the customer form on purpose. The form posts and redirects,
+    /// so attaching through it would mean a failed upload had to be reported
+    /// alongside a saved customer, and an operator with four documents would
+    /// save the customer four times. This attaches one file and comes straight
+    /// back to the same screen.
+    ///
+    /// The file is validated, encrypted and stored by DmeCustomerDocuments;
+    /// nothing about that is repeated here.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(DmeDocumentStore.MaxFileBytes + 1024 * 1024)]
+    public async Task<IActionResult> AttachCustomerDoc(int id, string kind, IFormFile? file)
+    {
+        if (file == null || file.Length == 0)
+        {
+            TempData["DocError"] = "Choose a file to attach.";
+            return RedirectToAction("EditCustomer", new { id });
+        }
+
+        // Read once into memory. The cap is 25MB and the bytes have to be hashed
+        // AND encrypted, so streaming would buy nothing but complexity.
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer);
+
+        var result = await _customerDocs.AttachAsync(
+            id, kind, file.FileName, file.ContentType ?? "application/octet-stream",
+            buffer.ToArray(), CurrentUserId());
+
+        if (!result.Success)
+        {
+            TempData["DocError"] = result.Error;
+            return RedirectToAction("EditCustomer", new { id });
+        }
+
+        // A CMN is what defends an oxygen claim in an audit, so attaching one is
+        // worth a row of its own. The file NAME is not recorded: it is PHI, and
+        // copying it into the audit log would widen the blast radius of a leak.
+        await _audit.RecordAsync("DME_CUSTOMER_DOC_ATTACHED", "DmeCustomer", id,
+            before: null,
+            after: new { result.DocumentId, Kind = kind, Size = file.Length });
+
+        return RedirectToAction("EditCustomer", new { id });
+    }
+
+    /// <summary>
+    /// Send an attached customer document back to the browser.
+    ///
+    /// Deliberately NOT a signed storage URL, for the same reason DownloadPod is
+    /// not: a signed URL is valid for anyone holding it and leaves both the
+    /// tenant check and the audit trail behind.
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> DownloadCustomerDoc(int id)
+    {
+        var doc = await _customerDocs.OpenAsync(id);
+        if (doc == null) return NotFound();
+
+        // Inline so a PDF or a photo opens in the browser instead of landing in
+        // the downloads folder, which is what somebody checking a CMN wants.
+        Response.Headers.ContentDisposition =
+            $"inline; filename=\"{Uri.EscapeDataString(doc.Value.FileName)}\"";
+
+        return File(doc.Value.Bytes, doc.Value.ContentType);
+    }
+
+    /// <summary>
+    /// Take a document off a customer.
+    ///
+    /// The ROW survives with a DeletedAt: that a document was attached and then
+    /// withdrawn is itself a fact worth keeping. The bytes do not.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = DmeRoles.Admin)]
+    public async Task<IActionResult> RemoveCustomerDoc(int id, int customerId)
+    {
+        if (await _customerDocs.RemoveAsync(id))
+        {
+            await _audit.RecordAsync("DME_CUSTOMER_DOC_REMOVED", "DmeCustomer", customerId,
+                before: new { DocumentId = id, Attached = true },
+                after: new { DocumentId = id, Attached = false });
+        }
+
+        return RedirectToAction("EditCustomer", new { id = customerId });
+    }
+
+    /// <summary>
     /// Who this supplier buys from, for the items they never hold themselves.
     ///
     /// Admin roles only: which distributors the business deals with is a
@@ -1041,6 +2150,51 @@ public class DmeController : Controller
         ViewBag.Distributors = _distributors.All(includeRetired: true);
         ViewBag.DistributorError = TempData["DistributorError"];
         return View();
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> RestoreDistributor(int id)
+    {
+        if (!_distributors.Restore(id))
+        {
+            TempData["DistributorError"] = "That distributor is already in service.";
+            return RedirectToAction("Distributors");
+        }
+
+        await _audit.RecordAsync("DME_DISTRIBUTOR_RESTORED", "DmeDistributor", id,
+            before: new { Retired = true }, after: new { Retired = false });
+
+        return RedirectToAction("Distributors");
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> EditDistributor(
+        int id, string? name, string? accountNo, string? phone, string? email)
+    {
+        var before = _distributors.Find(id);
+        if (before == null)
+        {
+            TempData["DistributorError"] = "That distributor is not on your list.";
+            return RedirectToAction("Distributors");
+        }
+
+        if (!_distributors.Update(id, name, accountNo, phone, email))
+        {
+            TempData["DistributorError"] = string.IsNullOrWhiteSpace(name)
+                ? "Give the distributor a name."
+                : $"You already have a distributor called '{name.Trim()}'.";
+            return RedirectToAction("Distributors");
+        }
+
+        await _audit.RecordAsync("DME_DISTRIBUTOR_EDITED", "DmeDistributor", id,
+            before: new { before.Name, before.AccountNo, before.Phone, before.Email },
+            after: new { Name = name!.Trim(), AccountNo = accountNo, Phone = phone, Email = email });
+
+        return RedirectToAction("Distributors");
     }
 
     [HttpPost]
@@ -1236,6 +2390,10 @@ public class DmeController : Controller
         return new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     }
 
+    // Money is the biller's and the owner's. Delivery and Intake never see it:
+    // the person who hands equipment over must not also be the person who
+    // records what was paid for it.
+    [Authorize(Roles = DmeRoles.Money)]
     public IActionResult Cms(int id)
     {
         var c = _db.QueryOne("SELECT * FROM dbo.vDmeClaims WHERE ClaimId=@id", new { id });
@@ -1249,8 +2407,7 @@ public class DmeController : Controller
         ViewBag.Cust = cust;
         ViewBag.Diagnoses = cust == null ? new List<Dictionary<string, object?>>() :
             _db.Query("SELECT * FROM dbo.DmeCustomerDiagnoses WHERE CustomerId=@cid ORDER BY IsPrimary DESC", new { cid = F.I(cust["CustomerId"]) });
-        ViewBag.PrimaryIns = cust == null ? null :
-            _db.QueryOne("SELECT TOP 1 * FROM dbo.DmeCustomerInsurances WHERE CustomerId=@cid AND Kind='primary'", new { cid = F.I(cust["CustomerId"]) });
+        ViewBag.PrimaryIns = cust == null ? null : Insurance(F.I(cust["CustomerId"]), "primary");
         // Box 33 used to be a hardcoded string in the view, so every claim this
         // product produced carried a made up NPI. It comes from the supplier
         // record now, and the screen says plainly when that record is not
@@ -1261,6 +2418,10 @@ public class DmeController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    // Money is the biller's and the owner's. Delivery and Intake never see it:
+    // the person who hands equipment over must not also be the person who
+    // records what was paid for it.
+    [Authorize(Roles = DmeRoles.Money)]
     public async Task<IActionResult> Submit(int id)
     {
         var claim = _db.QueryOne("SELECT ClaimNumber, Status FROM dbo.DmeClaims WHERE ClaimId=@id", new { id });

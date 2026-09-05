@@ -39,12 +39,15 @@ public class HcpcsController : Controller
         // OnHand comes from the stock ledger via the view, never from a stored
         // counter. See Migrations/Manual/2026-08-25_DME_Single_Source_Of_Truth.sql.
         var items = _db.Query(@"
-            SELECT Hcpcs, Name, Category, IsSerialized, Rentable, Purchasable,
-                   PurchasePrice, MonthlyRate, CappedRentalMonths, Modifiers, OnHand
+            SELECT HcpcsCodeId, Hcpcs, Name, Category, IsSerialized, Rentable, Purchasable,
+                   PurchasePrice, MonthlyRate, CappedRentalMonths, Modifiers, ReorderPoint, OnHand
             FROM dbo.vHcpcsCatalog
             ORDER BY Category, Hcpcs")
             .Select(r => new HcpcsRow
             {
+                // Needed by the edit form: the row has to say which item it is.
+                HcpcsCodeId = F.I(r["HcpcsCodeId"]),
+                ReorderPoint = F.I(r["ReorderPoint"]),
                 Hcpcs = F.S(r["Hcpcs"]),
                 Name = F.S(r["Name"]),
                 Category = F.S(r["Category"]),
@@ -146,10 +149,105 @@ public class HcpcsController : Controller
         TempData["ItemAdded"] = $"{code.Code} added to your catalog.";
         return RedirectToAction("Index");
     }
+
+    /// <summary>
+    /// Correct an item already in the catalog.
+    ///
+    /// Until now an item could be added and never touched again, so a price
+    /// typed wrong, a rental cap entered as 3 instead of 13, or a name nobody
+    /// recognises was permanent. Prices move every year in this business; a
+    /// catalog that cannot be corrected stops matching reality within months,
+    /// and every order raised from it carries the mistake onto a claim.
+    ///
+    /// The HCPCS code itself is NOT editable. It is CMS's identifier, orders and
+    /// claim lines already point at it, and "changing the code" is really two
+    /// acts: retire this item and add the right one. Letting it be edited would
+    /// silently rewrite what past orders say they sold.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> EditItem(
+        int id, string? name, string? category,
+        bool isSerialized, bool rentable, bool purchasable,
+        decimal purchasePrice, decimal monthlyRate, int cappedRentalMonths,
+        string? modifiers, int reorderPoint)
+    {
+        // Read it back inside the tenant scope rather than trusting the posted
+        // id. DmeDb pins the tenant, so another supplier's id simply finds
+        // nothing instead of being edited.
+        var existing = _db.QueryOne(@"
+            SELECT HcpcsCodeId, Hcpcs, Name, Category, IsSerialized, Rentable, Purchasable,
+                   PurchasePrice, MonthlyRate, CappedRentalMonths, Modifiers, ReorderPoint
+            FROM dbo.HcpcsCodes WHERE HcpcsCodeId=@id AND TenantId=@TenantId", new { id });
+
+        if (existing == null)
+        {
+            TempData["ItemError"] = "That item is not in your catalog.";
+            return RedirectToAction("Index");
+        }
+
+        // An item that can be neither sold nor rented cannot be put on an order
+        // at all, so the New Order picker would offer it and then have no mode
+        // to choose. Refused here, where the operator can see why.
+        if (!rentable && !purchasable)
+        {
+            TempData["ItemError"] = "An item has to be sellable, rentable, or both.";
+            return RedirectToAction("Index");
+        }
+
+        var itemName = string.IsNullOrWhiteSpace(name) ? F.S(existing["Name"]) : name.Trim();
+
+        _db.Execute(@"
+            UPDATE dbo.HcpcsCodes SET
+                Name=@name, Category=@category, IsSerialized=@ser, Rentable=@rent,
+                Purchasable=@buy, PurchasePrice=@price, MonthlyRate=@rate,
+                CappedRentalMonths=@cap, Modifiers=@mods, ReorderPoint=@reorder
+            WHERE HcpcsCodeId=@id AND TenantId=@TenantId",
+            new
+            {
+                id,
+                name = itemName,
+                category = string.IsNullOrWhiteSpace(category) ? "Uncategorised" : category.Trim(),
+                ser = isSerialized,
+                rent = rentable,
+                buy = purchasable,
+                price = purchasePrice,
+                rate = monthlyRate,
+                cap = cappedRentalMonths,
+                mods = (object?)modifiers ?? DBNull.Value,
+                reorder = reorderPoint
+            });
+
+        // Before AND after: a price change is exactly the kind of edit somebody
+        // needs to be able to explain later.
+        await _audit.RecordAsync("DME_CATALOG_ITEM_EDITED", "HcpcsCode", id,
+            before: new
+            {
+                Code = F.S(existing["Hcpcs"]),
+                Name = F.S(existing["Name"]),
+                PurchasePrice = F.Dec(existing["PurchasePrice"]),
+                MonthlyRate = F.Dec(existing["MonthlyRate"]),
+                CappedRentalMonths = F.I(existing["CappedRentalMonths"])
+            },
+            after: new
+            {
+                Code = F.S(existing["Hcpcs"]),
+                Name = itemName,
+                PurchasePrice = purchasePrice,
+                MonthlyRate = monthlyRate,
+                CappedRentalMonths = cappedRentalMonths
+            });
+
+        TempData["ItemAdded"] = $"{F.S(existing["Hcpcs"])} updated.";
+        return RedirectToAction("Index");
+    }
 }
 
 public class HcpcsRow
 {
+    public int HcpcsCodeId { get; set; }
+    public int ReorderPoint { get; set; }
     public string Hcpcs { get; set; } = "";
     public string Name { get; set; } = "";
     public string Category { get; set; } = "";
