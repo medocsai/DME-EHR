@@ -34,6 +34,7 @@
         : (ViewBag.PreCustomer == null ? 0 : (int)ViewBag.PreCustomer);
 
     var selectedDoctor = editing ? F.I(order!["DoctorId"]) : 0;
+    var isDraft = editing && F.S(order!["Status"]) == "draft";
     var deposit = editing ? F.Dec(order!["Deposit"]).ToString("0.##") : "0";
 
     // Stored as a date; shown the way the rest of the product writes them, and
@@ -212,11 +213,41 @@
         </div>
     </div>
 
+    @* TWO buttons, and the one that is NOT the primary matters.
+
+       Until now every order was born confirmed: CreateOrder wrote 'confirmed'
+       and nothing in the product ever wrote 'draft' except reopening a
+       cancelled order. So the status existed, the chip for it existed, the
+       filter for it existed, and no operator could ever reach it.
+
+       A draft is a real thing in this trade. The referral is in, the CMN is
+       not; the prior authorisation is a week away; the insurance is still being
+       verified. Confirmed says somebody checked eligibility and stock, and
+       saying that on the day the order is typed makes it a lie on most orders.
+
+       The button posts the status, which is why there is no hidden field. A
+       form with two submits sends only the one that was clicked. *@
     <div class="d-flex justify-content-end gap-2 mt-2">
         <a href="@(editing ? $"/Dme/Order/{F.I(order!["OrderId"])}" : "/Dme/Orders")" class="dme-btn dme-btn-light">Cancel</a>
-        <button type="submit" class="dme-btn dme-btn-primary">
-            <i class="bi bi-check-lg"></i> @(editing ? "Save changes" : "Create Order")
-        </button>
+
+        @if (!editing || isDraft)
+        {
+            <button type="submit" name="status" value="draft" class="dme-btn dme-btn-light">
+                <i class="bi bi-file-earmark"></i> Save as draft
+            </button>
+            <button type="submit" name="status" value="confirmed" class="dme-btn dme-btn-primary">
+                <i class="bi bi-check-lg"></i> @(editing ? "Save and confirm" : "Create Order")
+            </button>
+        }
+        else
+        {
+            @* Already confirmed. Saving a correction leaves it confirmed rather
+               than quietly walking it backwards, which would take an order
+               somebody is expecting to deliver off the delivery list. *@
+            <button type="submit" name="status" value="confirmed" class="dme-btn dme-btn-primary">
+                <i class="bi bi-check-lg"></i> Save changes
+            </button>
+        }
     </div>
 </form>
 

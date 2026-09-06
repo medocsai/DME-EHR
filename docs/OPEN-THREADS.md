@@ -526,3 +526,44 @@ posting screen already writes.
 
   **Mutation tested:** widening `IsEditable` to allow `delivered` fails
   `AnOrderPastThePointOfNoReturnIsNotEditable`.
+
+- **Thread 12, the draft nobody could reach.** Closed 2026-09-06. `CreateOrder`
+  wrote `'confirmed'` and nothing else in the product ever wrote `'draft'`
+  except reopening a cancelled order. So the status existed, the chip for it
+  existed, `IsEditable` allowed it, and no operator could produce one. Every
+  order was born saying "somebody has checked eligibility and stock" on the day
+  it was typed, which on most orders is not true yet.
+
+  **The bug inside it killed orders outright.** Reopening a cancelled order made
+  it a draft. The delivery button only ever rendered on a confirmed order, and
+  nothing anywhere could confirm one. That order could never be delivered again,
+  only cancelled. Hammas reproduced it on ORD-01031 without meaning to.
+
+  Four parts, no migration:
+
+  1. **Two submit buttons, not a hidden field.** A form with two submits sends
+     only the one that was clicked, so the button IS the status. New Order and a
+     draft both offer "Save as draft" and "Create Order" / "Save and confirm"; a
+     confirmed order offers one button and stays confirmed, because walking it
+     backwards would take an order somebody is expecting to deliver off the
+     delivery list without anybody deciding to.
+  2. **`OrderState` translates the button once**, returning the status AND the
+     stage together. The two disagreeing is the kind of thing nobody notices:
+     the order screen reads one and the delivery list reads the other. Only the
+     draft button produces a draft; anything else, including a post with no
+     status at all, confirms, so every existing caller behaves as before.
+  3. **`ConfirmOrder`, one click from the order screen.** That is the shape of
+     the job: the CMN arrives or the prior authorisation comes back and nothing
+     about the order itself changes. Guarded on `Status='draft'` so two clicks
+     confirm once, and it refuses an order with no lines for the same reason
+     saving one does.
+  4. **`Deliver` refuses a draft, on the SERVER.** The order screen has always
+     hidden the delivery panel on a draft, and hiding a button is not a guard: a
+     POST could deliver a reopened order carrying exactly the stale eligibility
+     and stock check that reopening it as a draft was meant to flag. Proved by
+     posting to `/Dme/Deliver` on a draft: refused, and no claim, no rental, no
+     signature written.
+
+  **Also fixed in passing:** `cancelled` was missing from the status chip list,
+  so it fell through to the gray fallback and printed the raw column value in
+  lowercase next to "Draft" and "Confirmed" in title case.

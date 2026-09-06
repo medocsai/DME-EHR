@@ -49,6 +49,25 @@
                             <i class="bi bi-pencil"></i> Edit order
                         </a>
                     }
+                    @* A draft is not ready to go out. Confirming is one click,
+                       because the shape of the job is that nothing about the
+                       order changed: the CMN arrived, or the prior
+                       authorisation came back.
+
+                       Until 2026-09-06 there was no way to do this at all. A
+                       reopened order became a draft and stopped dead: the
+                       delivery button only ever showed on a confirmed order and
+                       nothing could confirm one. *@
+                    @if (status == "draft")
+                    {
+                        <form method="post" action="/Dme/ConfirmOrder" style="display:inline">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@F.I(o["OrderId"])" />
+                            <button type="submit" class="dme-btn dme-btn-primary">
+                                <i class="bi bi-check2-circle"></i> Confirm order
+                            </button>
+                        </form>
+                    }
                     @if (status == "confirmed")
                     {
                         <button class="dme-btn dme-btn-primary" onclick="document.getElementById('podPanel').scrollIntoView({behavior:'smooth'})"><i class="bi bi-truck"></i> Mark Delivered + POD</button>

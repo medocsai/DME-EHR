@@ -347,6 +347,10 @@ public static class F
     private static readonly Dictionary<string, (string cls, string label)> _chips = new(StringComparer.OrdinalIgnoreCase)
     {
         ["draft"] = ("gray", "Draft"), ["confirmed"] = ("blue", "Confirmed"), ["delivered"] = ("green", "Delivered"),
+        // Missing until 2026-09-06, so a cancelled order fell through to the
+        // gray fallback and printed the raw column value: "cancelled" in
+        // lowercase, next to "Draft" and "Confirmed" in title case.
+        ["cancelled"] = ("red", "Cancelled"),
         ["billed"] = ("teal", "Billed"), ["active"] = ("green", "Active"), ["ready"] = ("amber", "Ready to bill"),
         ["submitted"] = ("blue", "Submitted"), ["paid"] = ("green", "Paid"), ["rented"] = ("blue", "On rent"),
         ["sold"] = ("gray", "Sold"), ["in-stock"] = ("gray", "In stock"), ["ended"] = ("gray", "Ended"),

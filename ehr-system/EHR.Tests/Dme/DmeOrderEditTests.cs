@@ -263,6 +263,122 @@ public class DmeOrderEditTests
         Read("Controllers", "DmeController.cs").Should().Contain("DME_ORDER_EDITED");
     }
 
+    // ------------------------------------------------------------ draft orders
+
+    /// <summary>
+    /// A draft was unreachable.
+    ///
+    /// CreateOrder wrote 'confirmed' and nothing else in the product ever wrote
+    /// 'draft' except reopening a cancelled order. So the status existed, the
+    /// chip for it existed, and no operator could ever produce one. Every order
+    /// was born saying "somebody has checked eligibility and stock" on the day
+    /// it was typed, which on most orders is not true yet.
+    /// </summary>
+    [Fact]
+    public void AnOrderCanBeSavedAsADraft()
+    {
+        var form = Form();
+
+        form.Should().Contain("name=\"status\" value=\"draft\"");
+        form.Should().Contain("name=\"status\" value=\"confirmed\"");
+
+        foreach (var action in new[] { "CreateOrder", "UpdateOrder" })
+            Action(action).GetParameters().Select(p => p.Name).Should().Contain("status");
+    }
+
+    /// <summary>
+    /// Only the draft button produces a draft. A form posted with no status at
+    /// all confirms, which is what every existing caller does and what the
+    /// product did before the button existed.
+    /// </summary>
+    [Theory]
+    [InlineData("draft", "draft", "receive-order")]
+    [InlineData("confirmed", "confirmed", "order-ship")]
+    [InlineData(null, "confirmed", "order-ship")]
+    [InlineData("something-else", "confirmed", "order-ship")]
+    public void OnlyTheDraftButtonProducesADraft(string? posted, string status, string stage)
+    {
+        var result = typeof(DmeController)
+            .GetMethod("OrderState", BindingFlags.NonPublic | BindingFlags.Static)!
+            .Invoke(null, new object?[] { posted })!;
+
+        // Fields, not properties: a ValueTuple exposes Item1 and Item2 as public
+        // fields, and GetProperty quietly returns null for them.
+        var type = result.GetType();
+        type.GetField("Item1")!.GetValue(result).Should().Be(status);
+        type.GetField("Item2")!.GetValue(result).Should().Be(stage);
+    }
+
+    /// <summary>
+    /// A confirmed order stays confirmed when it is corrected. Walking it
+    /// backwards would take an order somebody is expecting to deliver off the
+    /// delivery list without anybody deciding to.
+    /// </summary>
+    [Fact]
+    public void CorrectingAConfirmedOrderDoesNotWalkItBackToDraft()
+    {
+        var update = Method("UpdateOrder");
+
+        update.Should().Contain("F.S(existing[\"Status\"]) == \"draft\"");
+        update.Should().Contain("? OrderState(status)");
+        update.Should().Contain(": (\"confirmed\", \"order-ship\")");
+
+        // And the form offers one button on a confirmed order, so the two
+        // halves agree.
+        Form().Should().Contain("@if (!editing || isDraft)");
+    }
+
+    /// <summary>
+    /// The bug this closed, and it killed orders outright: reopening a cancelled
+    /// order made it a draft, the delivery button only ever showed on a
+    /// confirmed order, and nothing anywhere could confirm one. That order could
+    /// never be delivered again.
+    /// </summary>
+    [Fact]
+    public void ADraftCanBeConfirmedInOneClick()
+    {
+        var controller = Read("Controllers", "DmeController.cs");
+
+        controller.Should().Contain("public async Task<IActionResult> ConfirmOrder(int id)");
+        controller.Should().Contain("SET Status='confirmed', Stage='order-ship' ");
+        controller.Should().Contain("AND Status='draft'",
+            "guarded so two clicks confirm once, and a delivered order cannot be walked back");
+        controller.Should().Contain("DME_ORDER_CONFIRMED");
+
+        Read("Views", "Dme", "Order.cshtml")
+            .Should().Contain("action=\"/Dme/ConfirmOrder\"")
+            .And.Contain("@if (status == \"draft\")");
+    }
+
+    /// <summary>
+    /// Confirming says the order is ready to go out, so it carries the same
+    /// rule as saving one: an order with no lines is a ticket that later
+    /// produces a $0.00 claim.
+    /// </summary>
+    [Fact]
+    public void AnEmptyOrderCannotBeConfirmed()
+    {
+        Method("ConfirmOrder")
+            .Should().Contain("Add at least one item before confirming this order.");
+    }
+
+    /// <summary>
+    /// Deliver refuses a draft, on the SERVER.
+    ///
+    /// The order screen hides the delivery panel on a draft and always did, but
+    /// hiding a button is not a guard. A reopened order could be delivered by a
+    /// POST carrying exactly the stale eligibility and stock check that
+    /// reopening it as a draft was meant to flag.
+    /// </summary>
+    [Fact]
+    public void ADraftCannotBeDelivered()
+    {
+        var deliver = Method("Deliver");
+
+        deliver.Should().Contain("already is \"delivered\" or \"cancelled\" or \"draft\"");
+        deliver.Should().Contain("This order is still a draft. Confirm it before delivering.");
+    }
+
     private static string Form() => Read("Views", "Dme", "_OrderForm.cshtml");
 
     private static string Method(string name)

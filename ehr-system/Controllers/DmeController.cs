@@ -1276,7 +1276,8 @@ public class DmeController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreateOrder(int customerId, int? doctorId, string? deliveryDate, decimal deposit,
                                      string[]? hcpcs, string[]? mode, int[]? qty,
-                                     int[]? distributorId, string[]? distributorRef)
+                                     int[]? distributorId, string[]? distributorRef,
+                                     string? status = null)
     {
         // An order with no lines is not an order. Without this guard the form
         // saves an empty ticket that later generates a $0.00 claim, and the
@@ -1298,13 +1299,20 @@ public class DmeController : Controller
         var custExists = _db.Scalar("SELECT CustomerId FROM dbo.DmeCustomers WHERE CustomerId=@customerId", new { customerId });
         if (custExists == null) return RedirectToAction("Orders");
 
+        // Which button was pressed. Every order used to be born confirmed, which
+        // said "somebody has checked eligibility and stock" on the day it was
+        // typed, and on most orders that is not true yet. Anything other than
+        // the draft button confirms, so a form posted without the field behaves
+        // exactly as it did before.
+        var (orderStatus, orderStage) = OrderState(status);
+
         var number = _db.NextNumber("ORD");
         var orderId = Convert.ToInt32(_db.Scalar(@"
             INSERT INTO dbo.DmeOrders (OrderNumber,CustomerId,Status,Stage,DoctorId,DeliveryDate,Deposit,TenantId)
             OUTPUT inserted.OrderId
-            VALUES (@number,@customerId,'confirmed','order-ship',@doctorId,@dd,@deposit,@TenantId)",
+            VALUES (@number,@customerId,@orderStatus,@orderStage,@doctorId,@dd,@deposit,@TenantId)",
             new {
-                number, customerId,
+                number, customerId, orderStatus, orderStage,
                 doctorId = (object?)doctorId ?? DBNull.Value,
                 // Typed or pasted, in any of the spellings DateInput accepts. Never
                 // model binding: that parses under the server's locale, so 03/04/2026
@@ -1317,7 +1325,7 @@ public class DmeController : Controller
 
         await _audit.RecordAsync("DME_ORDER_CREATED", "DmeOrder", orderId,
             before: null,
-            after: new { OrderNumber = number, CustomerId = customerId, DoctorId = doctorId, DeliveryDate = deliveryDate, Deposit = deposit, Lines = lineCount });
+            after: new { OrderNumber = number, CustomerId = customerId, DoctorId = doctorId, DeliveryDate = deliveryDate, Deposit = deposit, Lines = lineCount, Status = orderStatus });
 
         return RedirectToAction("Order", new { id = orderId });
     }
@@ -1398,6 +1406,18 @@ public class DmeController : Controller
     }
 
     /// <summary>
+    /// What the form's button means, as a status and the stage beside it.
+    ///
+    /// Stage travels WITH status rather than being set separately, because the
+    /// two disagreeing is the kind of thing nobody notices: the order screen
+    /// reads one and the delivery list reads the other. Only the draft button
+    /// produces a draft; anything else, including a form posted with no status
+    /// at all, confirms.
+    /// </summary>
+    private static (string Status, string Stage) OrderState(string? posted) =>
+        posted == "draft" ? ("draft", "receive-order") : ("confirmed", "order-ship");
+
+    /// <summary>
     /// Statuses an order can still be corrected in.
     ///
     /// NOT a list of "draft-like" words. It is the question "has anything
@@ -1468,7 +1488,8 @@ public class DmeController : Controller
     public async Task<IActionResult> UpdateOrder(
         int id, int customerId, int? doctorId, string? deliveryDate, decimal deposit,
         string[]? hcpcs, string[]? mode, int[]? qty,
-        int[]? distributorId, string[]? distributorRef)
+        int[]? distributorId, string[]? distributorRef,
+        string? status = null)
     {
         var existing = _db.QueryOne(
             "SELECT OrderId, OrderNumber, Status, DoctorId, DeliveryDate, Deposit FROM dbo.DmeOrders WHERE OrderId=@id",
@@ -1505,13 +1526,23 @@ public class DmeController : Controller
             return RedirectToAction("EditOrder", new { id });
         }
 
+        // A draft can be saved as a draft or saved and confirmed, from the two
+        // buttons on the form. A confirmed order stays confirmed: its form
+        // offers one button, and walking it backwards would take an order
+        // somebody is expecting to deliver off the delivery list without
+        // anybody deciding to.
+        var (orderStatus, orderStage) = F.S(existing["Status"]) == "draft"
+            ? OrderState(status)
+            : ("confirmed", "order-ship");
+
         _db.Execute(@"
             UPDATE dbo.DmeOrders
-               SET CustomerId=@customerId, DoctorId=@doctorId, DeliveryDate=@dd, Deposit=@deposit
+               SET CustomerId=@customerId, DoctorId=@doctorId, DeliveryDate=@dd, Deposit=@deposit,
+                   Status=@orderStatus, Stage=@orderStage
              WHERE OrderId=@id AND TenantId=@TenantId AND Status NOT IN ('delivered','cancelled')",
             new
             {
-                id, customerId,
+                id, customerId, orderStatus, orderStage,
                 doctorId = (object?)doctorId ?? DBNull.Value,
                 // Never model binding: that parses under the server's locale, so
                 // 03/04/2026 would be March or April depending on the machine.
@@ -1533,8 +1564,52 @@ public class DmeController : Controller
             {
                 OrderNumber = F.S(existing["OrderNumber"]),
                 CustomerId = customerId, DoctorId = doctorId,
-                DeliveryDate = deliveryDate, Deposit = deposit, Lines = lineCount
+                DeliveryDate = deliveryDate, Deposit = deposit, Lines = lineCount,
+                Status = orderStatus
             });
+
+        return RedirectToAction("Order", new { id });
+    }
+
+    /// <summary>
+    /// Take a draft off the shelf: eligibility and stock have been checked, and
+    /// the order is ready to go out.
+    ///
+    /// One click from the order screen, rather than opening the whole form and
+    /// saving it, because that is the shape of the job. The CMN arrives, the
+    /// prior authorisation comes back, and nothing about the order itself needs
+    /// to change.
+    ///
+    /// Guarded on Status='draft' so two clicks confirm once, and so a delivered
+    /// order cannot be walked backwards into the delivery list.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConfirmOrder(int id)
+    {
+        var lines = Convert.ToInt32(_db.Scalar(
+            "SELECT COUNT(*) FROM dbo.DmeOrderLines WHERE OrderId=@id", new { id }) ?? 0);
+
+        // Same rule as saving one. An order with no lines is not an order, it is
+        // a ticket that later produces a $0.00 claim, and confirming it says it
+        // is ready to deliver.
+        if (lines == 0)
+        {
+            TempData["OrderError"] = "Add at least one item before confirming this order.";
+            return RedirectToAction("Order", new { id });
+        }
+
+        var done = _db.Execute(
+            "UPDATE dbo.DmeOrders SET Status='confirmed', Stage='order-ship' " +
+            "WHERE OrderId=@id AND TenantId=@TenantId AND Status='draft'",
+            new { id }) == 1;
+
+        if (done)
+        {
+            await _audit.RecordAsync("DME_ORDER_CONFIRMED", "DmeOrder", id,
+                before: new { Status = "draft" },
+                after: new { Status = "confirmed" });
+        }
 
         return RedirectToAction("Order", new { id });
     }
@@ -1553,11 +1628,19 @@ public class DmeController : Controller
         // double click, a back button) would bill the customer again for
         // equipment they were given once.
         var already = F.S(o["Status"]);
-        if (already is "delivered" or "cancelled")
+        if (already is "delivered" or "cancelled" or "draft")
         {
-            TempData["OrderError"] = already == "delivered"
-                ? "This order has already been delivered."
-                : "This order was cancelled. Restore it before delivering.";
+            TempData["OrderError"] = already switch
+            {
+                "delivered" => "This order has already been delivered.",
+                "cancelled" => "This order was cancelled. Restore it before delivering.",
+                // The draft case is the one that was missing. The order screen
+                // hides the delivery panel on a draft, but hiding a button is
+                // not a guard: a reopened order could be delivered by a POST
+                // with the stale eligibility and stock check that reopening it
+                // as a draft was meant to flag.
+                _ => "This order is still a draft. Confirm it before delivering."
+            };
             return RedirectToAction("Order", new { id });
         }
 
