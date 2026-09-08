@@ -738,12 +738,48 @@ public class DmeController : Controller
         ViewData["ActivePage"] = "rentals";
         var rows = _db.Query("SELECT * FROM dbo.vDmeRentals WHERE" + LocationFilter + "ORDER BY CASE Status WHEN 'active' THEN 0 ELSE 1 END, NextBillDate");
         _phi.ComposeCustomerNames(rows);
-        ViewBag.Active = rows.Count(r => F.S(r["Status"]) == "active");
-        ViewBag.Mrr = rows.Where(r => F.S(r["Status"]) == "active").Sum(r => F.Dec(r["MonthlyRate"]));
-        ViewBag.DueSoon = rows.Count(r => F.S(r["Status"]) == "active" && (F.DaysUntil(r["NextBillDate"]) ?? 99) <= 7);
+        var live = rows.Where(r => F.S(r["Status"]) == "active").ToList();
+        ViewBag.Active = live.Count;
+        ViewBag.Mrr = live.Sum(r => F.Dec(r["MonthlyRate"]));
+
+        // Overdue apart from due-soon, for the same reason the dashboard splits
+        // them: a bare <= 7 is true of every negative number, so a rental months
+        // late was reported under a label promising this week.
+        ViewBag.Overdue = live.Count(r => (F.DaysUntil(r["NextBillDate"]) ?? 99) < 0);
+        ViewBag.DueSoon = live.Count(r => { var d = F.DaysUntil(r["NextBillDate"]); return d.HasValue && d.Value >= 0 && d.Value <= 7; });
+        ViewBag.BillingBacklog = (int)ViewBag.Overdue + (int)ViewBag.DueSoon;
         return View(rows);
     }
 
+    /// <summary>
+    /// Raise this month's claim for one rental.
+    ///
+    /// THE CAP IS A LEGAL BOUNDARY, NOT A DISPLAY RULE.
+    /// A capped rental runs for CapMonths and then the equipment becomes the
+    /// customer's property. Billing month 14 of a 13 month cap is billing for
+    /// equipment this supplier no longer owns, which is a false claim, and it
+    /// is the kind of thing that ends a Medicare enrolment rather than merely
+    /// getting denied. The Rentals view hides the button at the cap, and that
+    /// is presentation only: a replayed form, a second client or a future API
+    /// caller never runs the page. The guard has to be here.
+    ///
+    /// AND THE SAME WRITE CLOSES THE DOUBLE BILL.
+    /// Two people clicking Bill now, or one person double clicking, previously
+    /// produced two claims for the same rental month. The payer denies the
+    /// second as a duplicate and the biller spends an afternoon on it. The
+    /// UPDATE is guarded on the NextBillDate that was read, so the second
+    /// caller matches no row, writes nothing and is told why. Same shape as the
+    /// void guard on DmePayments.
+    ///
+    /// EVERYTHING IS ONE BATCH, ONE TRANSACTION. The month advance and the
+    /// claim it represents commit together or not at all, so there is no state
+    /// where the rental has moved on and the claim proving it does not exist.
+    ///
+    /// The final month also ENDS the rental. A rental at its cap earns nothing
+    /// more, and leaving it 'active' told the dashboard it was recurring
+    /// revenue, put a bill-due marker on the calendar forever, and left it
+    /// permanently overdue with no button able to clear it.
+    /// </summary>
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> BillNow(int id)
@@ -751,30 +787,109 @@ public class DmeController : Controller
         var r = _db.QueryOne("SELECT * FROM dbo.vDmeRentals WHERE RentalId=@id", new { id });
         if (r == null) return NotFound();
         _phi.ComposeCustomerName(r);
-        var billedThrough = r["NextBillDate"] ?? (object)DateTime.Today;
+
+        var status = F.S(r["Status"]);
         var monthsBefore = F.I(r["MonthsBilled"]);
+        int? cap = r["CapMonths"] == null ? null : F.I(r["CapMonths"]);
+
+        // Refused early only to give a person a sentence instead of a silent
+        // no-op. The authoritative check is inside the UPDATE below, because
+        // between this read and that write somebody else may have billed.
+        if (status != "active")
+            return RentalRefused("That rental is no longer active, so it cannot be billed.");
+        if (cap.HasValue && monthsBefore >= cap.Value)
+            return RentalRefused($"That rental has reached its {cap.Value} month cap. The equipment is no longer billable.");
+
+        var wasNull = r["NextBillDate"] == null;
+        var billedThrough = r["NextBillDate"] ?? (object)DateTime.Today;
+        var next = Convert.ToDateTime(billedThrough).AddMonths(1);
+        var isFinalMonth = cap.HasValue && monthsBefore + 1 >= cap.Value;
 
         var payer = _db.Scalar("SELECT TOP 1 PayerName FROM dbo.DmeCustomerInsurances WHERE CustomerId=@cid AND Kind='primary'", new { cid = F.I(r["CustomerId"]) });
         var cn = _db.NextNumber("CLM");
-        _db.Execute(@"INSERT INTO dbo.DmeClaims (ClaimNumber,OrderId,CustomerId,CustomerName,PayerName,Status,ServiceDate,TenantId)
-                        VALUES (@cn,@oid,@cid,@cname,@payer,'ready',@sd,@TenantId)",
-            new { cn, oid = (object?)(r["OrderId"] ?? DBNull.Value), cid = F.I(r["CustomerId"]), cname = _phi.Encrypt(F.S(r["CustomerName"])),
-                  payer = payer ?? "Self-pay", sd = billedThrough });
-        var claimId = Convert.ToInt32(_db.Scalar("SELECT ClaimId FROM dbo.DmeClaims WHERE ClaimNumber=@cn", new { cn }));
 
         // RentalId on the line is what makes this month countable. Nothing
         // increments a stored MonthsBilled any more, so there is no counter left
         // to drift out of step with the claims actually raised.
-        _db.Execute("INSERT INTO dbo.DmeClaimLines (ClaimId,Hcpcs,ItemName,Modifier,Units,Charge,RentalId,TenantId) VALUES (@claimId,@h,@n,'RR',1,@c,@rid,@TenantId)",
-            new { claimId, h = F.S(r["Hcpcs"]), n = F.S(r["ItemName"]), c = F.Dec(r["MonthlyRate"]), rid = id });
+        var claimId = F.I(_db.Scalar(@"
+            SET XACT_ABORT ON;
+            BEGIN TRAN;
 
-        var next = Convert.ToDateTime(billedThrough).AddMonths(1);
-        _db.Execute("UPDATE dbo.DmeRentals SET NextBillDate=@nb WHERE RentalId=@id", new { nb = next, id });
+            DECLARE @billed INT = (SELECT COUNT(*) FROM dbo.DmeClaimLines WHERE RentalId = @id);
+
+            UPDATE dbo.DmeRentals
+               SET NextBillDate = @next,
+                   Status = CASE WHEN @cap IS NOT NULL AND @billed + 1 >= @cap
+                                 THEN 'ended' ELSE Status END
+             WHERE RentalId = @id
+               AND Status = 'active'
+               AND (@cap IS NULL OR @billed < @cap)
+               AND ((NextBillDate IS NULL AND @wasNull = 1) OR NextBillDate = @billedThrough);
+
+            IF @@ROWCOUNT = 0
+            BEGIN
+                ROLLBACK;
+                SELECT CAST(0 AS INT);
+            END
+            ELSE
+            BEGIN
+                INSERT INTO dbo.DmeClaims (ClaimNumber,OrderId,CustomerId,CustomerName,PayerName,Status,ServiceDate,TenantId)
+                VALUES (@cn,@oid,@cid,@cname,@payer,'ready',@sd,@TenantId);
+
+                DECLARE @claimId INT = CAST(SCOPE_IDENTITY() AS INT);
+
+                INSERT INTO dbo.DmeClaimLines (ClaimId,Hcpcs,ItemName,Modifier,Units,Charge,RentalId,TenantId)
+                VALUES (@claimId,@h,@n,'RR',1,@c,@id,@TenantId);
+
+                COMMIT;
+                SELECT @claimId;
+            END",
+            new
+            {
+                id,
+                next,
+                cap = (object?)cap ?? DBNull.Value,
+                wasNull = wasNull ? 1 : 0,
+                billedThrough,
+                cn,
+                oid = (object?)(r["OrderId"] ?? DBNull.Value),
+                cid = F.I(r["CustomerId"]),
+                cname = _phi.Encrypt(F.S(r["CustomerName"])),
+                payer = payer ?? "Self-pay",
+                sd = billedThrough,
+                h = F.S(r["Hcpcs"]),
+                n = F.S(r["ItemName"]),
+                c = F.Dec(r["MonthlyRate"])
+            }));
+
+        // Nothing was written. Somebody else billed this month between the read
+        // above and the write, or the rental ended underneath us.
+        if (claimId == 0)
+            return RentalRefused("That month has already been billed. Nothing was charged twice.");
 
         await _audit.RecordAsync("DME_RENTAL_BILLED", "DmeRental", id,
-            before: new { NextBillDate = billedThrough, MonthsBilled = monthsBefore },
-            after: new { NextBillDate = next, MonthsBilled = monthsBefore + 1, ClaimNumber = cn, ClaimId = claimId, Charge = F.Dec(r["MonthlyRate"]) });
+            before: new { NextBillDate = billedThrough, MonthsBilled = monthsBefore, Status = status },
+            after: new
+            {
+                NextBillDate = next,
+                MonthsBilled = monthsBefore + 1,
+                Status = isFinalMonth ? "ended" : status,
+                ClaimNumber = cn,
+                ClaimId = claimId,
+                Charge = F.Dec(r["MonthlyRate"])
+            });
 
+        return RedirectToAction("Rentals");
+    }
+
+    /// <summary>
+    /// A refused billing attempt, carried back to the Rentals screen as a
+    /// sentence. A refusal the user cannot see is indistinguishable from a
+    /// button that does nothing.
+    /// </summary>
+    private IActionResult RentalRefused(string message)
+    {
+        TempData["RentalError"] = message;
         return RedirectToAction("Rentals");
     }
 

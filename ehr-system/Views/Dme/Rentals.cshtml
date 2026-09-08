@@ -5,10 +5,19 @@
 <div class="dme-wrap">
     <div class="dme-head"><div><h1>Rentals</h1><div class="dme-sub">Recurring next-bill-date cycle</div></div></div>
 
+    @if (TempData["RentalError"] != null)
+    {
+        <div class="dme-card" style="border-left:3px solid #d92d20;border-radius:0;margin-bottom:16px">
+            <div class="dme-card-body" style="padding:12px 16px">
+                <strong>Nothing was billed.</strong> @TempData["RentalError"]
+            </div>
+        </div>
+    }
+
     <div class="dme-kpis" style="grid-template-columns:repeat(3,1fr)">
-        <div class="dme-kpi"><div class="k-label">Active rentals</div><div class="k-value">@ViewBag.Active</div><div class="k-foot">serialized + bulk</div></div>
-        <div class="dme-kpi"><div class="k-label">Monthly recurring</div><div class="k-value">@F.Money(ViewBag.Mrr)</div><div class="k-foot">MRR across rentals</div></div>
-        <div class="dme-kpi"><div class="k-label">Due this week</div><div class="k-value">@ViewBag.DueSoon</div><div class="k-foot">need a rental claim</div></div>
+        <div class="dme-kpi"><div class="k-label">Active rentals</div><div class="k-value">@ViewBag.Active</div><div class="k-foot">still billing each month</div></div>
+        <div class="dme-kpi"><div class="k-label">Monthly recurring</div><div class="k-value">@F.Money(ViewBag.Mrr)</div><div class="k-foot">MRR across active rentals</div></div>
+        <div class="dme-kpi"><div class="k-label">Due to bill</div><div class="k-value">@ViewBag.BillingBacklog</div><div class="k-foot">@ViewBag.Overdue overdue &middot; @ViewBag.DueSoon due within 7 days</div></div>
     </div>
 
     <div class="dme-card">
