@@ -983,13 +983,32 @@ public class DmeController : Controller
             var dropShipped = l["DistributorId"] is not (null or DBNull);
             if (dropShipped) continue;
 
-            // The unit and the stock movement both belong to the branch that
-            // fulfilled the order, which is the CUSTOMER's branch rather than
-            // whichever one the person clicking happens to be viewing. A
-            // delivery made while looking at "all branches" still has to come
-            // out of a real depot's stock.
-            _db.Execute("INSERT INTO dbo.DmeSerializedUnits (Hcpcs,ItemName,SerialNumber,Status,CustomerId,InServiceDate,TenantId,LocationId) VALUES (@h,@n,@s,@st,@custId,@isd,@TenantId,@fulfillingLocation)",
-                new { h = F.S(l["Hcpcs"]), n = F.S(l["ItemName"]), s = serial ?? "—", st = isRental ? "rented" : "sold", custId, isd = deliveryDate, fulfillingLocation });
+            // A SERIALISED item gets a row in the unit register; a consumable
+            // does not.
+            //
+            // The register answers "which physical unit is with which customer",
+            // for a recall, a service visit, or the return at the end of a
+            // rental. A box of test strips has no answer to that question, and
+            // registering one wrote a row with the serial "-", counted it on the
+            // "tracked by serial" tile, and recorded ONE row for a line whose
+            // quantity was three.
+            //
+            // AN `if`, NOT A `continue`. The stock movement below is unconditional
+            // and must stay that way: three boxes left the warehouse whether or
+            // not anybody tracks their serial numbers. Turning this into an early
+            // exit would take the ledger with it and drive on-hand wrong for every
+            // consumable, which is the same trap the drop-ship guard above
+            // documents, in reverse.
+            if (F.B(l["IsSerialized"]))
+            {
+                // The unit and the stock movement both belong to the branch that
+                // fulfilled the order, which is the CUSTOMER's branch rather than
+                // whichever one the person clicking happens to be viewing. A
+                // delivery made while looking at "all branches" still has to come
+                // out of a real depot's stock.
+                _db.Execute("INSERT INTO dbo.DmeSerializedUnits (Hcpcs,ItemName,SerialNumber,Status,CustomerId,InServiceDate,TenantId,LocationId) VALUES (@h,@n,@s,@st,@custId,@isd,@TenantId,@fulfillingLocation)",
+                    new { h = F.S(l["Hcpcs"]), n = F.S(l["ItemName"]), s = serial ?? "—", st = isRental ? "rented" : "sold", custId, isd = deliveryDate, fulfillingLocation });
+            }
 
             // Stock leaves the warehouse. Recording the movement is what lets
             // on-hand be a SUM rather than a counter somebody has to remember to
