@@ -400,8 +400,8 @@ public class DmeController : Controller
         var payer = _payers.Find(insPayerId);
         if (payer != null)
         {
-            _db.Execute(@"INSERT INTO dbo.DmeCustomerInsurances (CustomerId,Kind,PayerName,PayerId,MemberId,GroupNumber,Copay,Coinsurance,Deductible,SubscriberRel,EligStatus,TenantId)
-                            VALUES (@cid,'primary',@pn,@pid,@mid,@grp,@copay,@coins,@ded,'Self','active',@TenantId)",
+            _db.Execute(@"INSERT INTO dbo.DmeCustomerInsurances (CustomerId,Kind,PayerName,PayerId,MemberId,GroupNumber,Copay,Coinsurance,Deductible,SubscriberRel,TenantId)
+                            VALUES (@cid,'primary',@pn,@pid,@mid,@grp,@copay,@coins,@ded,'Self',@TenantId)",
                 new { cid = custId, pn = payer.Name, pid = payer.PayerCode, mid = (object?)insMemberId ?? DBNull.Value,
                       grp = (object?)insGroup ?? DBNull.Value, copay = insCopay, coins = insCoins, ded = insDeductible });
         }
@@ -848,7 +848,7 @@ public class DmeController : Controller
             {
                 id,
                 next,
-                cap = (object?)cap ?? DBNull.Value,
+                cap = cap.HasValue ? (object)cap.Value : DBNull.Value,
                 wasNull = wasNull ? 1 : 0,
                 billedThrough,
                 cn,

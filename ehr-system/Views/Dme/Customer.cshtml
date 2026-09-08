@@ -36,7 +36,7 @@
                         <div class="dme-line">
                             <div style="display:flex;justify-content:space-between">
                                 <strong>@(F.S(i["Kind"]) == "primary" ? "Primary" : "Secondary") · @F.S(i["PayerName"])</strong>
-                                <span class="dme-chip green"><i class="bi bi-check-circle"></i> Eligible</span>
+                                
                             </div>
                             <div class="dme-muted" style="font-size:12.5px;margin-top:4px">Member @F.S(i["MemberId"])@(string.IsNullOrEmpty(F.S(i["GroupNumber"])) ? "" : " · Group " + F.S(i["GroupNumber"])) · Copay @F.Money(i["Copay"]) · Coins @F.I(i["Coinsurance"])% · Deductible @F.Money(i["Deductible"])</div>
                         </div>
