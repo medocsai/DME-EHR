@@ -1,0 +1,8 @@
+{
+  "name": "medocs-dme-docs-screenshots",
+  "private": true,
+  "description": "Generates the screenshots in docs/user. Drives the Chrome already installed on the machine; nothing is vendored.",
+  "dependencies": {
+    "puppeteer-core": "^23.11.1"
+  }
+}
