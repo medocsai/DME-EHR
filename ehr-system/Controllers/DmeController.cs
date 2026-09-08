@@ -228,7 +228,8 @@ public class DmeController : Controller
         var baseSql = @"
             SELECT c.*, l.Name AS LocationName,
                    (SELECT TOP 1 PayerName FROM dbo.DmeCustomerInsurances i
-                    WHERE i.CustomerId=c.CustomerId AND i.Kind='primary') AS PrimaryPayer
+                    WHERE i.CustomerId=c.CustomerId AND i.Kind='primary'
+                    ORDER BY i.InsuranceId) AS PrimaryPayer
             FROM dbo.DmeCustomers c
             LEFT JOIN dbo.Locations l ON l.LocationId = c.LocationId
             WHERE " + _db.LocationScope("c.LocationId");
@@ -284,6 +285,291 @@ public class DmeController : Controller
         ViewBag.Orders = custOrders;
         return View();
     }
+
+    // ------------------------------------------------- editing a customer
+    /// <summary>
+    /// The edit form for one customer.
+    ///
+    /// WHY THIS EXISTS AT ALL. Until now a customer could only be created.
+    /// There was no edit action anywhere in the product, so a mistyped member
+    /// ID or date of birth rejected every claim for that person forever, and
+    /// the only remedy staff had was a duplicate customer record: two files for
+    /// one person, orders split across both, and the rental history on whichever
+    /// one they happened to open.
+    ///
+    /// Insurance is the half that matters most. People change plan every
+    /// January. A customer whose payer is wrong is not a cosmetic problem, it is
+    /// a claim billed to an insurer who has never heard of them.
+    /// </summary>
+    [HttpGet]
+    public IActionResult EditCustomer(int id)
+    {
+        ViewData["ActivePage"] = "customers";
+        var c = _db.QueryOne("SELECT * FROM dbo.DmeCustomers WHERE CustomerId=@id", new { id });
+        if (c == null) return NotFound();
+
+        // Decrypted here and nowhere else. The form needs the plaintext to show
+        // the operator what they are changing.
+        _phi.DecryptRow(c);
+        ViewData["Title"] = "Edit " + F.S(c["FirstName"]) + " " + F.S(c["LastName"]);
+        ViewBag.Customer = c;
+        return View();
+    }
+
+    /// <summary>
+    /// Saves the demographics.
+    ///
+    /// The branch is NOT edited here. Moving a customer between branches moves
+    /// their orders, rentals and claims with them by derivation, and that is a
+    /// different decision from correcting a phone number. Deliberately left out
+    /// rather than quietly allowed.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateCustomer(
+        int id, string firstName, string lastName, string? dob, string? gender, string? ssnLast4,
+        int? heightInches, int? weightLbs, string? phone, string? email,
+        string? addressLine1, string? city, string? state, string? zip,
+        string? emergencyName, string? emergencyRel, string? emergencyPhone)
+    {
+        var before = _db.QueryOne("SELECT * FROM dbo.DmeCustomers WHERE CustomerId=@id", new { id });
+        if (before == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
+        {
+            TempData["CustomerError"] = "A customer needs a first and last name.";
+            return RedirectToAction("EditCustomer", new { id });
+        }
+
+        _phi.DecryptRow(before);
+        object Enc(string? v) => (object?)_phi.Encrypt(v) ?? DBNull.Value;
+
+        _db.Execute(@"
+            UPDATE dbo.DmeCustomers SET
+                FirstName=@fn, LastName=@ln, Dob=@dob, Gender=@g, SsnLast4=@ssn,
+                HeightInches=@h, WeightLbs=@w, Phone=@ph, Email=@em,
+                AddressLine1=@a1, City=@city, State=@st, Zip=@zip,
+                EmergencyName=@en, EmergencyRel=@er, EmergencyPhone=@ep
+            WHERE CustomerId=@id",
+            new {
+                id,
+                fn = Enc(firstName), ln = Enc(lastName),
+                dob = Enc(DmeCustomerPhi.FormatDob(DateInput.Parse(dob))),
+                g = (object?)gender ?? DBNull.Value,
+                ssn = Enc(ssnLast4),
+                h = (object?)heightInches ?? DBNull.Value, w = (object?)weightLbs ?? DBNull.Value,
+                ph = Enc(phone), em = Enc(email),
+                a1 = Enc(addressLine1), city = Enc(city), st = Enc(state), zip = Enc(zip),
+                en = Enc(emergencyName), er = Enc(emergencyRel), ep = Enc(emergencyPhone)
+            });
+
+        // MUST re-run. The blind index is hashed from the plaintext name and
+        // phone; without this the customer stays findable under their OLD name
+        // and is not findable under the new one, which is the worst of both.
+        // The helper deletes before it inserts, so calling it on every save is
+        // safe and is what makes a rename work at all.
+        IndexCustomerForSearch(id, firstName, lastName, phone);
+
+        await _audit.RecordAsync("DME_CUSTOMER_UPDATED", "DmeCustomer", id,
+            before: new { Name = F.S(before["FirstName"]) + " " + F.S(before["LastName"]),
+                          Dob = F.S(before["Dob"]), Phone = F.S(before["Phone"]) },
+            after: new { Name = firstName + " " + lastName, Dob = dob, Phone = phone });
+
+        return RedirectToAction("Customer", new { id });
+    }
+
+    /// <summary>
+    /// Adds or replaces one insurance on a customer.
+    ///
+    /// One primary and one secondary, enforced by a unique index, so this is a
+    /// replace rather than an append: saving a primary over an existing primary
+    /// is what happens when somebody changes plan, and that is the commonest
+    /// edit there is.
+    ///
+    /// The payer id is looked up in the catalog and the NAME is read back out of
+    /// it, exactly as CreateCustomer does. A posted name would let a typo become
+    /// the payer a claim is addressed to.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveInsurance(
+        int customerId, string kind, int payerId, string? memberId, string? groupNumber,
+        decimal copay, int coinsurance, decimal deductible, string subscriberRel)
+    {
+        if (kind != "primary" && kind != "secondary")
+        {
+            TempData["CustomerError"] = "An insurance is either primary or secondary.";
+            return RedirectToAction("Customer", new { id = customerId });
+        }
+
+        if (!SubscriberRelationships.Contains(subscriberRel ?? ""))
+        {
+            TempData["CustomerError"] = "Choose how the customer is related to the subscriber.";
+            return RedirectToAction("Customer", new { id = customerId });
+        }
+
+        // The customer has to be this tenant's. DmeDb scopes the read, so
+        // another supplier's customer simply is not found.
+        var exists = _db.Scalar("SELECT CustomerId FROM dbo.DmeCustomers WHERE CustomerId=@customerId", new { customerId });
+        if (exists == null) return NotFound();
+
+        var payer = _payers.Find(payerId);
+        if (payer == null)
+        {
+            TempData["CustomerError"] = "Choose a payer from the list. A payer that is not on it has no Payer ID, so no claim can be addressed to it.";
+            return RedirectToAction("Customer", new { id = customerId });
+        }
+
+        var before = _db.QueryOne(
+            "SELECT * FROM dbo.DmeCustomerInsurances WHERE CustomerId=@customerId AND Kind=@kind",
+            new { customerId, kind });
+
+        // Replaced in place, so the unique index is never the thing that reports
+        // the rule to a user. The index is still the guard; this is the sentence.
+        if (before != null)
+        {
+            _db.Execute(@"
+                UPDATE dbo.DmeCustomerInsurances SET
+                    PayerName=@pn, PayerId=@pid, MemberId=@mid, GroupNumber=@grp,
+                    Copay=@copay, Coinsurance=@coins, Deductible=@ded, SubscriberRel=@rel
+                WHERE CustomerId=@customerId AND Kind=@kind",
+                new { customerId, kind, pn = payer.Name, pid = payer.PayerCode,
+                      mid = (object?)memberId ?? DBNull.Value, grp = (object?)groupNumber ?? DBNull.Value,
+                      copay, coins = coinsurance, ded = deductible, rel = subscriberRel });
+        }
+        else
+        {
+            _db.Execute(@"
+                INSERT INTO dbo.DmeCustomerInsurances
+                (CustomerId,Kind,PayerName,PayerId,MemberId,GroupNumber,Copay,Coinsurance,Deductible,SubscriberRel,TenantId)
+                VALUES (@customerId,@kind,@pn,@pid,@mid,@grp,@copay,@coins,@ded,@rel,@TenantId)",
+                new { customerId, kind, pn = payer.Name, pid = payer.PayerCode,
+                      mid = (object?)memberId ?? DBNull.Value, grp = (object?)groupNumber ?? DBNull.Value,
+                      copay, coins = coinsurance, ded = deductible, rel = subscriberRel });
+        }
+
+        await _audit.RecordAsync("DME_INSURANCE_SAVED", "DmeCustomer", customerId,
+            before: before == null ? null : new { Kind = kind, Payer = F.S(before["PayerName"]), Member = F.S(before["MemberId"]) },
+            after: new { Kind = kind, Payer = payer.Name, Member = memberId, SubscriberRel = subscriberRel });
+
+        return RedirectToAction("Customer", new { id = customerId });
+    }
+
+    /// <summary>
+    /// Removes one insurance.
+    ///
+    /// A HARD delete, unlike a voided payment or a retired distributor, and the
+    /// difference is deliberate. Those rows are kept because they are the only
+    /// record of what happened. This one is not: DmeClaims stores PayerName on
+    /// the claim at the moment it was raised, so the history of what was billed
+    /// to whom survives without this row. Keeping a dead insurance would leave a
+    /// payer on the screen that must never be billed again, which is the mistake
+    /// removing it exists to prevent.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveInsurance(int customerId, int insuranceId)
+    {
+        var before = _db.QueryOne(
+            "SELECT * FROM dbo.DmeCustomerInsurances WHERE InsuranceId=@insuranceId AND CustomerId=@customerId",
+            new { insuranceId, customerId });
+
+        if (before == null) return RedirectToAction("Customer", new { id = customerId });
+
+        _db.Execute("DELETE FROM dbo.DmeCustomerInsurances WHERE InsuranceId=@insuranceId", new { insuranceId });
+
+        await _audit.RecordAsync("DME_INSURANCE_REMOVED", "DmeCustomer", customerId,
+            before: new { Kind = F.S(before["Kind"]), Payer = F.S(before["PayerName"]), Member = F.S(before["MemberId"]) },
+            after: null);
+
+        return RedirectToAction("Customer", new { id = customerId });
+    }
+
+    /// <summary>
+    /// Adds a diagnosis. The description is read out of the ICD catalog, never
+    /// taken from the browser, and then STORED on the customer's row.
+    ///
+    /// That stored copy is not a duplicate. CMS rewords codes every October, and
+    /// what a claim was billed under must not move afterwards. Same reasoning as
+    /// DmeClaims.CustomerName.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddDiagnosis(int customerId, string code)
+    {
+        var exists = _db.Scalar("SELECT CustomerId FROM dbo.DmeCustomers WHERE CustomerId=@customerId", new { customerId });
+        if (exists == null) return NotFound();
+
+        var icd = _icd.Find(code);
+        if (icd == null)
+        {
+            TempData["CustomerError"] = "That is not a current ICD-10-CM code that can be billed.";
+            return RedirectToAction("Customer", new { id = customerId });
+        }
+
+        var already = _db.Scalar(
+            "SELECT DiagnosisId FROM dbo.DmeCustomerDiagnoses WHERE CustomerId=@customerId AND IcdCode=@c",
+            new { customerId, c = icd.Code });
+
+        if (already != null)
+            return RedirectToAction("Customer", new { id = customerId });
+
+        // The first diagnosis on a customer is the primary one, because box 21
+        // needs one and nobody should have to nominate it by hand.
+        var hasPrimary = _db.Scalar(
+            "SELECT DiagnosisId FROM dbo.DmeCustomerDiagnoses WHERE CustomerId=@customerId AND IsPrimary=1",
+            new { customerId });
+
+        _db.Execute(@"INSERT INTO dbo.DmeCustomerDiagnoses (CustomerId,IcdCode,Description,IsPrimary,TenantId)
+                      VALUES (@customerId,@c,@d,@p,@TenantId)",
+            new { customerId, c = icd.Code, d = icd.Description, p = hasPrimary == null ? 1 : 0 });
+
+        await _audit.RecordAsync("DME_DIAGNOSIS_ADDED", "DmeCustomer", customerId,
+            before: null, after: new { Code = icd.Code, icd.Description });
+
+        return RedirectToAction("Customer", new { id = customerId });
+    }
+
+    /// <summary>Removes a diagnosis from a customer.</summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveDiagnosis(int customerId, int diagnosisId)
+    {
+        var before = _db.QueryOne(
+            "SELECT * FROM dbo.DmeCustomerDiagnoses WHERE DiagnosisId=@diagnosisId AND CustomerId=@customerId",
+            new { diagnosisId, customerId });
+
+        if (before == null) return RedirectToAction("Customer", new { id = customerId });
+
+        _db.Execute("DELETE FROM dbo.DmeCustomerDiagnoses WHERE DiagnosisId=@diagnosisId", new { diagnosisId });
+
+        // If the primary was the one removed, the oldest remaining becomes
+        // primary. A customer with diagnoses but no primary puts nothing in box
+        // 21, and the claim is denied for it.
+        _db.Execute(@"
+            UPDATE dbo.DmeCustomerDiagnoses SET IsPrimary = 1
+            WHERE DiagnosisId = (
+                SELECT MIN(DiagnosisId) FROM dbo.DmeCustomerDiagnoses WHERE CustomerId = @customerId)
+              AND NOT EXISTS (
+                SELECT 1 FROM dbo.DmeCustomerDiagnoses WHERE CustomerId = @customerId AND IsPrimary = 1)",
+            new { customerId });
+
+        await _audit.RecordAsync("DME_DIAGNOSIS_REMOVED", "DmeCustomer", customerId,
+            before: new { Code = F.S(before["IcdCode"]), Description = F.S(before["Description"]) },
+            after: null);
+
+        return RedirectToAction("Customer", new { id = customerId });
+    }
+
+    /// <summary>
+    /// CMS-1500 box 6, the relationship to the subscriber.
+    ///
+    /// Written as the literal 'Self' on every insert before this, because the
+    /// form never asked. That is not a default, it is an assertion: a customer
+    /// covered by a spouse's policy was recorded as the subscriber themselves,
+    /// and box 6 on their claim said so.
+    /// </summary>
+    public static readonly string[] SubscriberRelationships = { "Self", "Spouse", "Child", "Other" };
 
     /// <summary>
     /// Rebuild a customer's blind index entries.
@@ -633,7 +919,7 @@ public class DmeController : Controller
         var custId = F.I(o["CustomerId"]);
         var custName = F.S(o["CustomerName"]);
         var deliveryDate = o["DeliveryDate"] ?? (object)DateTime.Today;
-        var payer = _db.Scalar("SELECT TOP 1 PayerName FROM dbo.DmeCustomerInsurances WHERE CustomerId=@custId AND Kind='primary'", new { custId });
+        var payer = _db.Scalar("SELECT TOP 1 PayerName FROM dbo.DmeCustomerInsurances WHERE CustomerId=@custId AND Kind='primary' ORDER BY InsuranceId", new { custId });
 
         // The branch this delivery comes out of. Taken from vDmeOrders, which
         // derives it from the customer, so it is right whether the person
@@ -805,7 +1091,7 @@ public class DmeController : Controller
         var next = Convert.ToDateTime(billedThrough).AddMonths(1);
         var isFinalMonth = cap.HasValue && monthsBefore + 1 >= cap.Value;
 
-        var payer = _db.Scalar("SELECT TOP 1 PayerName FROM dbo.DmeCustomerInsurances WHERE CustomerId=@cid AND Kind='primary'", new { cid = F.I(r["CustomerId"]) });
+        var payer = _db.Scalar("SELECT TOP 1 PayerName FROM dbo.DmeCustomerInsurances WHERE CustomerId=@cid AND Kind='primary' ORDER BY InsuranceId", new { cid = F.I(r["CustomerId"]) });
         var cn = _db.NextNumber("CLM");
 
         // RentalId on the line is what makes this month countable. Nothing
@@ -1387,7 +1673,7 @@ public class DmeController : Controller
         ViewBag.Diagnoses = cust == null ? new List<Dictionary<string, object?>>() :
             _db.Query("SELECT * FROM dbo.DmeCustomerDiagnoses WHERE CustomerId=@cid ORDER BY IsPrimary DESC", new { cid = F.I(cust["CustomerId"]) });
         ViewBag.PrimaryIns = cust == null ? null :
-            _db.QueryOne("SELECT TOP 1 * FROM dbo.DmeCustomerInsurances WHERE CustomerId=@cid AND Kind='primary'", new { cid = F.I(cust["CustomerId"]) });
+            _db.QueryOne("SELECT TOP 1 * FROM dbo.DmeCustomerInsurances WHERE CustomerId=@cid AND Kind='primary' ORDER BY InsuranceId", new { cid = F.I(cust["CustomerId"]) });
         // Box 33 used to be a hardcoded string in the view, so every claim this
         // product produced carried a made up NPI. It comes from the supplier
         // record now, and the screen says plainly when that record is not

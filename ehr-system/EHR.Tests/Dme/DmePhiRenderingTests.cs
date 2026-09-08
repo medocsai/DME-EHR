@@ -46,8 +46,14 @@ public class DmePhiRenderingTests
     /// <summary>
     /// Actions that legitimately read those tables without touching names:
     /// existence checks and id lookups that select no PHI column.
+    ///
+    /// The list is NOT a way out. ExemptActionsReallySelectNoPhi below reads
+    /// each one and fails if it selects anything but CustomerId from
+    /// dbo.DmeCustomers, so adding a name here to silence the guard breaks a
+    /// different test instead.
     /// </summary>
-    private static readonly string[] ExemptActions = { "CreateOrder", "Submit" };
+    private static readonly string[] ExemptActions =
+        { "CreateOrder", "Submit", "SaveInsurance", "AddDiagnosis" };
 
     [Fact]
     public void EveryActionReadingCustomerData_AlsoDecryptsIt()
@@ -64,6 +70,44 @@ public class DmePhiRenderingTests
             "these actions read encrypted customer data and never decrypt it, so the page " +
             "renders base64 while still returning HTTP 200. That is invisible to any check " +
             $"that only looks at status codes. Offending actions: {string.Join(", ", offenders)}");
+    }
+
+    /// <summary>
+    /// The exemption list is not a way out of the guard above.
+    ///
+    /// An action is exempt because it only checks that a customer EXISTS, never
+    /// because somebody wanted the build green. This reads each exempt action
+    /// and fails if its read of dbo.DmeCustomers selects any column other than
+    /// CustomerId, which is the only column on that table that is not PHI.
+    ///
+    /// Without this, the cheapest way to silence a real base64-on-the-page bug
+    /// would be to add its action name to a list, and the list is the part
+    /// nobody reviews.
+    /// </summary>
+    [Fact]
+    public void ExemptActionsReallySelectNoPhi()
+    {
+        var source = File.ReadAllText(ControllerPath());
+
+        foreach (var (name, body) in SplitIntoMethods(source))
+        {
+            if (!ExemptActions.Contains(name)) continue;
+
+            foreach (Match m in Regex.Matches(
+                body, @"SELECT\s+(.+?)\s+FROM\s+dbo\.DmeCustomers", RegexOptions.IgnoreCase))
+            {
+                var columns = m.Groups[1].Value
+                    .Split(',')
+                    .Select(c => c.Trim())
+                    .Where(c => c.Length > 0)
+                    .ToArray();
+
+                columns.Should().OnlyContain(
+                    c => c.Equals("CustomerId", StringComparison.OrdinalIgnoreCase),
+                    $"{name} is exempt from the decrypt guard only because it reads no PHI, "
+                    + "so it may select CustomerId and nothing else");
+            }
+        }
     }
 
     /// <summary>

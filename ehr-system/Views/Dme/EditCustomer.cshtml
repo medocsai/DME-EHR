@@ -1,0 +1,95 @@
+@using EHR.Helpers
+@{
+    ViewData["ActivePage"] = "customers";
+    var c = (Dictionary<string, object?>)ViewBag.Customer;
+    var id = F.I(c["CustomerId"]);
+    var gender = F.S(c["Gender"]);
+}
+
+<div class="dme-wrap">
+    <a href="/Dme/Customer/@id" class="dme-muted" style="font-size:13px;text-decoration:none"><i class="bi bi-arrow-left"></i> Back to @F.S(c["FirstName"]) @F.S(c["LastName"])</a>
+    <div class="dme-head" style="margin-top:6px">
+        <div>
+            <h1>Edit customer</h1>
+            <div class="dme-sub">@F.S(c["AccountNo"]) &middot; changes are recorded in the audit trail</div>
+        </div>
+    </div>
+
+    @if (TempData["CustomerError"] != null)
+    {
+        <div class="dme-banner" style="background:#fdecea;color:#8a1c13">
+            <i class="bi bi-exclamation-triangle"></i> @TempData["CustomerError"]
+        </div>
+    }
+
+    <form method="post" action="/Dme/UpdateCustomer">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="id" value="@id" />
+
+        <div class="dme-card">
+            <div class="dme-card-head"><h2>Basic info</h2></div>
+            <div class="dme-card-body">
+                @* Insurance and diagnoses are edited on the customer screen, not here.
+                   They are lists with their own add and remove, and folding them into a
+                   single save would mean one Save button that half-applies when a payer
+                   is wrong. *@
+                <div class="row g-3">
+                    <div class="col-md-6"><label class="form-label">First name <span style="color:#d6453f">*</span></label><input name="firstName" class="form-control" value="@F.S(c["FirstName"])" required /></div>
+                    <div class="col-md-6"><label class="form-label">Last name <span style="color:#d6453f">*</span></label><input name="lastName" class="form-control" value="@F.S(c["LastName"])" required /></div>
+                    <div class="col-md-5">
+                        <label class="form-label">Date of birth</label>
+                        @* Plain text, not type="date", for the same reason the create form
+                           uses one: a DOB is pasted off a referral more often than typed. *@
+                        <input name="dob" class="form-control js-dob" placeholder="mm/dd/yyyy" value="@F.S(c["Dob"])" autocomplete="bday" />
+                        <div class="form-text" style="font-size:11px">Type or paste. mm/dd/yyyy</div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Gender</label>
+                        <select name="gender" class="form-select">
+                            <option value=""></option>
+                            <option selected="@(gender == "Male")">Male</option>
+                            <option selected="@(gender == "Female")">Female</option>
+                            <option selected="@(gender == "Other")">Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3"><label class="form-label">SSN <span class="dme-muted" style="font-size:11px">(last 4)</span></label><input name="ssnLast4" class="form-control" maxlength="4" value="@F.S(c["SsnLast4"])" /></div>
+                    <div class="col-md-3"><label class="form-label">Height (in)</label><input type="number" name="heightInches" class="form-control" value="@F.S(c["HeightInches"])" /></div>
+                    <div class="col-md-3"><label class="form-label">Weight (lb)</label><input type="number" name="weightLbs" class="form-control" value="@F.S(c["WeightLbs"])" /></div>
+                    <div class="col-md-6"><label class="form-label">Phone</label><input name="phone" class="form-control" value="@F.S(c["Phone"])" /></div>
+                    <div class="col-12"><label class="form-label">Email</label><input type="email" name="email" class="form-control" value="@F.S(c["Email"])" /></div>
+                    <div class="col-md-6"><label class="form-label">Address</label><input name="addressLine1" class="form-control" value="@F.S(c["AddressLine1"])" /></div>
+                    <div class="col-md-3"><label class="form-label">City</label><input name="city" class="form-control" value="@F.S(c["City"])" /></div>
+                    <div class="col-md-1"><label class="form-label">State</label><input name="state" class="form-control" maxlength="2" value="@F.S(c["State"])" /></div>
+                    <div class="col-md-2"><label class="form-label">ZIP</label><input name="zip" class="form-control" maxlength="10" value="@F.S(c["Zip"])" /></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dme-card">
+            <div class="dme-card-head"><h2>Emergency contact</h2></div>
+            <div class="dme-card-body">
+                <div class="row g-3">
+                    <div class="col-md-6"><label class="form-label">Contact name</label><input name="emergencyName" class="form-control" value="@F.S(c["EmergencyName"])" /></div>
+                    <div class="col-md-6"><label class="form-label">Relationship</label><input name="emergencyRel" class="form-control" value="@F.S(c["EmergencyRel"])" /></div>
+                    <div class="col-md-6"><label class="form-label">Phone</label><input name="emergencyPhone" class="form-control" value="@F.S(c["EmergencyPhone"])" /></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dme-card">
+            <div class="dme-card-body">
+                <div class="dme-muted" style="font-size:12.5px">
+                    <i class="bi bi-info-circle"></i>
+                    The branch this customer belongs to is not changed here. Moving somebody
+                    between branches moves their orders, rentals and claims with them, which is
+                    a different decision from correcting a phone number.
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-2">
+            <a href="/Dme/Customer/@id" class="dme-btn dme-btn-light">Cancel</a>
+            <button type="submit" class="dme-btn dme-btn-primary"><i class="bi bi-check-lg"></i> Save changes</button>
+        </div>
+    </form>
+</div>

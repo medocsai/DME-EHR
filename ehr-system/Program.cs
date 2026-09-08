@@ -109,6 +109,11 @@ builder.Services.AddScoped<IDmePayerCatalog, DmePayerCatalog>();
 
 // The CMS ICD-10-CM diagnosis catalog. Global for the same reason: a national
 // code set is not tenant data. See Services/DmeIcdCatalog.cs.
+// The national code set is held in memory: searching 74,719 rows in SQL took
+// about 1.5 seconds per keystroke. Singleton because it is global, immutable
+// between the annual CMS releases, and identical for every tenant.
+// See Services/IcdCodeCache.cs, including why the October refresh needs a restart.
+builder.Services.AddSingleton<IcdCodeCache>();
 builder.Services.AddScoped<IDmeIcdCatalog, DmeIcdCatalog>();
 
 // The CMS national HCPCS Level II list. NOT the supplier's item master, which

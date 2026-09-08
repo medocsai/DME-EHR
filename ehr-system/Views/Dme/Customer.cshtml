@@ -7,10 +7,18 @@
     var equipment = (List<Dictionary<string, object?>>)ViewBag.Equipment;
     var orders = (List<Dictionary<string, object?>>)ViewBag.Orders;
     int ht = F.I(c["HeightInches"]);
+    var customerId = F.I(c["CustomerId"]);
 }
 
 <div class="dme-wrap">
     <a href="/Dme/Customers" class="dme-muted" style="font-size:13px;text-decoration:none"><i class="bi bi-arrow-left"></i> All customers</a>
+
+    @if (TempData["CustomerError"] != null)
+    {
+        <div class="dme-banner" style="background:#fdecea;color:#8a1c13;margin-top:10px">
+            <i class="bi bi-exclamation-triangle"></i> @TempData["CustomerError"]
+        </div>
+    }
 
     <div class="dme-card" style="margin-top:10px">
         <div class="dme-card-body" style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
@@ -22,26 +30,93 @@
                     <div class="dme-muted" style="font-size:12.5px">Ht @(ht > 0 ? (ht / 12) + "' " + (ht % 12) + "\"" : "—") · Wt @(F.I(c["WeightLbs"]) > 0 ? F.I(c["WeightLbs"]) + " lb" : "—") · @F.S(c["AddressLine1"]), @F.S(c["City"]) @F.S(c["State"]) @F.S(c["Zip"])</div>
                 </div>
             </div>
-            <a href="/Dme/NewOrder?customerId=@F.I(c["CustomerId"])" class="dme-btn dme-btn-primary"><i class="bi bi-box-seam"></i> New Order</a>
+            <div class="d-flex gap-2">
+                <a href="/Dme/EditCustomer/@customerId" class="dme-btn dme-btn-light"><i class="bi bi-pencil"></i> Edit</a>
+                <a href="/Dme/NewOrder?customerId=@customerId" class="dme-btn dme-btn-primary"><i class="bi bi-box-seam"></i> New Order</a>
+            </div>
         </div>
     </div>
 
     <div class="dme-grid2">
         <div>
             <div class="dme-card">
-                <div class="dme-card-head"><h2>Insurance</h2></div>
+                <div class="dme-card-head">
+                    <h2>Insurance</h2>
+                    <span class="dme-muted" style="font-size:12px">one primary, one secondary</span>
+                </div>
                 <div class="dme-card-body">
                     @foreach (var i in insurances)
                     {
                         <div class="dme-line">
-                            <div style="display:flex;justify-content:space-between">
-                                <strong>@(F.S(i["Kind"]) == "primary" ? "Primary" : "Secondary") · @F.S(i["PayerName"])</strong>
-                                
+                            <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+                                <strong>@(F.S(i["Kind"]) == "primary" ? "Primary" : "Secondary") &middot; @F.S(i["PayerName"])</strong>
+                                <form method="post" action="/Dme/RemoveInsurance" style="display:inline"
+                                      onsubmit="return confirm('Remove this insurance? Claims already raised keep the payer they were billed to.');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="customerId" value="@customerId" />
+                                    <input type="hidden" name="insuranceId" value="@F.I(i["InsuranceId"])" />
+                                    <button type="submit" class="dme-btn dme-btn-light dme-btn-sm">remove</button>
+                                </form>
                             </div>
-                            <div class="dme-muted" style="font-size:12.5px;margin-top:4px">Member @F.S(i["MemberId"])@(string.IsNullOrEmpty(F.S(i["GroupNumber"])) ? "" : " · Group " + F.S(i["GroupNumber"])) · Copay @F.Money(i["Copay"]) · Coins @F.I(i["Coinsurance"])% · Deductible @F.Money(i["Deductible"])</div>
+                            <div class="dme-muted" style="font-size:12.5px;margin-top:4px">
+                                Member @F.S(i["MemberId"])@(string.IsNullOrEmpty(F.S(i["GroupNumber"])) ? "" : " · Group " + F.S(i["GroupNumber"])) &middot;
+                                Copay @F.Money(i["Copay"]) &middot; Coins @F.I(i["Coinsurance"])% &middot; Deductible @F.Money(i["Deductible"]) &middot;
+                                Subscriber: @(string.IsNullOrEmpty(F.S(i["SubscriberRel"])) ? "Self" : F.S(i["SubscriberRel"]))
+                            </div>
                         </div>
                     }
                     @if (insurances.Count == 0) { <div class="dme-muted">No insurance on file.</div> }
+
+                    @* Saving a primary over an existing primary is what happens when
+                       somebody changes plan in January, so this is a replace rather than
+                       an append. A unique index on (CustomerId, Kind) is the guard. *@
+                    <details style="margin-top:10px">
+                        <summary style="cursor:pointer;font-size:13px">Add or replace an insurance</summary>
+                        <form method="post" action="/Dme/SaveInsurance" class="row g-2 mt-1">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="customerId" value="@customerId" />
+                            <div class="col-md-6">
+                                <label class="form-label">Which</label>
+                                <select name="kind" class="form-select">
+                                    <option value="primary">Primary</option>
+                                    <option value="secondary">Secondary</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Subscriber is the</label>
+                                @* CMS-1500 box 6. Written as the literal 'Self' on every insert
+                                   before this, because nothing ever asked. *@
+                                <select name="subscriberRel" class="form-select">
+                                    @foreach (var r in EHR.Controllers.DmeController.SubscriberRelationships)
+                                    {
+                                        <option value="@r">@(r == "Self" ? "Customer themselves" : r)</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Payer</label>
+                                @* A typeahead over Office Ally's national list, not a select.
+                                   The hidden field carries the catalog id, which is the only
+                                   thing the server trusts: a posted NAME would let a typo
+                                   become the payer a claim is addressed to. *@
+                                <div class="dme-typeahead">
+                                    <input type="text" id="insPayerSearch" class="form-control" autocomplete="off"
+                                           placeholder="Search insurance by name or Payer ID…" />
+                                    <input type="hidden" name="payerId" id="insPayerIdField" value="0" />
+                                    <div id="insPayerResults" class="dme-typeahead-list" hidden></div>
+                                </div>
+                                <div id="insPayerChosen" class="form-text" style="font-size:11px" hidden></div>
+                            </div>
+                            <div class="col-md-6"><label class="form-label">Member ID</label><input name="memberId" class="form-control" /></div>
+                            <div class="col-md-6"><label class="form-label">Group #</label><input name="groupNumber" class="form-control" /></div>
+                            <div class="col-md-4"><label class="form-label">Copay ($)</label><input type="number" step="0.01" name="copay" class="form-control" value="0" /></div>
+                            <div class="col-md-4"><label class="form-label">Coins (%)</label><input type="number" name="coinsurance" class="form-control" value="0" /></div>
+                            <div class="col-md-4"><label class="form-label">Deductible ($)</label><input type="number" step="0.01" name="deductible" class="form-control" value="0" /></div>
+                            <div class="col-12 d-flex justify-content-end">
+                                <button type="submit" class="dme-btn dme-btn-primary dme-btn-sm">Save insurance</button>
+                            </div>
+                        </form>
+                    </details>
                 </div>
             </div>
             <div class="dme-card">
@@ -60,13 +135,50 @@
         </div>
         <div>
             <div class="dme-card">
-                <div class="dme-card-head"><h2>Diagnoses (ICD-10)</h2></div>
+                <div class="dme-card-head">
+                    <h2>Diagnoses (ICD-10)</h2>
+                    <span class="dme-muted" style="font-size:12px">CMS-1500 box 21</span>
+                </div>
                 <div class="dme-card-body">
                     @foreach (var d in diagnoses)
                     {
-                        <div style="padding:5px 0"><span class="dme-chip blue dme-mono">@F.S(d["IcdCode"])</span> @F.S(d["Description"]) @(F.B(d["IsPrimary"]) ? "(primary)" : "")</div>
+                        <div style="padding:5px 0;display:flex;justify-content:space-between;align-items:center;gap:8px">
+                            <span>
+                                <span class="dme-chip blue dme-mono">@F.S(d["IcdCode"])</span>
+                                @F.S(d["Description"])
+                                @if (F.B(d["IsPrimary"])) { <span class="dme-chip gray">primary</span> }
+                            </span>
+                            <form method="post" action="/Dme/RemoveDiagnosis" style="display:inline">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="customerId" value="@customerId" />
+                                <input type="hidden" name="diagnosisId" value="@F.I(d["DiagnosisId"])" />
+                                <button type="submit" class="dme-btn dme-btn-light dme-btn-sm">remove</button>
+                            </form>
+                        </div>
                     }
                     @if (diagnoses.Count == 0) { <div class="dme-muted">No diagnoses recorded.</div> }
+
+                    @* The code is posted and the WORDING is read from the CMS catalog, so a
+                       mistyped code files nothing rather than a diagnosis with no description.
+                       The description is then stored on the row, because CMS rewords codes
+                       every October and what a claim was billed under must not move. *@
+                    <form method="post" action="/Dme/AddDiagnosis" class="mt-2">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="customerId" value="@customerId" />
+                        <label class="form-label">Add a diagnosis</label>
+                        <div class="d-flex gap-2 align-items-start">
+                            <div style="flex:1">
+                                <div class="dme-typeahead">
+                                    <input type="text" id="dxSearch" class="form-control" autocomplete="off"
+                                           placeholder="Search by condition, or the ICD-10 code…" />
+                                    <input type="hidden" name="code" id="dxCode" />
+                                    <div id="dxResults" class="dme-typeahead-list" hidden></div>
+                                </div>
+                                <div id="dxChosen" class="form-text" style="font-size:11px" hidden></div>
+                            </div>
+                            <button type="submit" class="dme-btn dme-btn-light">Add</button>
+                        </div>
+                    </form>
                 </div>
             </div>
             <div class="dme-card">
@@ -84,3 +196,29 @@
         </div>
     </div>
 </div>
+
+@* Typeaheads. Inline and at the end of the markup, because dmeTypeahead is
+   loaded in the <head> and an inline script runs during parsing: a tag at the
+   end of <body> would define the function AFTER this call needs it. *@
+<script>
+    dmeTypeahead({
+        input: '#insPayerSearch', hidden: '#insPayerIdField', results: '#insPayerResults', chosen: '#insPayerChosen',
+        url: '/Lookups/Payers',
+        emptyValue: '0',
+        value: function (p) { return p.id; },
+        label: function (p) { return p.name; },
+        side:  function (p) { return p.code; },
+        note:  function (p) { return 'Payer ID ' + p.code; },
+        empty: 'No payer matches that. Check the spelling, or the Payer ID on the card.'
+    });
+
+    dmeTypeahead({
+        input: '#dxSearch', hidden: '#dxCode', results: '#dxResults', chosen: '#dxChosen',
+        url: '/Lookups/Icd',
+        value: function (d) { return d.code; },
+        label: function (d) { return d.name; },
+        side:  function (d) { return d.code; },
+        note:  function (d) { return 'ICD-10 ' + d.code; },
+        empty: 'No diagnosis matches that. Try a condition, or the ICD-10 code.'
+    });
+</script>

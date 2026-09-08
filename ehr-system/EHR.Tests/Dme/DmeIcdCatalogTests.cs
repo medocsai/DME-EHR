@@ -57,18 +57,12 @@ public class DmeIcdCatalogTests
                   ["Code"] = rows[0].Code, ["Description"] = rows[0].Description
               });
 
-        return (new DmeIcdCatalog(db.Object), db, calls);
+        // A FRESH cache per test. It is a singleton in the application, so a
+        // shared one here would let the first test load the code set and every
+        // test after it assert against those rows.
+        return (new DmeIcdCatalog(db.Object, new IcdCodeCache()), db, calls);
     }
 
-    private static Dictionary<string, object?> Params(object? prms) => (Dictionary<string, object?>)prms!;
-
-    private static List<string> Terms(object? prms)
-        => Params(prms).Where(kv => kv.Key.StartsWith("w") || kv.Key.StartsWith("b"))
-                       .OrderBy(kv => kv.Key, StringComparer.Ordinal)
-                       .Select(kv => kv.Value!.ToString()!)
-                       .ToList();
-
-    // ------------------------------------------------------------------ search
 
     [Theory]
     [InlineData(null)]
@@ -82,7 +76,7 @@ public class DmeIcdCatalogTests
         catalog.Search(term).Should().BeEmpty();
 
         db.Verify(d => d.Query(It.IsAny<string>(), It.IsAny<object>()), Times.Never,
-            "an empty WHERE over 74,719 rows returns the whole code set");
+            "a search with no words must not even load the code set");
     }
 
     /// <summary>
@@ -95,49 +89,127 @@ public class DmeIcdCatalogTests
     [InlineData("E669")]
     public void ACodeIsFoundWithOrWithoutItsDot(string typed)
     {
-        var (catalog, _, calls) = Build(("E66.9", "Obesity, unspecified"));
+        var (catalog, _, _) = Build(("E66.9", "Obesity, unspecified"));
 
-        catalog.Search(typed).Should().ContainSingle();
+        var hits = catalog.Search(typed);
 
-        Params(calls[0].Prms)["exact"].Should().Be("E669",
-            "the comparison is done undotted on both sides");
-        calls[0].Sql.Should().Contain("REPLACE(Code,'.','')");
+        hits.Should().ContainSingle();
+        hits[0].Code.Should().Be("E66.9", "the stored spelling is what comes back");
     }
 
     [Fact]
     public void Search_MatchesWordsInTheDescription_InAnyOrder()
     {
-        var (catalog, _, calls) = Build(("M17.0", "Bilateral primary osteoarthritis of knee"));
+        var (catalog, _, _) = Build(
+            ("M17.0", "Bilateral primary osteoarthritis of knee"),
+            ("M17.9", "Osteoarthritis of knee, unspecified"),
+            ("E66.9", "Obesity, unspecified"));
 
-        catalog.Search("knee osteoarthritis");
-
-        var terms = Terms(calls[0].Prms);
-        terms.Should().Contain("%knee%").And.Contain("%osteoarthritis%");
-        calls[0].Sql.Should().Contain(" AND ",
-            "every word must appear, or a second word only widens the result");
+        catalog.Search("knee osteoarthritis").Should().HaveCount(2);
+        catalog.Search("osteoarthritis knee").Should().HaveCount(2);
     }
 
+    /// <summary>
+    /// EVERY word has to match. A second word that widened the result instead
+    /// of narrowing it would make the picker useless exactly when an operator
+    /// is trying to be more specific.
+    /// </summary>
     [Fact]
-    public void Search_EscapesLikeWildcards()
+    public void Search_NarrowsWithEachWordRatherThanWidening()
     {
-        var (catalog, _, calls) = Build();
+        var (catalog, _, _) = Build(
+            ("M17.0", "Bilateral primary osteoarthritis of knee"),
+            ("E66.9", "Obesity, unspecified"));
 
-        catalog.Search("100%_pain");
+        catalog.Search("osteoarthritis").Should().ContainSingle();
+        catalog.Search("osteoarthritis obesity").Should().BeEmpty(
+            "no single code carries both words, so requiring both must return nothing");
+    }
 
-        Terms(calls[0].Prms).Should().Contain(@"%100\%\_pain%");
-        calls[0].Sql.Should().Contain("ESCAPE",
-            "escaping the term does nothing unless the query declares the escape character");
+    /// <summary>
+    /// The search runs in memory now, so a percent sign is an ordinary
+    /// character rather than a SQL wildcard. It must still be treated as one
+    /// the operator typed, not as "match anything".
+    /// </summary>
+    [Fact]
+    public void Search_TreatsWildcardCharactersAsOrdinaryText()
+    {
+        var (catalog, _, _) = Build(
+            ("E66.9", "Obesity, unspecified"),
+            ("Z99.9", "100% dependence on machine"));
+
+        catalog.Search("100%").Should().ContainSingle()
+            .Which.Code.Should().Be("Z99.9");
+
+        catalog.Search("%").Should().ContainSingle(
+            "a bare percent matches the one description that literally contains one");
     }
 
     [Fact]
     public void Search_IsCappedEvenWhenACallerAsksForMore()
     {
-        var (catalog, _, calls) = Build();
+        var rows = Enumerable.Range(0, 80)
+            .Select(i => ($"M17.{i}", $"Osteoarthritis variant {i}"))
+            .ToArray();
 
-        catalog.Search("pain", limit: 90000);
+        var (catalog, _, _) = Build(rows);
 
-        Convert.ToInt32(Params(calls[0].Prms)["take"]).Should().BeLessThanOrEqualTo(50,
+        catalog.Search("osteoarthritis", limit: 90000).Should().HaveCount(50,
             "the control is a picker, not an export of the whole code set");
+    }
+
+    /// <summary>
+    /// COPD is the case that started this. CMS writes "Chronic obstructive
+    /// pulmonary disease" and a biller types "copd", so before the alias table
+    /// the search returned ZERO of 74,719 codes for the diagnosis an oxygen
+    /// concentrator is billed under.
+    /// </summary>
+    [Theory]
+    [InlineData("copd", "J44.9")]
+    [InlineData("osa", "G47.33")]
+    [InlineData("chf", "I50.9")]
+    public void Search_KnowsTheAbbreviationsBillersActuallyType(string typed, string expected)
+    {
+        var (catalog, _, _) = Build(
+            ("J44.9", "Chronic obstructive pulmonary disease, unspecified"),
+            ("G47.33", "Obstructive sleep apnea (adult) (pediatric)"),
+            ("I50.9", "Heart failure, unspecified"));
+
+        catalog.Search(typed).Should().Contain(m => m.Code == expected);
+    }
+
+    /// <summary>
+    /// And the full wording still works. An alias is an alternative, never a
+    /// replacement: somebody who types what CMS printed must still find it.
+    /// </summary>
+    [Fact]
+    public void Search_StillMatchesTheWordingCmsActuallyPublished()
+    {
+        var (catalog, _, _) = Build(
+            ("J44.9", "Chronic obstructive pulmonary disease, unspecified"));
+
+        catalog.Search("obstructive pulmonary").Should().ContainSingle();
+    }
+
+    /// <summary>
+    /// The whole code set is read ONCE, however many searches follow.
+    ///
+    /// This is the point of the cache. Searching 74,719 rows in SQL was
+    /// measured at about 1.5 seconds per keystroke against 54ms for the payer
+    /// picker on the same form, and no index fixes a LIKE '%word%'.
+    /// </summary>
+    [Fact]
+    public void TheCodeSetIsLoadedOnceAndReusedForEverySearch()
+    {
+        var (catalog, db, _) = Build(("E66.9", "Obesity, unspecified"));
+
+        catalog.Search("obesity");
+        catalog.Search("obesity");
+        catalog.Search("unspecified");
+        catalog.Find("E669");
+
+        db.Verify(d => d.Query(It.IsAny<string>(), It.IsAny<object>()), Times.Once,
+            "the national code set is immutable between annual releases");
     }
 
     [Theory]
@@ -149,7 +221,7 @@ public class DmeIcdCatalogTests
         var (catalog, db, _) = Build(("E66.9", "Obesity, unspecified"));
 
         catalog.Find(code).Should().BeNull();
-        db.Verify(d => d.QueryOne(It.IsAny<string>(), It.IsAny<object>()), Times.Never);
+        db.Verify(d => d.Query(It.IsAny<string>(), It.IsAny<object>()), Times.Never);
     }
 
     [Theory]
@@ -158,21 +230,28 @@ public class DmeIcdCatalogTests
     [InlineData("  E66.9  ")]
     public void Find_ReturnsTheStoredSpellingOfTheCode(string typed)
     {
-        var (catalog, _, calls) = Build(("E66.9", "Obesity, unspecified"));
+        var (catalog, _, _) = Build(
+            ("E66.9", "Obesity, unspecified"),
+            ("E66.01", "Morbid (severe) obesity due to excess calories"));
 
         var dx = catalog.Find(typed);
 
         dx.Should().NotBeNull();
         dx!.Code.Should().Be("E66.9", "what gets filed is the catalog's spelling, not the operator's");
         dx.Description.Should().Be("Obesity, unspecified");
+    }
 
-        // The lookup itself has to be dot insensitive. Asserting only the
-        // returned record proves nothing here: a fake database hands back the
-        // row whatever it is asked for, so the PARAMETER is the evidence.
-        var sent = calls[0].Prms!.GetType().GetProperty("code")!.GetValue(calls[0].Prms)!.ToString();
-        sent.Should().Be("E669", "a code typed either way must reach the same row");
-        calls[0].Sql.Should().Contain("REPLACE(Code,'.','')",
-            "and the stored side has to be compared undotted too");
+    /// <summary>
+    /// Find is an EXACT match, not a prefix one. E66 must not silently resolve
+    /// to E66.9: a header code on a claim is a denial, and quietly picking a
+    /// child code for the operator files a diagnosis nobody chose.
+    /// </summary>
+    [Fact]
+    public void Find_DoesNotResolveAPartialCode()
+    {
+        var (catalog, _, _) = Build(("E66.9", "Obesity, unspecified"));
+
+        catalog.Find("E66").Should().BeNull();
     }
 
     // ------------------------------------------------- the catalog stays global
@@ -229,22 +308,59 @@ public class DmeIcdCatalogTests
         controller.Should().NotContain("IcdList",
             "twelve codes in a C# array is the complaint the client raised");
     }
+    /// <summary>
+    /// Scoped to the action rather than searched for across the whole file.
+    /// There are now TWO places a diagnosis is filed, one on the create form and
+    /// one on the customer screen, and an unscoped regex matched whichever
+    /// happened to appear first.
+    /// </summary>
+    private static string Action(string name)
+    {
+        var body = Regex.Match(
+            Read("Controllers", "DmeController.cs"),
+            @"IActionResult> " + name + @"\(.*?\n    \}",
+            RegexOptions.Singleline).Value;
+
+        body.Should().NotBeEmpty($"{name} should still be there");
+        return body;
+    }
 
     [Fact]
     public void CreateCustomer_ResolvesTheDiagnosisFromTheCatalog()
     {
-        var controller = Read("Controllers", "DmeController.cs");
+        var create = Action("CreateCustomer");
 
-        var insert = Regex.Match(controller,
+        create.Should().Contain("_icd.Find(dxCode)",
+            "an invalid code must file no diagnosis at all");
+
+        var insert = Regex.Match(create,
             @"INSERT INTO dbo\.DmeCustomerDiagnoses.*?\}\);",
             RegexOptions.Singleline).Value;
 
         insert.Should().NotBeEmpty("the diagnosis insert should still be there");
         insert.Should().Contain("diagnosis.Code").And.Contain("diagnosis.Description",
             "both facts come from the catalog lookup, not from a posted form field");
+    }
 
-        controller.Should().Contain("_icd.Find(dxCode)",
-            "an invalid code must file no diagnosis at all");
+    /// <summary>
+    /// And the same rule on the screen where a diagnosis is added afterwards.
+    /// This is the path that matters more: a diagnosis is added to an existing
+    /// customer far more often than at the moment they are created.
+    /// </summary>
+    [Fact]
+    public void AddDiagnosis_ResolvesTheCodeFromTheCatalogToo()
+    {
+        var add = Action("AddDiagnosis");
+
+        add.Should().Contain("_icd.Find(code)",
+            "a code the catalog does not know must file nothing");
+
+        var insert = Regex.Match(add,
+            @"INSERT INTO dbo\.DmeCustomerDiagnoses.*?\}\);",
+            RegexOptions.Singleline).Value;
+
+        insert.Should().Contain("icd.Code").And.Contain("icd.Description",
+            "the wording is read from CMS, never taken from the browser");
     }
 
     /// <summary>
