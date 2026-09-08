@@ -30,15 +30,18 @@ public class DmeController : Controller
     private readonly IDmePayerCatalog _payers;
     private readonly IDmeIcdCatalog _icd;
     private readonly IDmeDistributors _distributors;
+    private readonly IDmeDoctors _doctors;
     private readonly IDmeOrderDocuments _documents;
 
     public DmeController(IDmeDb db, IDmeAudit audit, DmeCustomerPhi phi,
                          IDmePaymentService payments, IDmeSftpAccountService sftp,
                          IDmePayerCatalog payers, IDmeIcdCatalog icd,
-                         IDmeDistributors distributors, IDmeOrderDocuments documents)
+                         IDmeDistributors distributors, IDmeOrderDocuments documents,
+                         IDmeDoctors doctors)
     {
         _icd = icd;
         _distributors = distributors;
+        _doctors = doctors;
         _documents = documents;
         _db = db;
         _audit = audit;
@@ -1467,6 +1470,83 @@ public class DmeController : Controller
 
         return RedirectToAction("Order", new { id = orderId });
     }
+
+    // ------------------------------------------------- referring physicians
+    /// <summary>
+    /// The doctors this supplier takes orders from.
+    ///
+    /// dbo.DmeDoctors held three seeded rows and the product had no way to add a
+    /// fourth, while every DMEPOS claim needs an ordering physician in CMS-1500
+    /// boxes 17 and 17b. A referral from anybody else could not be processed
+    /// without filing it under the wrong doctor.
+    /// </summary>
+    public IActionResult Doctors()
+    {
+        ViewData["Title"] = "Doctors";
+        ViewData["ActivePage"] = "doctors";
+        ViewBag.Doctors = _doctors.All(includeRetired: true);
+        ViewBag.DoctorError = TempData["DoctorError"];
+        return View();
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddDoctor(string? firstName, string? lastName, string? npi, string? specialty, string? phone)
+    {
+        var result = _doctors.Add(firstName, lastName, npi, specialty, phone);
+
+        if (!result.Success)
+        {
+            TempData["DoctorError"] = result.Error;
+            return RedirectToAction("Doctors");
+        }
+
+        await _audit.RecordAsync("DME_DOCTOR_ADDED", "DmeDoctor", result.DoctorId,
+            before: null, after: new { FirstName = firstName, LastName = lastName, Npi = npi });
+
+        return RedirectToAction("Doctors");
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateDoctor(int doctorId, string? firstName, string? lastName, string? npi, string? specialty, string? phone)
+    {
+        var before = _doctors.Find(doctorId);
+        var result = _doctors.Update(doctorId, firstName, lastName, npi, specialty, phone);
+
+        if (!result.Success)
+        {
+            TempData["DoctorError"] = result.Error;
+            return RedirectToAction("Doctors");
+        }
+
+        await _audit.RecordAsync("DME_DOCTOR_UPDATED", "DmeDoctor", doctorId,
+            before: before == null ? null : new { before.FirstName, before.LastName, before.Npi },
+            after: new { FirstName = firstName, LastName = lastName, Npi = npi });
+
+        return RedirectToAction("Doctors");
+    }
+
+    /// <summary>
+    /// Takes a doctor out of the picker. Never deletes: every order they signed
+    /// is the record of who signed it, and box 17 on those claims has to keep
+    /// naming them.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RetireDoctor(int doctorId)
+    {
+        var before = _doctors.Find(doctorId);
+        if (_doctors.Retire(doctorId) && before != null)
+        {
+            await _audit.RecordAsync("DME_DOCTOR_RETIRED", "DmeDoctor", doctorId,
+                before: new { before.FirstName, before.LastName, before.Npi, IsRetired = false },
+                after: new { before.FirstName, before.LastName, before.Npi, IsRetired = true });
+        }
+
+        return RedirectToAction("Doctors");
+    }
+
 
     /// <summary>
     /// Who this supplier buys from, for the items they never hold themselves.

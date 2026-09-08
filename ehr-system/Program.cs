@@ -124,6 +124,10 @@ builder.Services.AddScoped<IDmeHcpcsCatalog, DmeHcpcsCatalog>();
 // three national catalogs above. See Services/DmeDistributors.cs.
 builder.Services.AddScoped<IDmeDistributors, DmeDistributors>();
 
+// The referring physicians orders are taken from. CMS-1500 boxes 17 and 17b are
+// mandatory on DMEPOS, and there was no way to add one. See Services/DmeDoctors.cs.
+builder.Services.AddScoped<IDmeDoctors, DmeDoctors>();
+
 // Proof-of-delivery attachments. Scoped because it holds the request-scoped
 // DmeDb; it owns validation, encryption and the document row together so no
 // caller can do two of the three. See Services/DmeOrderDocuments.cs.

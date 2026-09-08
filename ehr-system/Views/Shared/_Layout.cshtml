@@ -238,6 +238,13 @@
                     <i class="bi bi-box"></i>
                     <span>Inventory</span>
                 </a>
+                @* Not requires-admin. Whoever raises an order needs the doctor who signed
+                   the referral to be on the list, and that is a daily job, not a
+                   commercial decision like choosing a distributor. *@
+                <a href="/Dme/Doctors" class="nav-item @(activePage == "doctors" ? "active" : "")">
+                    <i class="bi bi-person-badge"></i>
+                    <span>Doctors</span>
+                </a>
                 <a href="/Dme/Distributors" class="nav-item requires-admin @(activePage == "distributors" ? "active" : "")">
                     <i class="bi bi-truck"></i>
                     <span>Distributors</span>

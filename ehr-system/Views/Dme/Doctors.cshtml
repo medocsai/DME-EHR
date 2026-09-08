@@ -1,0 +1,118 @@
+@using EHR.Helpers
+@using EHR.Services
+@{
+    ViewData["ActivePage"] = "doctors";
+    var doctors = (IReadOnlyList<Doctor>)ViewBag.Doctors;
+    var live = doctors.Count(d => !d.IsRetired);
+}
+
+<div class="dme-wrap">
+    <div class="dme-head">
+        <div>
+            <h1>Doctors</h1>
+            <div class="dme-sub">Referring and ordering physicians &middot; CMS-1500 boxes 17 and 17b</div>
+        </div>
+    </div>
+
+    @if (ViewBag.DoctorError != null)
+    {
+        <div class="dme-banner" style="background:#fdecea;color:#8a1c13">
+            <i class="bi bi-exclamation-triangle"></i> @ViewBag.DoctorError
+        </div>
+    }
+
+    <div class="dme-kpis" style="grid-template-columns:repeat(2,1fr)">
+        <div class="dme-kpi"><div class="k-label">Referring doctors</div><div class="k-value">@live</div><div class="k-foot">available on a new order</div></div>
+        <div class="dme-kpi"><div class="k-label">Retired</div><div class="k-value">@(doctors.Count - live)</div><div class="k-foot">kept, so past orders still name them</div></div>
+    </div>
+
+    <div class="dme-card">
+        <div class="dme-card-head">
+            <h2>Add a doctor</h2>
+            <span class="dme-muted" style="font-size:12px">the NPI is checked before it is filed</span>
+        </div>
+        <div class="dme-card-body">
+            <form method="post" action="/Dme/AddDoctor" class="row g-2">
+                @Html.AntiForgeryToken()
+                <div class="col-md-3"><label class="form-label">First name <span style="color:#d6453f">*</span></label><input name="firstName" class="form-control" required /></div>
+                <div class="col-md-3"><label class="form-label">Last name <span style="color:#d6453f">*</span></label><input name="lastName" class="form-control" required /></div>
+                <div class="col-md-2">
+                    <label class="form-label">NPI</label>
+                    <input name="npi" class="form-control" maxlength="14" placeholder="10 digits" />
+                    <div class="form-text" style="font-size:11px">Box 17b. Required to bill.</div>
+                </div>
+                <div class="col-md-2"><label class="form-label">Specialty</label><input name="specialty" class="form-control" /></div>
+                <div class="col-md-2"><label class="form-label">Phone</label><input name="phone" class="form-control" /></div>
+                <div class="col-12 d-flex justify-content-end">
+                    <button type="submit" class="dme-btn dme-btn-primary dme-btn-sm"><i class="bi bi-plus-lg"></i> Add doctor</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="dme-card">
+        <div class="dme-card-head">
+            <h2>On the list</h2>
+            <span class="dme-muted" style="font-size:12px">a retired doctor is hidden from new orders, never deleted</span>
+        </div>
+        <table class="dme-table">
+            <thead><tr><th>Doctor</th><th>NPI</th><th>Specialty</th><th>Phone</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var d in doctors)
+                {
+                    <tr>
+                        <td>
+                            <strong>@d.DisplayName</strong>
+                            @if (d.IsRetired) { <span class="dme-chip gray">retired</span> }
+                        </td>
+                        @* An NPI is mandatory on a DMEPOS claim, so a doctor without one is
+                           flagged here rather than at the moment somebody tries to bill. *@
+                        <td class="dme-mono">
+                            @if (string.IsNullOrEmpty(d.Npi))
+                            {
+                                <span class="dme-chip amber">missing</span>
+                            }
+                            else
+                            {
+                                @d.Npi
+                            }
+                        </td>
+                        <td>@(string.IsNullOrEmpty(d.Specialty) ? "—" : d.Specialty)</td>
+                        <td>@(string.IsNullOrEmpty(d.Phone) ? "—" : d.Phone)</td>
+                        <td style="text-align:right">
+                            @if (!d.IsRetired)
+                            {
+                                <form method="post" action="/Dme/RetireDoctor" style="display:inline"
+                                      onsubmit="return confirm('Retire this doctor? Orders they already signed keep naming them.');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="doctorId" value="@d.DoctorId" />
+                                    <button type="submit" class="dme-btn dme-btn-light dme-btn-sm">retire</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                    <tr>
+                        <td colspan="5" style="padding-top:0">
+                            <details>
+                                <summary style="cursor:pointer;font-size:12.5px;color:#5b6472">Edit @d.DisplayName</summary>
+                                <form method="post" action="/Dme/UpdateDoctor" class="row g-2 mt-1">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="doctorId" value="@d.DoctorId" />
+                                    <div class="col-md-3"><input name="firstName" class="form-control" value="@d.FirstName" required /></div>
+                                    <div class="col-md-3"><input name="lastName" class="form-control" value="@d.LastName" required /></div>
+                                    <div class="col-md-2"><input name="npi" class="form-control" maxlength="14" value="@d.Npi" placeholder="NPI" /></div>
+                                    <div class="col-md-2"><input name="specialty" class="form-control" value="@d.Specialty" placeholder="Specialty" /></div>
+                                    <div class="col-md-2"><input name="phone" class="form-control" value="@d.Phone" placeholder="Phone" /></div>
+                                    <div class="col-12 d-flex justify-content-end">
+                                        <button type="submit" class="dme-btn dme-btn-light dme-btn-sm">Save</button>
+                                    </div>
+                                </form>
+                            </details>
+                        </td>
+                    </tr>
+                }
+                @if (doctors.Count == 0) { <tr><td colspan="5" class="dme-empty">No doctors yet. Add the one on your first referral.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+</div>
