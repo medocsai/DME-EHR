@@ -2262,86 +2262,6 @@ function navigateToPatient(patientId) {
 // Global Patient Search (Header Bar)
 // ============================================
 
-/**
- * Initialize the global patient search autocomplete in the header.
- * Uses the existing Autocomplete component and /api/patients/search endpoint.
- * Selecting a patient opens their detail modal via viewPatient().
- */
-function initGlobalPatientSearch() {
-    const input = document.getElementById('headerPatientSearchInput');
-    const results = document.getElementById('headerPatientSearchResults');
-
-    if (!input || !results) {
-        return;
-    }
-
-    const headerSearch = new Autocomplete({
-        inputId: 'headerPatientSearchInput',
-        resultsId: 'headerPatientSearchResults',
-        placeholder: 'Search patients...',
-        minChars: 2,
-        debounceMs: 250,
-        maxResults: 8,
-        emptyMessage: 'No patients found',
-        loadingMessage: 'Searching...',
-        itemClass: 'autocomplete-item',
-        activeClass: 'active',
-
-        onSearch: async (query) => {
-            try {
-                const response = await apiRequest(
-                    `/patients/search?q=${encodeURIComponent(query)}&take=8&activeOnly=false`,
-                    { showLoader: false, showErrors: false }
-                );
-                return response?.Results || [];
-            } catch (error) {
-                console.error('[GlobalSearch] Search failed:', error);
-                return [];
-            }
-        },
-
-        onSelect: (patient) => {
-            headerSearch.clear();
-            viewPatient(patient.PatientId);
-        },
-
-        renderItem: (patient) => {
-            const statusBadge = PatientStatuses.getBadgeHtml(patient.Status);
-            return `
-                <div>
-                    <div class="d-flex align-items-center">
-                        <span class="header-search-result-name">${escapeHtml(patient.DisplayName || patient.FullName)}</span>
-                        <span class="header-search-result-mrn">${escapeHtml(patient.MRN)}</span>
-                        ${statusBadge}
-                    </div>
-                    <div class="header-search-result-details">
-                        DOB: ${escapeHtml(patient.DOBFormatted)} (${patient.Age}y)
-                        ${patient.PhoneLast4 ? ' &bull; Ph: ***' + escapeHtml(patient.PhoneLast4) : ''}
-                        ${patient.PrimaryInsurance ? ' &bull; ' + escapeHtml(patient.PrimaryInsurance) : ''}
-                    </div>
-                </div>
-            `;
-        }
-    });
-
-    // Keyboard shortcut: Ctrl+K (or Cmd+K on Mac) to focus search
-    document.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-            e.preventDefault();
-            input.focus();
-            input.select();
-        }
-    });
-
-    // Escape key to blur when results are already closed
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !headerSearch.isOpen) {
-            input.blur();
-        }
-    });
-
-    window.headerPatientSearch = headerSearch;
-}
 
 // ============================================
 // Clinical Notes Functions
@@ -4018,7 +3938,6 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(initSearch, 100);
             return;
         }
-        initGlobalPatientSearch();
     };
     initSearch();
 });
@@ -4380,7 +4299,6 @@ window.checkOutAppointment = checkOutAppointment;
 window.viewPatient = viewPatient;
 window.viewPatientFallback = viewPatientFallback;
 window.navigateToPatient = navigateToPatient;
-window.initGlobalPatientSearch = initGlobalPatientSearch;
 window.calculateAge = calculateAge;
 window.rescheduleFromMissed = rescheduleFromMissed;
 window.rescheduleAppointment = rescheduleAppointment;

@@ -20,7 +20,7 @@
     <link href="https://cdn.jsdelivr.net/npm/trumbowyg@@2.27.3/dist/ui/trumbowyg.min.css" rel="stylesheet"
           integrity="sha384-BMSJyRuWWysKSQXUwY6xhPnRLhIEIKVrndBFiMT8osUv0Jy4u+kVojiTB4oIk9Cy" crossorigin="anonymous">
     <!-- Custom Styles -->
-    <link href="~/css/styles.css?v=1779131275" rel="stylesheet">
+    <link href="~/css/styles.css?v=1779131276" rel="stylesheet">
     <!-- DME design system -->
     <link href="~/css/dme.css?v=4" rel="stylesheet">
 
@@ -298,29 +298,6 @@
                 </button>
                 <h4 class="page-title mb-0" id="headerPageTitle">@pageTitle</h4>
 
-                <!-- Ask Medocs AI Button -->
-                <a href="https://app.medocs.ai/ask-medocs-ai" target="_blank" class="ask-ai-btn" title="Ask Medocs AI">
-                    <span class="ask-ai-stars">
-                        <svg width="18" height="18" viewBox="0 0 24 24">
-                            <path d="M12 2l2.9 6.8 7.1.6-5.3 4.6 1.6 7-6.3-3.8-6.3 3.8 1.6-7-5.3-4.6 7.1-.6z" />
-                        </svg>
-                    </span>
-                    <span class="d-none d-md-inline">Ask Medocs AI</span>
-                </a>
-
-                <!-- Global Patient Search -->
-                <div class="header-patient-search" id="headerPatientSearchContainer">
-                    <div class="header-search-wrapper">
-                        <i class="bi bi-search header-search-icon"></i>
-                        <input type="text" class="form-control header-search-input"
-                               id="headerPatientSearchInput"
-                               placeholder="Search customers..."
-                               autocomplete="off" aria-label="Search customers">
-                        <kbd class="header-search-shortcut d-none d-lg-inline">Ctrl+K</kbd>
-                    </div>
-                    <div class="header-search-results d-none" id="headerPatientSearchResults"></div>
-                </div>
-
                 <!-- Super Admin Clinic Filter -->
                 <div class="clinic-filter-container requires-super-admin" id="clinicFilterContainer">
                     <label class="clinic-filter-label">
@@ -331,24 +308,6 @@
                     </select>
                 </div>
                 <div class="header-actions d-flex align-items-center gap-2">
-                    <button class="btn btn-outline-secondary position-relative d-none" id="patientMessagesBtn" title="Messages">
-                        <i class="bi bi-chat-dots"></i>
-                        <span class="d-none d-md-inline ms-1">Messages</span>
-                        <span class="badge rounded-pill position-absolute top-0 start-100 translate-middle d-none" id="patientMessagesBadge" style="font-size: 0.65rem; background-color: #8B0000; color: #FFFFFF;">0</span>
-                    </button>
-
-                    @* Care Notes notification bell -- Clinician role only.
-                       Visibility is enforced by the .clinician-only class
-                       (handled in GlobalBridge.js -- non-clinicians get display:none). *@
-                    <div class="position-relative clinician-only" id="careNotesContainer">
-                        <button class="btn btn-outline-secondary position-relative" id="careNotesBtn" title="Care Notes">
-                            <i class="bi bi-journal-medical"></i>
-                            <span class="d-none d-md-inline ms-1">Care Notes</span>
-                            <span class="badge rounded-pill position-absolute top-0 start-100 translate-middle d-none" id="careNotesBadge" style="font-size: 0.65rem; background-color: #8B0000; color: #FFFFFF;">0</span>
-                        </button>
-                        <div class="cn-dropdown" id="careNotesDropdown" style="display:none;"></div>
-                    </div>
-
                     <a href="/Dme/NewOrder" class="btn btn-primary">
                         <i class="bi bi-plus-lg me-1"></i>
                         <span class="d-none d-md-inline">New Order</span>
@@ -490,7 +449,7 @@
     <script src="~/js/core/App.js?v=1776285003"></script>
     <script src="~/js/shared/ui/FileViewerModal.js?v=1776285000"></script>
     <script src="~/js/shared/ui/HistoryActionModal.js?v=1777095224"></script>
-    <script src="~/js/core/GlobalBridge.js?v=1778060324"></script>
+    <script src="~/js/core/GlobalBridge.js?v=1778060325"></script>
     <script src="~/js/core/NoteGenerationTracker.js?v=1776285000"></script>
     <script src="~/js/core/ScheduleSignalRService.js?v=1776285000"></script>
     <script src="~/js/core/ConsentSignalRService.js?v=1776285000"></script>

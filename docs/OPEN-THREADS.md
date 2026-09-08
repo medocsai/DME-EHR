@@ -283,6 +283,70 @@ posting screen already writes.
 
 ---
 
+## Thread 8: RehabDox has the proven biller workflow, DME does not (OPEN, raised 2026-09-07)
+
+Raised by Hammas. RehabDox (`D:\Professional Work\EHR Systems\rehabdox-ptehr\rehabdox-webapp`)
+carries a finished, spec'd, tested EOB / copay / ERA implementation that DME has
+no equivalent of. Read only, never modify it.
+
+What exists there:
+
+| RehabDox | Lines | DME equivalent |
+|---|---|---|
+| `EOB_POSTING_SPEC.md` + `BILLING_ENHANCEMENTS_DISCUSSION.md` | spec | none |
+| `Services/Billing/EobPostingService.cs` | 1234 | `DmePaymentService.cs`, thinner |
+| `Services/Billing/EobDocumentService.cs` | 637 | none |
+| `Services/OfficeAlly/Edi837PGenerator.cs` | 1098 | none, thread 4 |
+| `Services/OfficeAlly/Era835LineMatcher.cs` | 271 | none, thread 4 |
+| `Services/OfficeAlly/EraLinePostingService.cs` | 249 | none, thread 4 |
+| `PaymentBatches` (check/remittance header) | schema | none, DME posts one receipt at a time |
+
+Where the two AGREE already, so a port is cheap: money has one home and nothing
+derivable is stored; `PR` is the patient group and only that, `CO` is the
+contractual group and only that, and they never merge; a posting is all or
+nothing; the backend is the only guard.
+
+Where they DIFFER, and a decision is needed before any code moves:
+
+1. **RehabDox bills visits. DME bills rental months.** Both are 837P, but DMEPOS
+   carries loops RehabDox never fills. The generator is a starting point, not a
+   drop-in.
+2. **RehabDox has a batch header (`PaymentBatches`), DME does not.** One check
+   covering twelve rental claims currently has to be posted as twelve separate
+   receipts. That is the biggest real gap for a working biller, and it is
+   portable today with no clearinghouse account needed.
+3. **RehabDox stores four money cells on `Charges`. DME stores two** on
+   `DmePaymentLines` and computes the rest. DME's model is the stricter one. Do
+   not import the extra two columns.
+
+**Next action:** none until Hammas decides scope. The batch header is the piece
+that pays for itself without unblocking thread 4 first.
+
+---
+
+## Thread 9: orphaned Collect Payment modal in GlobalBridge.js (OPEN, raised 2026-09-08)
+
+Found while clearing the Dashboard. `wwwroot/js/core/GlobalBridge.js` still holds
+the whole clinical **Collect Payment** modal: 51 references, calling
+`/api/patients/search` and `/api/patients`.
+
+Both endpoints are gone (no `PatientsController` since 2026-08-25) and **no view
+in the product contains the modal markup**, so nothing can open it. It is inert
+because every handler is guarded with `?.`, which is exactly why nobody noticed.
+
+Not removed in the Dashboard pass: it is a separate dead feature, not a header
+control, and 51 references in a 4,000 line file is its own task with its own
+risk. `DmeDashboardTileTests` says so in a comment, and is scoped to the header
+so it does not fail for this unrelated reason.
+
+DME already has real payment posting (`DmePaymentService`, `/Dme/Payments`), so
+there is nothing here to salvage.
+
+**Next action:** none until Hammas decides. Recommendation is delete, in its own
+commit, with a full rebuild and a click through the payment screens after.
+
+---
+
 ## Thread 5: Ops decisions that block go-live, not development
 
 1. **Rotate the three committed secrets.** `appsettings.json` is tracked and

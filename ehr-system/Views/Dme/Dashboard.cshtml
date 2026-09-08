@@ -11,10 +11,10 @@
 
 <div class="dme-wrap">
     <div class="dme-head">
-        <div><h1>Dashboard</h1><div class="dme-sub">DME operations overview · Lakeview Medical Supply</div></div>
-        <div class="d-flex gap-2">
-            <a href="/Dme/Customers" class="dme-btn dme-btn-light"><i class="bi bi-people"></i> Customers</a>
-            <a href="/Dme/NewOrder" class="dme-btn dme-btn-primary"><i class="bi bi-box-seam"></i> New Order</a>
+        <div>
+            <h1>Dashboard</h1>
+            @{ var supplier = (string)ViewBag.SupplierName; }
+            <div class="dme-sub">DME operations overview@(string.IsNullOrWhiteSpace(supplier) ? "" : " · " + supplier)</div>
         </div>
     </div>
 
@@ -86,7 +86,7 @@
 
     <div class="dme-kpis">
         <div class="dme-kpi"><div class="k-label">Active rentals</div><div class="k-value">@ViewBag.ActiveRentals</div><div class="k-foot">recurring monthly revenue</div></div>
-        <div class="dme-kpi"><div class="k-label">Due to bill (7d)</div><div class="k-value">@ViewBag.DueSoon</div><div class="k-foot">needs a rental claim</div></div>
+        <div class="dme-kpi"><div class="k-label">Due to bill</div><div class="k-value">@ViewBag.BillingBacklog</div><div class="k-foot">@ViewBag.Overdue overdue &middot; @ViewBag.DueSoon due within 7 days</div></div>
         <div class="dme-kpi"><div class="k-label">Open orders</div><div class="k-value">@ViewBag.OpenOrders</div><div class="k-foot">draft + confirmed</div></div>
         <div class="dme-kpi"><div class="k-label">Ready to bill</div><div class="k-value">@F.Money(ViewBag.ReadyTotal)</div><div class="k-foot">@ViewBag.ReadyCount claim(s) queued</div></div>
     </div>

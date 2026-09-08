@@ -5498,6 +5498,21 @@ h6, .h6 {
     padding: 0.375rem 0.65rem;
 }
 
+/* A select paints Bootstrap's chevron as a background image sitting inside its
+   own right padding. Both `.form-control, .form-select` blocks in this file use
+   the `padding` shorthand, which resets that padding to the horizontal value,
+   so any option long enough to fill the control renders its last characters
+   underneath the arrow. Restore the room the arrow needs.
+
+   This must stay AFTER the block above: same specificity, so the later rule
+   wins. Placed before it, it silently does nothing.
+
+   Every select in the app depends on this, not only the dashboard month picker
+   where it was first noticed. */
+.form-select {
+    padding-right: 2.25rem;
+}
+
 .form-label {
     font-size: 0.8125rem; /* 13px */
     margin-bottom: 0.25rem;

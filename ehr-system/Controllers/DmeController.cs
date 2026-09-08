@@ -118,6 +118,13 @@ public class DmeController : Controller
             .Select(i => new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-i))
             .ToList();
 
+        // The supplier's own name, never a literal. This subtitle read
+        // "Lakeview Medical Supply" for every tenant on the server, which is
+        // the same class of mistake as the NPI that was hardcoded in Cms.cshtml.
+        // Read through vDmeBillingProvider, which row level security scopes;
+        // dbo.Tenants is not in the policy and must not be read directly here.
+        ViewBag.SupplierName = F.S(BillingProvider()?["BillingName"]);
+
         LoadLocationContext();
 
         var rentals = _db.Query("SELECT * FROM dbo.vDmeRentals WHERE Status='active' AND" + LocationFilter + "ORDER BY NextBillDate");
@@ -131,13 +138,28 @@ public class DmeController : Controller
         _phi.ComposeCustomerNames(claims);
 
         var ready = claims.Where(c => F.S(c["Status"]) == "ready").ToList();
-        var dueSoon = rentals.Where(r => { var d = F.DaysUntil(r["NextBillDate"]); return d.HasValue && d.Value <= 7; }).ToList();
+
+        // Two separate facts, because they are two separate problems. A rental
+        // whose bill date has passed is money already lost this month; one due
+        // in the next week is a task. Folding overdue into a tile labelled "7d"
+        // let a supplier sit months behind on rental billing with the dashboard
+        // showing a small, calm number.
+        var overdue = rentals.Where(r => { var d = F.DaysUntil(r["NextBillDate"]); return d.HasValue && d.Value < 0; }).ToList();
+        var dueSoon = rentals.Where(r => { var d = F.DaysUntil(r["NextBillDate"]); return d.HasValue && d.Value >= 0 && d.Value <= 7; }).ToList();
+
+        // Counted by its own query, never from the six rows the Recent orders
+        // panel shows. Counting inside a TOP 6 window capped this tile at 6 and
+        // hid every open order older than the six most recent.
+        var openOrders = Convert.ToInt32(_db.Scalar(
+            "SELECT COUNT(*) FROM dbo.vDmeOrders WHERE Status IN ('draft','confirmed') AND" + LocationFilter) ?? 0);
 
         ViewBag.Rentals = rentals;
         ViewBag.Orders = orders;
         ViewBag.ActiveRentals = rentals.Count;
+        ViewBag.Overdue = overdue.Count;
         ViewBag.DueSoon = dueSoon.Count;
-        ViewBag.OpenOrders = orders.Count(o => F.S(o["Status"]) is "draft" or "confirmed");
+        ViewBag.BillingBacklog = overdue.Count + dueSoon.Count;
+        ViewBag.OpenOrders = openOrders;
         ViewBag.ReadyTotal = ready.Sum(c => F.Dec(c["Total"]));
         ViewBag.ReadyCount = ready.Count;
         return View();
