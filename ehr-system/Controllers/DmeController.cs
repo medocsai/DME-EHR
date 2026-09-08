@@ -1659,6 +1659,20 @@ public class DmeController : Controller
             return RedirectToAction("Settings");
         }
 
+        // The supplier's own NPI goes in CMS-1500 box 33a on every claim they
+        // will ever file, so a typo here is not one rejected claim, it is all of
+        // them. Same check as the ordering physician's, from the same helper:
+        // one rule, because two would disagree eventually and the disagreement
+        // would look like some payers being fussier than others.
+        npi = Npi.Normalise(npi);
+        if (npi != null && !Npi.IsPossible(npi))
+        {
+            TempData["SettingsError"] =
+                "That NPI cannot be right: it must be ten digits and its check digit does not match. "
+              + "Compare it with your Medicare enrolment letter.";
+            return RedirectToAction("Settings");
+        }
+
         var before = BillingProvider();
 
         _db.Execute(@"
@@ -1670,7 +1684,7 @@ public class DmeController : Controller
             new
             {
                 billingName = billingName.Trim(),
-                npi = (object?)npi?.Trim() ?? DBNull.Value,
+                npi = (object?)npi ?? DBNull.Value,
                 taxId = (object?)taxId?.Trim() ?? DBNull.Value,
                 address = (object?)address?.Trim() ?? DBNull.Value,
                 city = (object?)city?.Trim() ?? DBNull.Value,

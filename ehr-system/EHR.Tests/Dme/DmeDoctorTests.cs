@@ -269,4 +269,25 @@ public class DmeDoctorTests
         Read("Views", "Shared", "_Layout.cshtml").Should().Contain("/Dme/Doctors")
             .And.NotContain("\"/Dme/Doctors\" class=\"nav-item requires-admin");
     }
+
+    /// <summary>
+    /// The supplier's OWN NPI is checked by the same rule.
+    ///
+    /// It goes in CMS-1500 box 33a on every claim they will ever file, so a typo
+    /// there is not one rejected claim, it is all of them. This is the second
+    /// caller that makes the shared helper worth having.
+    /// </summary>
+    [Fact]
+    public void TheSuppliersOwnNpiIsCheckedToo()
+    {
+        var save = Regex.Match(
+            Read("Controllers", "DmeController.cs"),
+            @"IActionResult> SaveSupplier\(.*?\n    \}",
+            RegexOptions.Singleline).Value;
+
+        save.Should().NotBeEmpty("the supplier save action should be there");
+        save.Should().Contain("Npi.Normalise(npi)");
+        save.Should().Contain("!Npi.IsPossible(npi)",
+            "box 33a is on every claim this supplier files");
+    }
 }
