@@ -1006,10 +1006,14 @@ printf 'MZ\220\000\003\000\000\000not a pdf at all, just wearing the name' > "$P
 
 POD_TOK=$(curl -s -b $J -c $J "$BASE/Dme/Order/$POD_ORD" | grep -oE 'name="__RequestVerificationToken"[^>]*value="[^"]+' | head -1 | sed 's/.*value="//')
 
+# The category is required now: a document is filed as proof of delivery, a
+# written order, a CMN, medical records, prior authorisation, an ABN, an
+# insurance card or other. Posting without one is refused before the bytes are
+# read, which is what this section used to do.
 curl -s -b $J -c $J -o /dev/null -X POST "$BASE/Dme/AttachPod" \
-  -F "__RequestVerificationToken=$POD_TOK" -F "id=$POD_ORD" -F "file=@$POD_DIR/pod.pdf;type=application/pdf"
+  -F "__RequestVerificationToken=$POD_TOK" -F "id=$POD_ORD" -F "category=pod" -F "file=@$POD_DIR/pod.pdf;type=application/pdf"
 curl -s -b $J -c $J -o /dev/null -X POST "$BASE/Dme/AttachPod" \
-  -F "__RequestVerificationToken=$POD_TOK" -F "id=$POD_ORD" -F "file=@$POD_DIR/evil.pdf;type=application/pdf"
+  -F "__RequestVerificationToken=$POD_TOK" -F "id=$POD_ORD" -F "category=pod" -F "file=@$POD_DIR/evil.pdf;type=application/pdf"
 
 POD_ID=$($SQL -Q "SET NOCOUNT ON; SELECT ISNULL(MIN(DocumentId),0) FROM dbo.DmeOrderDocuments WHERE DocumentId > $POD_BEFORE" | tr -d ' \r')
 

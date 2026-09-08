@@ -131,6 +131,11 @@ and 1,745 clinical claims that DME never read. Do not reintroduce them.
 12. `2026-08-27_DME_Hcpcs_Catalog.sql`
 13. `2026-08-27_DME_Drop_Ship.sql`
 14. `2026-08-27_DME_Order_Documents.sql`
+15. `2026-09-08_DME_Drop_Fake_Eligibility.sql`
+16. `2026-09-08_DME_Document_Categories.sql`
+17. `2026-09-08_DME_Customer_Editing.sql`
+18. `2026-09-08_DME_Cmn_Derived.sql`
+19. `2026-09-08_DME_Doctors.sql`
 Then `POST /Dme/BackfillPhi` once as an admin. Verified end to end on a scratch
 database. Note `ALTER SECURITY POLICY` and any batch naming a dropped column are
 validated at COMPILE time, so `IF NOT EXISTS` guards do not protect them: use
@@ -570,7 +575,7 @@ which supplier they are looking at.
   session cookie is issued against the same expiry.
 
 ### Tests
-`dotnet test ehr-system/EHR.Tests` — **323 passing**. It was 304 before the
+`dotnet test ehr-system/EHR.Tests` — **442 passing**. It was 304 before the
 clinical EHR was removed; 193 of those tested code that no longer exists. The DME suite is
 in `EHR.Tests/Dme/`. Four SecurityOverhaul test files are excluded in the csproj
 because they test `EHR.Services.Security`, which exists in IMEHR but was never
@@ -578,6 +583,8 @@ copied into this fork.
 
 Run `bash scripts/verify-dme-foundation.sh` against a running app for the
 end-to-end proof: **175 checks** with a super admin sign in, 160 without.
+A section that posts a document must send a `category`; without one the attach
+is refused before the bytes are read.
 
 ```bash
 SUPERADMIN_EMAIL=you@example.com SUPERADMIN_PASSWORD=... bash scripts/verify-dme-foundation.sh
@@ -592,6 +599,44 @@ the POST failed that was a SEEDED customer, which it then deleted. The Super Adm
 defaulted in the script; without it that half reports SKIP rather than counting
 as passed.
 
+
+## The 2026-09-08 audit (read `docs/AUDIT-2026-09.md`)
+
+Every screen walked in a real browser and fixed. Tests 323 to 442. The parts a
+future session must not undo:
+
+- **The rental cap is a server guard, not a display rule.** `BillNow` had none:
+  the Rentals view hid the button and that was the whole protection. Billing past
+  `CapMonths` is billing for equipment the supplier no longer owns. The same
+  write is guarded on the `NextBillDate` that was read, so two clicks make one
+  claim, and the final month sets the rental to `ended`.
+- **The product may not assert a fact it has not established.** A green
+  "Eligible" chip, a button printing "Deductible met", and an `EligStatus` column
+  holding the constant `'active'` were all removed. Nothing here has ever asked a
+  payer. `DmeNoFabricatedFactsTests` scans every view.
+- **A customer can be edited**, and saving a name MUST re-run
+  `IndexCustomerForSearch`: the blind index is hashed from the plaintext, so
+  without it the customer stays findable under the OLD name and not the new one.
+- **`TOP 1 ... Kind='primary'` must carry `ORDER BY`.** Harmless while only one
+  primary could exist; ambiguous now that insurances can be edited.
+- **ICD-10 is searched in memory** (`Services/IcdCodeCache.cs`), not in SQL. It
+  was 1.5 seconds a keystroke against 54ms for the payer picker, and no index
+  fixes a `LIKE '%word%'` over 74,719 rows. **The October CMS refresh needs an
+  app restart.**
+- **The CMN chip is derived from `DmeCmns`, and can say `expired`.** It used to
+  read `DmeOrderLines.CmnOnFile`, a boolean nothing wrote, which could never
+  expire. `DmeCmns` was read by nothing at all.
+- **`Deliver` registers a unit only when the line `IsSerialized`.** The check is
+  an `if`, NEVER a `continue`: the stock movement below it is unconditional, and
+  an early exit would stop deducting on-hand for every consumable.
+- **Doctors can be added**, and an NPI is check-digit validated in ONE place
+  (`Helpers/Npi.cs`) for both the supplier and the physician. `DmeDoctors` carries
+  a FILTERED index, so `sqlcmd -I` is required against it.
+- **An unclosed `<script>` is a clean build, a 200, and a dead page.**
+  `DmeViewMarkupTests` counts tags across every view. This was self-inflicted.
+- **A DDL object name cannot be a parameter.** `DROP CONSTRAINT @c` inside
+  `sp_executesql` fails at run time complaining about the constraint. Build the
+  string with `QUOTENAME`.
 ## Constraints
 - **NEVER touch** the IMEHR codebase (`..\imehr`), the rehabdox codebase, or the `IMEHR` /
   `PTEHR` databases. All work stays in `imehr-dme` + the `DMEEHR` database.

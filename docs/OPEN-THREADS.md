@@ -347,6 +347,31 @@ commit, with a full rebuild and a click through the payment screens after.
 
 ---
 
+## Thread 10: demo data to clean before a client demo (OPEN, raised 2026-09-08)
+
+None of these are code faults. All are one line of SQL. Found while walking the
+screens for `docs/AUDIT-2026-09.md`.
+
+1. **The three rentals are overdue since June.** The dashboard correctly reports
+   3 overdue, which is honest but not the story to open a demo with.
+2. **`CLM-02002` is "Ready to bill" and "Denied" at once.** The seed posted a
+   denial against a claim that was never submitted, which cannot happen in life.
+   A client will ask.
+3. **Two serialised-unit rows are consumables**, left over from the bug fixed in
+   09d5c82. `DELETE FROM DmeSerializedUnits WHERE UnitId IN (8,9)`.
+4. **Every NPI in the demo data fails its check digit**, including the
+   supplier's own `1234567890`. Nothing existing breaks, because validation runs
+   on add and edit only, but editing a doctor now refuses until the number is
+   corrected. `1234567893` and `1999999984` are valid examples.
+5. **Tenant 1's `LogoUrl` points at a file that was never in local storage**, so
+   every page load makes one 404. The loader's `onerror` hides the container
+   correctly, so it is noise rather than breakage.
+
+**Next action:** Hammas decides. Item 4 is the only one that changes behaviour
+rather than appearance.
+
+---
+
 ## Thread 5: Ops decisions that block go-live, not development
 
 1. **Rotate the three committed secrets.** `appsettings.json` is tracked and

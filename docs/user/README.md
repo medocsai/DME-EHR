@@ -8,20 +8,25 @@ page says what the rule means for the user and stops there.
 
 ## Pages
 
+The Dashboard page is written. The rest are outlined by `docs/AUDIT-2026-09.md`,
+which records what each screen now does and why, and is the source to write them
+from.
+
 | | Page | Status |
 |---|---|---|
 | 01 | Signing in | not written |
 | 02 | [The Dashboard](02-dashboard.md) | written |
 | 03 | Customers | not written |
-| 04 | Orders and delivery | not written |
-| 05 | HCPCS catalog | not written |
-| 06 | Inventory | not written |
-| 07 | Distributors | not written |
-| 08 | Rentals | not written |
-| 09 | Billing and claims | not written |
-| 10 | Payments | not written |
-| 11 | Settings | not written |
-| 12 | User management | not written |
+| 04 | Doctors | not written |
+| 05 | Orders and delivery | not written |
+| 06 | HCPCS catalog | not written |
+| 07 | Inventory | not written |
+| 08 | Distributors | not written |
+| 09 | Rentals | not written |
+| 10 | Billing and claims | not written |
+| 11 | Payments | not written |
+| 12 | Settings | not written |
+| 13 | User management | not written |
 
 ## The rules this guide is written under
 
