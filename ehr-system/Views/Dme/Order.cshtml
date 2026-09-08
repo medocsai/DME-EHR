@@ -82,13 +82,15 @@
         </table>
     </div>
 
-    @* Proof of delivery documents: the ticket the driver photographed, the signed
-       paper the customer scanned, the carrier's paperwork on a drop-shipped item.
-       This is the document that defends the claim in an audit, so it is on the
-       order whatever stage it has reached. *@
+    @* The order file. Proof of delivery answers "did it arrive"; it is not what a
+       payer asks for when they deny. Almost no DMEPOS denial is about the
+       equipment, it is about the paperwork: the written order, the CMN, the
+       chart notes proving the item was needed, the prior authorisation. All of
+       it belongs to the order, because a CMN covers a specific item for a
+       specific period, so it is here whatever stage the order has reached. *@
     <div class="dme-card">
         <div class="dme-card-head">
-            <h2>Delivery documents</h2>
+            <h2>Documents</h2>
             <span class="dme-muted" style="font-size:12px">PDF or picture, up to 25MB</span>
         </div>
         <div class="dme-card-body">
@@ -106,7 +108,7 @@
             else
             {
                 <table class="dme-table" style="margin-bottom:12px">
-                    <thead><tr><th>Document</th><th>Size</th><th>Attached by</th><th>When</th><th></th></tr></thead>
+                    <thead><tr><th>Document</th><th>Type</th><th>Size</th><th>Attached by</th><th>When</th><th></th></tr></thead>
                     <tbody>
                     @foreach (var d in documents)
                     {
@@ -118,6 +120,7 @@
                                     <i class="bi bi-paperclip"></i> @d.FileName
                                 </a>
                             </td>
+                            <td><span class="dme-chip gray">@EHR.Services.DmeOrderDocuments.CategoryLabel(d.Category)</span></td>
                             <td class="dme-mono">@(((d.FileSize + 1023) / 1024).ToString("N0")) KB</td>
                             <td>@(string.IsNullOrWhiteSpace(d.UploadedByName) ? "—" : d.UploadedByName)</td>
                             <td class="dme-muted">@d.UploadedAt.ToLocalTime().ToString("MMM d, yyyy")</td>
@@ -139,7 +142,13 @@
             <form method="post" action="/Dme/AttachPod" enctype="multipart/form-data" class="d-flex gap-2 align-items-center">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="id" value="@F.I(o["OrderId"])" />
-                <input type="file" name="file" class="form-control" style="max-width:360px"
+                <select name="category" class="form-select" style="max-width:240px">
+                    @foreach (var c in EHR.Services.DmeOrderDocuments.Categories)
+                    {
+                        <option value="@c.Key">@c.Value</option>
+                    }
+                </select>
+                <input type="file" name="file" class="form-control" style="max-width:340px"
                        accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff" required />
                 <button type="submit" class="dme-btn dme-btn-light"><i class="bi bi-upload"></i> Attach</button>
             </form>

@@ -119,7 +119,7 @@ public class DmeOrderDocumentTests
         var (docs, storage, _, _) = Build();
         var plain = RealPdf();
 
-        var result = await docs.AttachAsync(3, "pod.pdf", "application/pdf", plain, 5);
+        var result = await docs.AttachAsync(3, "pod", "pod.pdf", "application/pdf", plain, 5);
 
         result.Success.Should().BeTrue();
         var stored = storage.Files.Values.Single();
@@ -134,7 +134,7 @@ public class DmeOrderDocumentTests
     {
         var (docs, storage, _, _) = Build();
 
-        await docs.AttachAsync(3, "john-doe-oxygen-pod.pdf", "application/pdf", RealPdf(), 5);
+        await docs.AttachAsync(3, "pod", "john-doe-oxygen-pod.pdf", "application/pdf", RealPdf(), 5);
 
         var key = storage.Files.Keys.Single();
         key.Should().NotContain("john", "a bucket listing must not read as a patient list");
@@ -187,7 +187,7 @@ public class DmeOrderDocumentTests
     {
         var (docs, storage, _, _) = Build();
 
-        var result = await docs.AttachAsync(3, fileName, "application/pdf", RealPdf(), 5);
+        var result = await docs.AttachAsync(3, "pod", fileName, "application/pdf", RealPdf(), 5);
 
         result.Success.Should().BeFalse();
         result.Error.Should().NotBeNullOrWhiteSpace("a refusal has to say what to do instead");
@@ -205,7 +205,7 @@ public class DmeOrderDocumentTests
         var (docs, storage, _, _) = Build();
         var exe = new byte[] { 0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00 };
 
-        var result = await docs.AttachAsync(3, "pod.pdf", "application/pdf", exe, 5);
+        var result = await docs.AttachAsync(3, "pod", "pod.pdf", "application/pdf", exe, 5);
 
         result.Success.Should().BeFalse();
         storage.Files.Should().BeEmpty("nothing that failed validation may reach storage");
@@ -216,10 +216,10 @@ public class DmeOrderDocumentTests
     {
         var (docs, storage, _, _) = Build();
 
-        (await docs.AttachAsync(3, "pod.pdf", "application/pdf", Array.Empty<byte>(), 5)).Success.Should().BeFalse();
+        (await docs.AttachAsync(3, "pod", "pod.pdf", "application/pdf", Array.Empty<byte>(), 5)).Success.Should().BeFalse();
 
         var huge = new byte[DmeOrderDocuments.MaxFileBytes + 1];
-        (await docs.AttachAsync(3, "pod.pdf", "application/pdf", huge, 5)).Success.Should().BeFalse();
+        (await docs.AttachAsync(3, "pod", "pod.pdf", "application/pdf", huge, 5)).Success.Should().BeFalse();
 
         storage.Files.Should().BeEmpty();
     }
@@ -230,7 +230,7 @@ public class DmeOrderDocumentTests
         // DmeDb scopes the read, so another tenant's order simply is not found.
         var (docs, storage, _, _) = Build(orderExists: false);
 
-        var result = await docs.AttachAsync(999, "pod.pdf", "application/pdf", RealPdf(), 5);
+        var result = await docs.AttachAsync(999, "pod", "pod.pdf", "application/pdf", RealPdf(), 5);
 
         result.Success.Should().BeFalse();
         storage.Files.Should().BeEmpty();
@@ -367,5 +367,86 @@ public class DmeOrderDocumentTests
         service.Should().NotContain("WebRootPath", "wwwroot is public by design");
         service.Should().Contain("escapes the storage root",
             "an object key must not be able to climb out of the storage folder");
+    }
+
+    // ------------------------------------------------------- document categories
+
+    /// <summary>
+    /// Proof of delivery answers "did it arrive". It is NOT what a payer asks
+    /// for when they deny a claim.
+    ///
+    /// Almost no DMEPOS denial is about the equipment. They are about the file:
+    /// the standard written order, the certificate of medical necessity, the
+    /// chart notes proving the item was needed, the prior authorisation. Before
+    /// this, none of them had anywhere to be stored, so a supplier could pass
+    /// every screen in this product and still lose an appeal for want of a
+    /// document the software gave them no way to keep.
+    ///
+    /// The New Customer screen had offered exactly these categories, accepted a
+    /// file, listed it, and discarded it silently on save. Staff scanned a CMN,
+    /// believed it was on file, and had nothing when the payer asked.
+    /// </summary>
+    [Theory]
+    [InlineData("pod")]
+    [InlineData("swo")]
+    [InlineData("cmn")]
+    [InlineData("records")]
+    [InlineData("auth")]
+    [InlineData("abn")]
+    public void TheDocumentTypesADmeposAuditAsksForCanAllBeFiled(string category)
+    {
+        DmeOrderDocuments.Categories.Should().ContainKey(category,
+            "a document type with no category is a document with nowhere to live");
+    }
+
+    /// <summary>
+    /// A posted category is checked against the list before it is filed, not
+    /// only offered by the picker. Without this a posted value reaches the CHECK
+    /// constraint and returns a database error instead of a sentence, and the
+    /// form is not the only thing that can POST.
+    /// </summary>
+    [Fact]
+    public void APostedCategoryIsCheckedAgainstTheListBeforeItIsFiled()
+    {
+        var service = File.ReadAllText(Path.Combine(RepoRoot(), "Services", "DmeOrderDocuments.cs"));
+
+        service.Should().Contain("if (!Categories.ContainsKey(category ?? \"\"))",
+            "the picker is UX; the guard has to be on the server like every other one");
+    }
+
+    /// <summary>
+    /// One list, in one place. The database carries the same set as a CHECK
+    /// constraint, so a category added to the C# and not the constraint fails
+    /// loudly on the first upload rather than storing a document under a name
+    /// no screen can find again.
+    /// </summary>
+    [Fact]
+    public void TheCategoryListAndTheDatabaseConstraintAgree()
+    {
+        var sql = File.ReadAllText(Path.Combine(
+            RepoRoot(), "Migrations", "Manual", "2026-09-08_DME_Document_Categories.sql"));
+
+        foreach (var key in DmeOrderDocuments.Categories.Keys)
+            sql.Should().Contain($"'{key}'",
+                $"the constraint would reject '{key}' that the picker offers");
+    }
+
+    /// <summary>
+    /// And the demo panel that swallowed documents stays gone. It is the one
+    /// failure mode here that a user cannot detect: an upload that reports
+    /// success and stores nothing looks exactly like an upload that worked.
+    /// </summary>
+    [Fact]
+    public void TheNewCustomerScreenNoLongerPretendsToAcceptFiles()
+    {
+        var view = File.ReadAllText(Path.Combine(RepoRoot(), "Views", "Dme", "NewCustomer.cshtml"));
+
+        view.Should().NotContain("docAdd",
+            "the panel accepted a CMN, listed it, and discarded it on save");
+        view.Should().NotContain("id=\"docFile\"",
+            "a file input that persists nothing is worse than no file input");
+
+        view.Should().Contain("attached to the <strong>order</strong>",
+            "removing it is only half the fix; the user has to be told where documents actually go");
     }
 }

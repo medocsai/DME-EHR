@@ -137,19 +137,18 @@
                     </div>
                 </div>
                 <div class="dme-card">
-                    <div class="dme-card-head"><h2>Attachments</h2></div>
+                    <div class="dme-card-head"><h2>Documents</h2></div>
                     <div class="dme-card-body">
-                        <div class="dme-banner"><i class="bi bi-paperclip"></i> Attach scanned CMN/RX, insurance cards, ID, referrals.</div>
-                        <div class="row g-2 align-items-end">
-                            <div class="col-md-5"><label class="form-label">Category</label>
-                                <select class="form-select" id="docCat">
-                                    <option>CMN</option><option>RX</option><option>Insurance Card</option><option>ID</option><option>Referral</option><option>Proof of Delivery</option><option>Other</option>
-                                </select>
-                            </div>
-                            <div class="col-md-5"><label class="form-label">File</label><input type="file" class="form-control" id="docFile" /></div>
-                            <div class="col-md-2"><button type="button" class="dme-btn dme-btn-light w-100" id="docAdd">Attach</button></div>
+                        <div class="dme-banner">
+                            <i class="bi bi-paperclip"></i>
+                            The written order, the CMN, medical records, prior authorisation and
+                            proof of delivery are attached to the <strong>order</strong>, not to the
+                            customer. Raise the order first, then attach them on the order screen.
                         </div>
-                        <div id="docList" class="mt-2"></div>
+                        <div class="dme-muted" style="font-size:12.5px">
+                            A CMN covers one item for one period, so the paperwork that defends a
+                            claim lives beside the claim it defends.
+                        </div>
                     </div>
                 </div>
             </div>
@@ -201,25 +200,3 @@
         note:  function (d) { return 'ICD-10 ' + d.code; },
         empty: 'No diagnosis matches that. Try a condition, or the ICD-10 code.'
     });
-    // Attachments — demo UI only (not persisted)
-    (function () {
-        var list = [], docList = document.getElementById('docList');
-        document.getElementById('docAdd').addEventListener('click', function () {
-            var f = document.getElementById('docFile');
-            var name = (f.files && f.files.length) ? f.files[0].name : 'scanned-document.pdf';
-            list.push({ name: name, cat: document.getElementById('docCat').value });
-            f.value = '';
-            render();
-        });
-        function render() {
-            docList.innerHTML = list.map(function (d, i) {
-                return '<div class="dme-line" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px">' +
-                    '<span><i class="bi bi-file-earmark-text dme-muted"></i> ' + d.name + ' <span class="dme-chip gray">' + d.cat + '</span></span>' +
-                    '<button type="button" class="dme-btn dme-btn-light dme-btn-sm" data-rm="' + i + '">remove</button></div>';
-            }).join('');
-            docList.querySelectorAll('[data-rm]').forEach(function (b) {
-                b.onclick = function () { list.splice(+b.getAttribute('data-rm'), 1); render(); };
-            });
-        }
-    })();
-</script>

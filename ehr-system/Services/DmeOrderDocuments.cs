@@ -14,7 +14,7 @@ namespace EHR.Services;
 /// <param name="UploadedByName">Who attached it.</param>
 /// <param name="UploadedAt">When.</param>
 public record OrderDocument(
-    int DocumentId, int OrderId, string FileName, string ContentType,
+    int DocumentId, int OrderId, string Category, string FileName, string ContentType,
     long FileSize, string UploadedByName, DateTime UploadedAt);
 
 /// <summary>Outcome of an attach attempt, with a sentence a person can act on.</summary>
@@ -31,7 +31,7 @@ public interface IDmeOrderDocuments
     /// refusal with a reason rather than throwing, because every refusal here is
     /// something a person did and can fix.
     /// </summary>
-    Task<AttachResult> AttachAsync(int orderId, string fileName, string contentType, byte[] bytes, int? userId);
+    Task<AttachResult> AttachAsync(int orderId, string category, string fileName, string contentType, byte[] bytes, int? userId);
 
     /// <summary>
     /// The decrypted bytes and original name, or null when the document is not
@@ -95,6 +95,33 @@ public sealed class DmeOrderDocuments : IDmeOrderDocuments
     public const long MaxFileBytes = 25L * 1024 * 1024;
 
     /// <summary>
+    /// What a document can be filed as, and what a person calls it.
+    ///
+    /// The database carries the same list as a CHECK constraint. This exists so
+    /// the picker, the labels and the server guard all read from ONE place: a
+    /// category added here and nowhere else fails the constraint loudly rather
+    /// than storing a document under a name no screen can find again.
+    ///
+    /// 'pod' is first because it is the default and the commonest.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> Categories =
+        new Dictionary<string, string>
+        {
+            ["pod"]       = "Proof of delivery",
+            ["swo"]       = "Written order (SWO)",
+            ["cmn"]       = "Certificate of medical necessity",
+            ["records"]   = "Medical records",
+            ["auth"]      = "Prior authorisation",
+            ["abn"]       = "Advance beneficiary notice",
+            ["insurance"] = "Insurance card",
+            ["other"]     = "Other"
+        };
+
+    /// <summary>The label for a stored category, or the raw value if it is unknown.</summary>
+    public static string CategoryLabel(string category)
+        => Categories.TryGetValue(category ?? "", out var label) ? label : category ?? "";
+
+    /// <summary>
     /// What a proof of delivery actually is. Deliberately narrower than the
     /// shared validator's list: a spreadsheet is not a proof of delivery, and
     /// every extra type is another parser somebody's antivirus has to trust.
@@ -128,6 +155,7 @@ public sealed class DmeOrderDocuments : IDmeOrderDocuments
         return rows.Select(r => new OrderDocument(
             F.I(r["DocumentId"]),
             F.I(r["OrderId"]),
+            F.S(r["Category"]),
             _encryption.Decrypt(F.S(r["FileName"])) ?? "document",
             F.S(r["ContentType"]),
             Convert.ToInt64(r["FileSize"]),
@@ -137,8 +165,14 @@ public sealed class DmeOrderDocuments : IDmeOrderDocuments
 
     /// <inheritdoc />
     public async Task<AttachResult> AttachAsync(
-        int orderId, string fileName, string contentType, byte[] bytes, int? userId)
+        int orderId, string category, string fileName, string contentType, byte[] bytes, int? userId)
     {
+        // The category is checked here, not only in the picker. A posted value
+        // the list does not know would otherwise reach a CHECK constraint and
+        // come back as a database error instead of a sentence.
+        if (!Categories.ContainsKey(category ?? ""))
+            return new AttachResult(false, "That is not a document type this product files.");
+
         if (bytes.Length == 0)
             return new AttachResult(false, "That file is empty.");
 
@@ -179,12 +213,13 @@ public sealed class DmeOrderDocuments : IDmeOrderDocuments
 
         var id = Convert.ToInt32(_db.Scalar(@"
             INSERT INTO dbo.DmeOrderDocuments
-            (TenantId, OrderId, FileName, StoragePath, ContentType, FileSize, FileHash, UploadedByUserId)
+            (TenantId, OrderId, Category, FileName, StoragePath, ContentType, FileSize, FileHash, UploadedByUserId)
             OUTPUT inserted.DocumentId
-            VALUES (@TenantId, @orderId, @name, @path, @ct, @size, @hash, @userId)",
+            VALUES (@TenantId, @orderId, @category, @name, @path, @ct, @size, @hash, @userId)",
             new
             {
                 orderId,
+                category,
                 name = _encryption.Encrypt(fileName),   // the original name is PHI
                 path = upload.CloudPath,
                 ct = contentType,

@@ -1088,7 +1088,7 @@ public class DmeController : Controller
     [HttpPost]
     [ValidateAntiForgeryToken]
     [RequestSizeLimit(DmeOrderDocuments.MaxFileBytes + 1024 * 1024)]
-    public async Task<IActionResult> AttachPod(int id, IFormFile? file)
+    public async Task<IActionResult> AttachPod(int id, string category, IFormFile? file)
     {
         if (file == null || file.Length == 0)
         {
@@ -1102,7 +1102,7 @@ public class DmeController : Controller
         await file.CopyToAsync(buffer);
 
         var result = await _documents.AttachAsync(
-            id, file.FileName, file.ContentType ?? "application/octet-stream", buffer.ToArray(), CurrentUserId());
+            id, category, file.FileName, file.ContentType ?? "application/octet-stream", buffer.ToArray(), CurrentUserId());
 
         if (!result.Success)
         {
