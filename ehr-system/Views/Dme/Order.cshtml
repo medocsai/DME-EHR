@@ -74,7 +74,28 @@
                         <td>@(F.S(l["Mode"]) == "purchase" ? "Purchase" : "Rental")</td>
                         <td>@F.I(l["Qty"])</td>
                         <td class="dme-mono dme-muted">@F.S(l["Modifiers"])</td>
-                        <td>@(F.B(l["CmnOnFile"]) ? Html.Raw("<span class=\"dme-chip green\">on file</span>") : Html.Raw("<span class=\"dme-chip amber\">missing</span>"))</td>
+                        @{
+                            @* Three states, not two. "Missing" needs the doctor to sign something;
+                               "expired" needs them to sign it AGAIN, and a claim dated after the
+                               recert date is denied for want of paperwork the supplier did have.
+                               A stored boolean could never say the second one. *@
+                            var cmn = F.S(l["CmnStatus"]);
+                            var recert = l["CmnRecertDate"] == null ? "" : F.Date(l["CmnRecertDate"]);
+                        }
+                        <td>
+                            @if (cmn == "on-file")
+                            {
+                                <span class="dme-chip green" title="Recertify by @recert">on file</span>
+                            }
+                            else if (cmn == "expired")
+                            {
+                                <span class="dme-chip red" title="Recert date @recert has passed">expired @recert</span>
+                            }
+                            else
+                            {
+                                <span class="dme-chip amber">missing</span>
+                            }
+                        </td>
                         <td style="text-align:right" class="dme-mono">@F.Money(amt)@(F.S(l["Mode"]) == "rental" ? "/mo" : "")</td>
                     </tr>
                 }

@@ -777,7 +777,10 @@ public class DmeController : Controller
         _phi.ComposeCustomerName(o);
         ViewData["Title"] = F.S(o["OrderNumber"]);
         ViewBag.Order = o;
-        ViewBag.Lines = _db.Query("SELECT * FROM dbo.DmeOrderLines WHERE OrderId=@id", new { id });
+        // The VIEW, not the base table: CmnStatus is derived from the certificate
+        // itself so it can report an expired one, which a stored boolean never
+        // could. See 2026-09-08_DME_Cmn_Derived.sql.
+        ViewBag.Lines = _db.Query("SELECT * FROM dbo.vDmeOrderLines WHERE OrderId=@id ORDER BY LineId", new { id });
         ViewBag.Documents = _documents.ForOrder(id);
         ViewBag.PodError = TempData["PodError"];
         return View();

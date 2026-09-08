@@ -46,9 +46,17 @@ BEGIN
         WHERE dc.parent_object_id = OBJECT_ID('dbo.DmeCustomerInsurances')
           AND c.name = 'EligStatus');
 
+    -- Built as a string, NOT passed as a parameter. An object name in DDL
+    -- cannot be parameterised: ALTER TABLE ... DROP CONSTRAINT @c is a syntax
+    -- error. This column happens to carry no default, so the branch never ran
+    -- and the mistake was invisible here; it was found when the same shape was
+    -- used on a column that did have one.
     IF @df IS NOT NULL
-        EXEC sp_executesql N'ALTER TABLE dbo.DmeCustomerInsurances DROP CONSTRAINT @c',
-             N'@c SYSNAME', @c = @df;
+    BEGIN
+        DECLARE @drop NVARCHAR(MAX) =
+            N'ALTER TABLE dbo.DmeCustomerInsurances DROP CONSTRAINT ' + QUOTENAME(@df);
+        EXEC sp_executesql @drop;
+    END
 
     -- sp_executesql because a batch naming a column being dropped is validated
     -- at COMPILE time, so an IF guard around it does not protect it. Same trap
