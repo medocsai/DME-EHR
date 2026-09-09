@@ -136,6 +136,7 @@ and 1,745 clinical claims that DME never read. Do not reintroduce them.
 17. `2026-09-08_DME_Customer_Editing.sql`
 18. `2026-09-08_DME_Cmn_Derived.sql`
 19. `2026-09-08_DME_Doctors.sql`
+20. `2026-09-09_DME_Customer_Balances.sql`
 Then `POST /Dme/BackfillPhi` once as an admin. Verified end to end on a scratch
 database. Note `ALTER SECURITY POLICY` and any batch naming a dropped column are
 validated at COMPILE time, so `IF NOT EXISTS` guards do not protect them: use
@@ -172,6 +173,26 @@ Decisions and the client-facing wording: **`docs/BILLING-DECISIONS.md`**.
   two people clicking Void produce one reversal.
 - Onboarding a new tenant needs nothing extra: the CARC list is global and the
   `PMT` number sequence creates itself on first use.
+
+
+### Money in, after 2026-09-09
+- **What a customer owes is `vDmeCustomerBalances`**, derived on top of
+  `vDmeClaimLines` rather than re-reading the CAS segments. One view owns the
+  per-line answer; the balance view adds its answers up. Only `Source='customer'`
+  money reduces it, because a payer cheque settles the payer's half.
+- **`PatientResponsibility` SUMS across remittances on one claim line**, so a
+  primary followed by a secondary reads high. Deliberate and documented in the
+  migration; a test fails if the note is removed while the behaviour stays.
+- **ONE RECEIPT CAN COVER SEVERAL CLAIMS, and there is no batch table.**
+  `dbo.DmePayments` has no `ClaimId` and a nullable `CustomerId`, so it has
+  always been the cheque header. Do not add `DmePaymentBatches`: a second header
+  above it is two rows describing one cheque. A test fails if that name appears
+  in any migration.
+- **The customer on a receipt is derived from the LINES being paid**, never from
+  the claim the screen opened on. A customer receipt spanning two customers is
+  refused; a payer receipt names no customer at all.
+- **Both refusal paths carry the claim list back**, so a rejected posting does
+  not empty a receipt somebody spent five minutes assembling.
 
 **Trap:** the tiles count APPLIED money (payment lines), not the face value of
 receipts. A check posted but not allocated makes the paid tile read low, which is
@@ -575,7 +596,7 @@ which supplier they are looking at.
   session cookie is issued against the same expiry.
 
 ### Tests
-`dotnet test ehr-system/EHR.Tests` — **442 passing**. It was 304 before the
+`dotnet test ehr-system/EHR.Tests` — **460 passing**. It was 304 before the
 clinical EHR was removed; 193 of those tested code that no longer exists. The DME suite is
 in `EHR.Tests/Dme/`. Four SecurityOverhaul test files are excluded in the csproj
 because they test `EHR.Services.Security`, which exists in IMEHR but was never

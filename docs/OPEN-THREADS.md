@@ -283,46 +283,37 @@ posting screen already writes.
 
 ---
 
-## Thread 8: RehabDox has the proven biller workflow, DME does not (OPEN, raised 2026-09-07)
+## Thread 8: RehabDox billing gap (CLOSED 2026-09-09, both buildable halves done)
 
-Raised by Hammas. RehabDox (`D:\Professional Work\EHR Systems\rehabdox-ptehr\rehabdox-webapp`)
-carries a finished, spec'd, tested EOB / copay / ERA implementation that DME has
-no equivalent of. Read only, never modify it.
+Raised 2026-09-07. Closed by 3368105 and 8953bab. What is left of it is thread 4
+and nothing else.
 
-What exists there:
+**Customer balances: BUILT.** `vDmeCustomerBalances`, a panel on the customer
+and a list on Payments, oldest first. PR money is the patient's share and a
+supplier is required to make a genuine effort to collect it; no screen displayed
+it before. Derived on top of `vDmeClaimLines` rather than re-reading the CAS
+segments, so there is one answer to "what does the patient owe".
 
-| RehabDox | Lines | DME equivalent |
-|---|---|---|
-| `EOB_POSTING_SPEC.md` + `BILLING_ENHANCEMENTS_DISCUSSION.md` | spec | none |
-| `Services/Billing/EobPostingService.cs` | 1234 | `DmePaymentService.cs`, thinner |
-| `Services/Billing/EobDocumentService.cs` | 637 | none |
-| `Services/OfficeAlly/Edi837PGenerator.cs` | 1098 | none, thread 4 |
-| `Services/OfficeAlly/Era835LineMatcher.cs` | 271 | none, thread 4 |
-| `Services/OfficeAlly/EraLinePostingService.cs` | 249 | none, thread 4 |
-| `PaymentBatches` (check/remittance header) | schema | none, DME posts one receipt at a time |
+**The cheque batch: BUILT, and it needed NO NEW TABLE.** This is the part worth
+remembering. `dbo.DmePayments` has no `ClaimId` and its `CustomerId` is
+nullable, so a receipt could always carry lines from any number of claims;
+`DmePaymentService` validated lines one at a time and never assumed one claim.
+The only claim-scoped thing was the posting screen's GET. RehabDox's
+`PaymentBatches` was NOT imported: a second header above the one that already
+exists would be two rows describing one cheque.
 
-Where the two AGREE already, so a port is cheap: money has one home and nothing
-derivable is stored; `PR` is the patient group and only that, `CO` is the
-contractual group and only that, and they never merge; a posting is all or
-nothing; the backend is the only guard.
+**What is still not built, and it is only this:** ERA/835 ingestion, which needs
+a live clearinghouse account to test against. That is thread 4.
 
-Where they DIFFER, and a decision is needed before any code moves:
-
-1. **RehabDox bills visits. DME bills rental months.** Both are 837P, but DMEPOS
-   carries loops RehabDox never fills. The generator is a starting point, not a
-   drop-in.
-2. **RehabDox has a batch header (`PaymentBatches`), DME does not.** One check
-   covering twelve rental claims currently has to be posted as twelve separate
-   receipts. That is the biggest real gap for a working biller, and it is
-   portable today with no clearinghouse account needed.
-3. **RehabDox stores four money cells on `Charges`. DME stores two** on
-   `DmePaymentLines` and computes the rest. DME's model is the stricter one. Do
-   not import the extra two columns.
-
-**Next action:** none until Hammas decides scope. The batch header is the piece
-that pays for itself without unblocking thread 4 first.
+**Known limit, documented in the migration and pinned by a test:**
+`PatientResponsibility` sums across remittances on one claim line, so a primary
+followed by a secondary overstates. Left as a sum because `vDmeClaimLines`
+already sums, and two answers to one question is worse than one answer with a
+written limit. Fixing it means deciding that the latest remittance supersedes
+the earlier one, which belongs with secondary billing.
 
 ---
+
 
 ## Thread 9: orphaned Collect Payment modal in GlobalBridge.js (OPEN, raised 2026-09-08)
 
