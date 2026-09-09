@@ -118,6 +118,49 @@
                         </form>
                     </details>
                 </div>
+            @{
+                var bal = (Dictionary<string, object?>)ViewBag.Balance;
+                var owed = bal == null ? 0m : F.Dec(bal["Balance"]);
+            }
+            @* What the CUSTOMER owes, not what the payer owes. This is the
+               deductible, coinsurance and copay the remittance put in the PR
+               group. A supplier is required to make a genuine effort to collect
+               it, so it belongs on the screen somebody has open when the
+               customer is on the phone. *@
+            <div class="dme-card">
+                <div class="dme-card-head">
+                    <h2>Customer balance</h2>
+                    <span class="dme-muted" style="font-size:12px">their share, not the payer's</span>
+                </div>
+                <div class="dme-card-body">
+                    @if (bal == null)
+                    {
+                        <div class="dme-muted">Nothing billed yet.</div>
+                    }
+                    else
+                    {
+                        <div style="display:flex;align-items:baseline;gap:10px">
+                            <div style="font-size:26px;font-weight:700;color:@(owed > 0 ? "#a32d2d" : "#0f6e56")">@F.Money(owed)</div>
+                            @if (owed > 0 && bal["OldestOutstandingServiceDate"] != null)
+                            {
+                                <span class="dme-chip amber">since @F.Date(bal["OldestOutstandingServiceDate"])</span>
+                            }
+                        </div>
+                        <div class="dme-muted" style="font-size:12.5px;margin-top:6px">
+                            Payers put @F.Money(bal["PatientResponsibility"]) on the patient.
+                            @F.Money(bal["CustomerPaid"]) has been received from them.
+                        </div>
+                        @if (owed > 0)
+                        {
+                            <div class="dme-muted" style="font-size:12px;margin-top:8px">
+                                Post what they pay on the claim it belongs to, from
+                                <strong>Billing &rarr; Post payment</strong>, choosing
+                                <em>Customer</em> as the source.
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
             </div>
             <div class="dme-card">
                 <div class="dme-card-head"><h2>Equipment on file</h2></div>

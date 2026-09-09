@@ -283,6 +283,12 @@ public class DmeController : Controller
         ViewBag.Insurances = _db.Query("SELECT * FROM dbo.DmeCustomerInsurances WHERE CustomerId=@id ORDER BY CASE Kind WHEN 'primary' THEN 0 ELSE 1 END", new { id });
         ViewBag.Diagnoses = _db.Query("SELECT * FROM dbo.DmeCustomerDiagnoses WHERE CustomerId=@id ORDER BY IsPrimary DESC", new { id });
         ViewBag.Equipment = _db.Query("SELECT * FROM dbo.DmeSerializedUnits WHERE CustomerId=@id", new { id });
+
+        // What this customer owes. PR money is the patient share, and a supplier
+        // is required to make a genuine effort to collect it: routinely waiving
+        // it is an inducement rather than a debt written off. Nothing showed it
+        // before, so nobody could make that effort.
+        ViewBag.Balance = _db.QueryOne("SELECT * FROM dbo.vDmeCustomerBalances WHERE CustomerId=@id", new { id });
         var custOrders = _db.Query("SELECT * FROM dbo.vDmeOrders WHERE CustomerId=@id ORDER BY CreatedAt DESC", new { id });
         _phi.ComposeCustomerNames(custOrders);
         ViewBag.Orders = custOrders;
@@ -1266,6 +1272,24 @@ public class DmeController : Controller
         ViewBag.Received = rows.Where(r => !F.B(r["IsVoided"])).Sum(r => F.Dec(r["Amount"]));
         ViewBag.Applied = rows.Where(r => !F.B(r["IsVoided"])).Sum(r => F.Dec(r["AppliedAmount"]));
         ViewBag.Unapplied = rows.Where(r => !F.B(r["IsVoided"])).Sum(r => F.Dec(r["UnappliedAmount"]));
+
+        // Who owes us. Money OUT of the door is only half of the money screen:
+        // patient responsibility is real, collectable, and legally required to
+        // be chased, and until now no screen in the product displayed it.
+        var balances = _db.Query(
+            "SELECT * FROM dbo.vDmeCustomerBalances WHERE Balance > 0 AND" + LocationFilter +
+            "ORDER BY OldestOutstandingServiceDate, Balance DESC");
+
+        // BOTH, and the second one is not optional. ComposeCustomerNames handles
+        // the two name columns; Phone is PHI as well and is in EncryptedColumns,
+        // so without DecryptRows the chase-them-up column renders base64. The
+        // name looked right, which is exactly what made it easy to miss.
+        _phi.ComposeCustomerNames(balances);
+        _phi.DecryptRows(balances);
+
+        ViewBag.Balances = balances;
+        ViewBag.OwedTotal = balances.Sum(r => F.Dec(r["Balance"]));
+
         return View(rows);
     }
 

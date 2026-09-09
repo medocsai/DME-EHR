@@ -78,4 +78,50 @@
             </tbody>
         </table>
     </div>
+
+@{
+    var balances = (List<Dictionary<string, object?>>)ViewBag.Balances;
+}
+@* The other half of the money screen. Receipts above are money that ARRIVED;
+   this is money that has not. Patient responsibility is legally required to be
+   chased, and no screen in this product displayed it before. Oldest first,
+   because the oldest is the one about to become uncollectable. *@
+<div class="dme-card">
+    <div class="dme-card-head">
+        <h2>Customers who owe</h2>
+        <span class="dme-muted" style="font-size:12px">
+            @F.Money(ViewBag.OwedTotal) outstanding &middot; the patient's share, oldest first
+        </span>
+    </div>
+    <table class="dme-table">
+        <thead><tr><th>Customer</th><th>Account</th><th>Phone</th><th>Owed since</th><th style="text-align:right">Payers put on them</th><th style="text-align:right">Received</th><th style="text-align:right">Balance</th></tr></thead>
+        <tbody>
+            @foreach (var b in balances)
+            {
+                <tr class="clickable" onclick="location.href='/Dme/Customer/@F.I(b["CustomerId"])'">
+                    <td><strong>@F.S(b["CustomerName"])</strong></td>
+                    <td class="dme-mono">@F.S(b["AccountNo"])</td>
+                    <td>@(string.IsNullOrEmpty(F.S(b["Phone"])) ? "—" : F.S(b["Phone"]))</td>
+                    <td>
+                        @if (b["OldestOutstandingServiceDate"] == null)
+                        {
+                            <span class="dme-muted">—</span>
+                        }
+                        else
+                        {
+                            <span class="dme-chip amber">@F.Date(b["OldestOutstandingServiceDate"])</span>
+                        }
+                    </td>
+                    <td class="dme-mono" style="text-align:right">@F.Money(b["PatientResponsibility"])</td>
+                    <td class="dme-mono" style="text-align:right">@F.Money(b["CustomerPaid"])</td>
+                    <td class="dme-mono" style="text-align:right;font-weight:600">@F.Money(b["Balance"])</td>
+                </tr>
+            }
+            @if (balances.Count == 0)
+            {
+                <tr><td colspan="7" class="dme-empty">Nobody owes anything. Every patient share posted so far has been collected.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
 </div>
