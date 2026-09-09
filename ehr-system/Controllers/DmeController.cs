@@ -1293,28 +1293,86 @@ public class DmeController : Controller
         return View(rows);
     }
 
-    /// <summary>
-    /// The posting screen for one claim: every line, what it was billed, what
-    /// has already been adjudicated, and what is left.
-    /// </summary>
     [HttpGet]
-    public IActionResult PostPayment(int id)
+    /// <summary>
+    /// The posting screen for ONE RECEIPT, which may cover several claims.
+    ///
+    /// WHY THIS TAKES A LIST
+    /// A payer sends one cheque for twelve months of the same rental. Posting
+    /// that as twelve receipts means typing the cheque number twelve times,
+    /// twelve rows in the bank reconciliation for one line on the statement, and
+    /// no way to see that 40 dollars of it was never allocated, because
+    /// "unapplied" is a property of the cheque and the cheque had been cut into
+    /// twelve pieces.
+    ///
+    /// NO NEW TABLE. dbo.DmePayments has no ClaimId and its CustomerId is
+    /// nullable, so a receipt has ALWAYS been able to carry lines from any
+    /// number of claims. DmePaymentService validates lines one at a time and
+    /// checks the applied total against the receipt, never assuming one claim.
+    /// The only thing that was claim-scoped was this screen.
+    ///
+    /// <paramref name="also"/> carries the extra claims as a comma separated
+    /// list in the querystring. Deliberately stateless: a half-built receipt in
+    /// session or in a draft table is state that has to be cleaned up when
+    /// somebody closes the tab, and the URL already survives a refresh.
+    /// </summary>
+    public IActionResult PostPayment(int id, string? also = null)
     {
         ViewData["ActivePage"] = "billing";
         var claim = _db.QueryOne("SELECT * FROM dbo.vDmeClaims WHERE ClaimId=@id", new { id });
         if (claim == null) return NotFound();
         _phi.ComposeCustomerName(claim);
 
+        // The primary claim first, then whatever was added, in the order they
+        // were added. Duplicates and anything unparseable are dropped rather
+        // than argued about: the list comes from our own links.
+        var claimIds = new List<int> { id };
+        foreach (var part in (also ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+            if (int.TryParse(part, out var extra) && extra > 0 && !claimIds.Contains(extra))
+                claimIds.Add(extra);
+
+        // Read through RLS like everything else, so a claim id belonging to
+        // another supplier simply does not come back and never reaches the form.
+        var claims = _db.Query(
+            "SELECT * FROM dbo.vDmeClaims WHERE ClaimId IN (" + string.Join(",", claimIds) + ")");
+        _phi.ComposeCustomerNames(claims);
+
+        // Back into the order the operator built, with the ones RLS refused
+        // silently absent.
+        var ordered = claimIds
+            .Select(c => claims.FirstOrDefault(r => F.I(r["ClaimId"]) == c))
+            .Where(r => r != null)
+            .Select(r => r!)
+            .ToList();
+
         ViewData["Title"] = "Post payment " + F.S(claim["ClaimNumber"]);
         ViewBag.Claim = claim;
+        ViewBag.Claims = ordered;
+        ViewBag.ClaimIds = claimIds;
+
         // Read through vDmeClaimLines, not the base table: the per-line paid and
         // adjusted figures are computed there, so this screen and the claim
         // detail cannot disagree about what is still outstanding on a line.
-        ViewBag.Lines = _db.Query("SELECT * FROM dbo.vDmeClaimLines WHERE ClaimId=@id ORDER BY ClaimLineId", new { id });
+        ViewBag.Lines = _db.Query(
+            "SELECT * FROM dbo.vDmeClaimLines WHERE ClaimId IN (" + string.Join(",", claimIds) + ") ORDER BY ClaimId, ClaimLineId");
+
         ViewBag.Carc = _db.Query("SELECT Code, Description FROM dbo.DmeCarcCodes ORDER BY LEN(Code), Code");
         ViewBag.History = _db.Query(
             "SELECT * FROM dbo.vDmePaymentLines WHERE ClaimId=@id ORDER BY PostedDate DESC, PaymentLineId DESC",
             new { id });
+
+        // The other claims this customer still owes something on, so the
+        // commonest case (one cheque, twelve months of one rental) is one click
+        // rather than a search. Already-added ones are excluded.
+        ViewBag.Addable = _db.Query(@"
+            SELECT TOP 25 * FROM dbo.vDmeClaims
+            WHERE CustomerId = @customerId
+              AND ClaimId NOT IN (" + string.Join(",", claimIds) + @")
+              AND Balance > 0
+            ORDER BY ServiceDate",
+            new { customerId = F.I(claim["CustomerId"]) });
+        _phi.ComposeCustomerNames((List<Dictionary<string, object?>>)ViewBag.Addable);
+
         return View();
     }
 
@@ -1330,7 +1388,7 @@ public class DmeController : Controller
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreatePayment(
-        int claimId, string source, string? payerName, DateTime postedDate, string method,
+        int claimId, string? also, string source, string? payerName, DateTime postedDate, string method,
         string? referenceNumber, decimal amount, string? note,
         int[]? claimLineId, decimal[]? allowed, decimal[]? paid,
         int[]? adjLine, string[]? adjGroup, string[]? adjCode, decimal[]? adjAmount)
@@ -1363,9 +1421,39 @@ public class DmeController : Controller
             .Where(l => l.PaidAmount != 0 || l.AllowedAmount != 0 || l.Adjustments.Count > 0)
             .ToList();
 
-        // For a customer payment the payer name is not ours to invent.
-        var customerId = source == "customer" ? F.I(_db.Scalar(
-            "SELECT CustomerId FROM dbo.DmeClaims WHERE ClaimId=@claimId", new { claimId })) : (int?)null;
+        // WHOSE money this is, derived from the lines actually being paid rather
+        // than from the claim the screen happened to open on. A receipt can now
+        // cover several claims, and the customer on the header has to be the
+        // customer whose claims are being settled.
+        //
+        // A PAYER cheque leaves CustomerId null and always has: one cheque from
+        // Medicare routinely settles claims for many different people, and
+        // naming one of them on the header would be picking a name at random.
+        int? customerId = null;
+        if (source == "customer" && lines.Count > 0)
+        {
+            var owners = _db.Query(
+                "SELECT DISTINCT c.CustomerId FROM dbo.DmeClaims c " +
+                "JOIN dbo.DmeClaimLines cl ON cl.ClaimId = c.ClaimId " +
+                "WHERE cl.ClaimLineId IN (" + string.Join(",", lines.Select(l => l.ClaimLineId)) + ")")
+                .Select(r => F.I(r["CustomerId"]))
+                .Distinct()
+                .ToList();
+
+            // A patient pays their OWN bills. One cheque from a customer
+            // covering two different people is not a thing, and guessing which
+            // of them to put on the receipt would misfile the money against
+            // somebody else's balance.
+            if (owners.Count > 1)
+            {
+                TempData["PaymentError"] =
+                    "This receipt covers claims for more than one customer, so it cannot be recorded as "
+                  + "a customer payment. Post each customer separately, or record it as a payer payment.";
+                return RedirectToAction("PostPayment", new { id = claimId, also });
+            }
+
+            customerId = owners.FirstOrDefault();
+        }
 
         var result = await _payments.PostAsync(new PaymentInput(
             source, source == "payer" ? payerName : null, customerId,
@@ -1374,7 +1462,7 @@ public class DmeController : Controller
         if (!result.Ok)
         {
             TempData["PaymentError"] = result.Error;
-            return RedirectToAction("PostPayment", new { id = claimId });
+            return RedirectToAction("PostPayment", new { id = claimId, also });
         }
 
         TempData["PaymentResult"] = $"Posted {result.PaymentNumber}.";

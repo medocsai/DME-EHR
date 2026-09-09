@@ -6,6 +6,14 @@
     var carc = (List<Dictionary<string, object?>>)ViewBag.Carc;
     var history = (List<Dictionary<string, object?>>)ViewBag.History;
     var claimId = F.I(claim["ClaimId"]);
+
+    // A receipt can cover several claims. The list travels in the querystring,
+    // so a refresh keeps the half-built receipt and closing the tab leaves no
+    // draft row behind to clean up.
+    var claims = (List<Dictionary<string, object?>>)ViewBag.Claims;
+    var claimIds = (List<int>)ViewBag.ClaimIds;
+    var addable = (List<Dictionary<string, object?>>)ViewBag.Addable;
+    var also = string.Join(",", claimIds.Where(c => c != claimId));
 }
 
 <div class="dme-wrap">
@@ -13,7 +21,16 @@
     <div class="dme-head" style="margin-top:6px">
         <div>
             <h1>Post payment</h1>
-            <div class="dme-sub">@F.S(claim["ClaimNumber"]) · @F.S(claim["CustomerName"]) · @F.S(claim["PayerName"])</div>
+            <div class="dme-sub">
+                @if (claims.Count == 1)
+                {
+                    <text>@F.S(claim["ClaimNumber"]) &middot; @F.S(claim["CustomerName"]) &middot; @F.S(claim["PayerName"])</text>
+                }
+                else
+                {
+                    <text>One receipt covering @claims.Count claims &middot; @F.S(claim["CustomerName"]) &middot; @F.S(claim["PayerName"])</text>
+                }
+            </div>
         </div>
         <a href="/Dme/Cms/@claimId" class="dme-btn dme-btn-light"><i class="bi bi-file-earmark-text"></i> CMS-1500</a>
     </div>
@@ -42,6 +59,9 @@
     <form method="post" action="/Dme/CreatePayment" id="payForm">
         @Html.AntiForgeryToken()
         <input type="hidden" name="claimId" value="@claimId" />
+        @* Carries the other claims through the post, so a refused posting comes
+           back with the receipt still assembled rather than emptied. *@
+        <input type="hidden" name="also" value="@also" />
 
         <div class="dme-card">
             <div class="dme-card-head"><h2>The receipt</h2></div>
@@ -111,6 +131,32 @@
                     var l = lines[i];
                     var charge = F.Dec(l["Charge"]);
                     var already = F.Dec(l["PaidAmount"]);
+
+                    @* A heading whenever the claim changes. Without it a receipt
+                       spanning twelve rental months is one undifferentiated list
+                       of twelve identical looking lines, and the biller cannot
+                       tell which month they are keying. Lines arrive ordered by
+                       claim, so a change of id is a change of section. *@
+                    var lineClaimId = F.I(l["ClaimId"]);
+                    var newClaim = i == 0 || F.I(lines[i - 1]["ClaimId"]) != lineClaimId;
+                    var thisClaim = claims.FirstOrDefault(c => F.I(c["ClaimId"]) == lineClaimId);
+
+                    if (newClaim && claims.Count > 1 && thisClaim != null)
+                    {
+                        <div style="margin:14px 0 6px;padding-bottom:4px;border-bottom:1px solid #e6e8ec">
+                            <strong class="dme-mono">@F.S(thisClaim["ClaimNumber"])</strong>
+                            <span class="dme-muted" style="font-size:12px">
+                                &middot; @F.Date(thisClaim["ServiceDate"])
+                                &middot; billed @F.Money(thisClaim["Total"])
+                                &middot; outstanding @F.Money(thisClaim["Balance"])
+                            </span>
+                            @if (lineClaimId != claimId)
+                            {
+                                <a class="dme-muted" style="font-size:12px;margin-left:8px"
+                                   href="/Dme/PostPayment/@claimId?also=@string.Join(",", claimIds.Where(c => c != claimId && c != lineClaimId))">remove</a>
+                            }
+                        </div>
+                    }
                     <div class="dme-line">
                         <input type="hidden" name="claimLineId" value="@F.I(l["ClaimLineId"])" />
                         <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -167,6 +213,51 @@
             </div>
         </div>
     </form>
+
+    @* One cheque, many claims. This is the whole point of the change: a payer
+       settling twelve months of a rental sends ONE cheque, and posting it as
+       twelve receipts means typing the cheque number twelve times and leaving
+       twelve rows to reconcile against one line on the bank statement.
+
+       Deliberately a list of THIS customer's outstanding claims rather than a
+       search box, because that is the case that actually happens. A cheque
+       spanning several customers is posted as a payer receipt, where the
+       customer on the header is null anyway. *@
+    @if (addable.Count > 0)
+    {
+        <div class="dme-card">
+            <div class="dme-card-head">
+                <h2>Add another claim to this receipt</h2>
+                <span class="dme-muted" style="font-size:12px">
+                    still outstanding for @F.S(claim["CustomerName"])
+                </span>
+            </div>
+            <table class="dme-table">
+                <thead><tr><th>Claim</th><th>Service date</th><th style="text-align:right">Billed</th><th style="text-align:right">Outstanding</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var a in addable)
+                    {
+                        var addId = F.I(a["ClaimId"]);
+                        <tr>
+                            <td class="dme-mono"><strong>@F.S(a["ClaimNumber"])</strong></td>
+                            <td>@F.Date(a["ServiceDate"])</td>
+                            <td class="dme-mono" style="text-align:right">@F.Money(a["Total"])</td>
+                            <td class="dme-mono" style="text-align:right">@F.Money(a["Balance"])</td>
+                            <td style="text-align:right">
+                                @* A link, not a form: adding a claim changes nothing, it
+                                   only widens what this screen is showing. Nothing is
+                                   written until Post payment is pressed. *@
+                                <a class="dme-btn dme-btn-light dme-btn-sm"
+                                   href="/Dme/PostPayment/@claimId?also=@(string.Join(",", claimIds.Where(c => c != claimId).Append(addId)))">
+                                    add
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 
     @if (history.Count > 0)
     {
