@@ -219,6 +219,29 @@ public class DmePaymentBatchTests
     // -------------------------------------------------------- the money rules
 
     /// <summary>
+    /// The summary tiles cover the WHOLE receipt.
+    ///
+    /// Showing the opened claim's billed and written-off figures above a form
+    /// that settles two of them is the kind of number somebody reconciles
+    /// against and gets wrong. Verified in the browser: one claim reads
+    /// 178.00 billed, the same screen with a second claim added reads 356.00.
+    ///
+    /// With one claim the sum IS that claim, so nothing about the single-claim
+    /// case changes.
+    /// </summary>
+    [Fact]
+    public void TheSummaryTilesCoverEveryClaimOnTheReceipt()
+    {
+        var view = Read("Views", "Dme", "PostPayment.cshtml");
+
+        view.Should().Contain("decimal Total(string column) => claims.Sum(",
+            "the tiles sum across the receipt, not the claim the screen opened on");
+
+        view.Should().NotContain("F.Money(claim[\"Total\"])",
+            "reading the primary claim alone understates a wider receipt");
+    }
+
+    /// <summary>
     /// The service still refuses to apply more than the cheque was worth. That
     /// check is what makes a batch safe: twelve claims cannot quietly consume
     /// more than the one cheque covering them.

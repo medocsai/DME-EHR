@@ -49,11 +49,20 @@
         posted against it, so it moves the moment a posting is saved or voided.
     *@
     <div class="dme-kpis" style="grid-template-columns:repeat(5,1fr)">
-        <div class="dme-kpi"><div class="k-label">Billed</div><div class="k-value" style="font-size:20px">@F.Money(claim["Total"])</div><div class="k-foot">what we charged</div></div>
-        <div class="dme-kpi"><div class="k-label">Paid</div><div class="k-value" style="font-size:20px">@F.Money(claim["PaidTotal"])</div><div class="k-foot">payer plus customer</div></div>
-        <div class="dme-kpi"><div class="k-label">Written off</div><div class="k-value" style="font-size:20px">@F.Money(claim["ContractualTotal"])</div><div class="k-foot">contractual, not collectable</div></div>
-        <div class="dme-kpi"><div class="k-label">Patient owes</div><div class="k-value" style="font-size:20px">@F.Money(claim["PatientBalance"])</div><div class="k-foot">deductible, coinsurance, copay</div></div>
-        <div class="dme-kpi"><div class="k-label">Payer owes</div><div class="k-value" style="font-size:20px">@F.Money(claim["InsuranceBalance"])</div><div class="k-foot">billed, not yet adjudicated</div></div>
+        @{
+            @* Summed across EVERY claim on the receipt, not just the one the
+               screen opened on. Showing the primary claim's figures above a
+               form that settles two of them is the kind of number somebody
+               reconciles against and gets wrong. With one claim the sum IS that
+               claim, so the single-claim case is unchanged. *@
+            decimal Total(string column) => claims.Sum(c => F.Dec(c[column]));
+            var scope = claims.Count == 1 ? "" : $" across {claims.Count} claims";
+        }
+        <div class="dme-kpi"><div class="k-label">Billed</div><div class="k-value" style="font-size:20px">@F.Money(Total("Total"))</div><div class="k-foot">what we charged@scope</div></div>
+        <div class="dme-kpi"><div class="k-label">Paid</div><div class="k-value" style="font-size:20px">@F.Money(Total("PaidTotal"))</div><div class="k-foot">payer plus customer</div></div>
+        <div class="dme-kpi"><div class="k-label">Written off</div><div class="k-value" style="font-size:20px">@F.Money(Total("ContractualTotal"))</div><div class="k-foot">contractual, not collectable</div></div>
+        <div class="dme-kpi"><div class="k-label">Patient owes</div><div class="k-value" style="font-size:20px">@F.Money(Total("PatientBalance"))</div><div class="k-foot">deductible, coinsurance, copay</div></div>
+        <div class="dme-kpi"><div class="k-label">Payer owes</div><div class="k-value" style="font-size:20px">@F.Money(Total("InsuranceBalance"))</div><div class="k-foot">billed, not yet adjudicated</div></div>
     </div>
 
     <form method="post" action="/Dme/CreatePayment" id="payForm">

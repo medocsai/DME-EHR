@@ -43,7 +43,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const url = BASE + (p.startsWith('/') ? p : '/' + p);
     await page.goto(url, { waitUntil: 'networkidle2' });
     await sleep(1500);
-    const name = (p.replace(/^\//, '').replace(/[\/{}]/g, '-') || 'root') + '.png';
+    // A query string is part of the URL and has to survive into the file name,
+    // but ? & = are illegal in a Windows path. Anything that is not a letter,
+    // digit, dot or dash becomes a dash.
+    const name = (p.replace(/^\//, '').replace(/[^A-Za-z0-9.-]+/g, '-').replace(/-+$/, '')
+                  || 'root') + '.png';
     const file = path.join(outDir, name);
     await page.screenshot({ path: file, fullPage: true });
     console.log('shot:', p, '->', file);
