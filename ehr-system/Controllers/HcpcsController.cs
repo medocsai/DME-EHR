@@ -40,7 +40,7 @@ public class HcpcsController : Controller
         // counter. See Migrations/Manual/2026-08-25_DME_Single_Source_Of_Truth.sql.
         var items = _db.Query(@"
             SELECT Hcpcs, Name, Category, IsSerialized, Rentable, Purchasable,
-                   PurchasePrice, MonthlyRate, CappedRentalMonths, Modifiers, OnHand
+                   PurchasePrice, MonthlyRate, CappedRentalMonths, Modifiers, ReorderPoint, OnHand
             FROM dbo.vHcpcsCatalog
             ORDER BY Category, Hcpcs")
             .Select(r => new HcpcsRow
@@ -55,6 +55,7 @@ public class HcpcsController : Controller
                 MonthlyRate = F.Dec(r["MonthlyRate"]),
                 CappedRentalMonths = F.I(r["CappedRentalMonths"]),
                 Modifiers = F.S(r["Modifiers"]),
+                ReorderPoint = F.I(r["ReorderPoint"]),
                 OnHand = F.I(r["OnHand"])
             })
             .ToList();
@@ -160,5 +161,6 @@ public class HcpcsRow
     public decimal MonthlyRate { get; set; }
     public int CappedRentalMonths { get; set; }
     public string Modifiers { get; set; } = "";
+    public int ReorderPoint { get; set; }
     public int OnHand { get; set; }
 }

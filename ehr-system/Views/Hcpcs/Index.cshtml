@@ -3,7 +3,9 @@
     ViewData["ActivePage"] = "hcpcs";
 }
 
-<div style="padding:22px 26px;">
+@* dme-wrap carries the brand colour variables. Without it the Add item
+   button had no background and rendered white on white. *@
+<div class="dme-wrap" style="padding:22px 26px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">
         <div>
             <h1 style="font-size:22px;font-weight:700;margin:0;">HCPCS Catalog</h1>
@@ -146,7 +148,9 @@
                         <td style="padding:11px 14px;color:#6b7280;">@(i.CappedRentalMonths > 0 ? i.CappedRentalMonths + " mo" : "—")</td>
                         <td style="padding:11px 14px;font-variant-numeric:tabular-nums;">
                             @i.OnHand
-                            @if (i.OnHand <= 5)
+                            @* The item's own reorder point, the same rule Inventory uses. It was
+                               a hardcoded 5, so two wheelchairs read "reorder" at any setting. *@
+                            @if (i.OnHand <= i.ReorderPoint)
                             {
                                 <span style="background:#faeeda;color:#854f0b;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:4px;">reorder</span>
                             }
