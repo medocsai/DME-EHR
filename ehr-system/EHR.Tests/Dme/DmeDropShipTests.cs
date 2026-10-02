@@ -57,7 +57,9 @@ public class DmeDropShipTests
             "a drop-shipped line has to leave the loop before it touches stock");
 
         var movementAt = deliver.IndexOf("INSERT INTO dbo.DmeStockMovements", StringComparison.Ordinal);
-        var unitAt = deliver.IndexOf("INSERT INTO dbo.DmeSerializedUnits", StringComparison.Ordinal);
+        // Delivery no longer CREATES a unit; it hands out one received onto the
+        // shelf. Either way the register write has to sit after the guard.
+        var unitAt = deliver.IndexOf("UPDATE dbo.DmeSerializedUnits", StringComparison.Ordinal);
 
         movementAt.Should().BeGreaterThan(guardAt,
             "the stock ledger write must sit AFTER the guard, or on-hand goes negative " +

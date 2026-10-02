@@ -135,6 +135,9 @@ builder.Services.AddScoped<DmeDocumentStore>();
 builder.Services.AddScoped<IDmeOrderDocuments, DmeOrderDocuments>();
 builder.Services.AddScoped<IDmeCustomerDocuments, DmeCustomerDocuments>();
 
+// Stock in, moved, corrected and returned. See Services/DmeInventory.cs.
+builder.Services.AddScoped<IDmeInventory, DmeInventory>();
+
 // Google Cloud Storage Services
 builder.Services.Configure<GoogleCloudStorageOptions>(
     builder.Configuration.GetSection("GoogleCloudStorage"));

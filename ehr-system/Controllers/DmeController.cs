@@ -33,14 +33,17 @@ public class DmeController : Controller
     private readonly IDmeDoctors _doctors;
     private readonly IDmeOrderDocuments _documents;
     private readonly IDmeCustomerDocuments _customerDocs;
+    private readonly IDmeInventory _inventory;
 
     public DmeController(IDmeDb db, IDmeAudit audit, DmeCustomerPhi phi,
                          IDmePaymentService payments, IDmeSftpAccountService sftp,
                          IDmePayerCatalog payers, IDmeIcdCatalog icd,
                          IDmeDistributors distributors, IDmeOrderDocuments documents,
-                         IDmeDoctors doctors, IDmeCustomerDocuments customerDocs)
+                         IDmeDoctors doctors, IDmeCustomerDocuments customerDocs,
+                         IDmeInventory inventory)
     {
         _customerDocs = customerDocs;
+        _inventory = inventory;
         _icd = icd;
         _distributors = distributors;
         _doctors = doctors;
@@ -843,7 +846,108 @@ public class DmeController : Controller
         _phi.ComposeCustomerNames(drops);
         ViewBag.DropShipments = drops;
 
+        // The ledger, newest first: every receipt, delivery, return, transfer
+        // and correction, so a number on this screen can always be explained.
+        ViewBag.Ledger = _db.Query(
+            "SELECT TOP 50 * FROM dbo.vDmeStockLedger WHERE " + _db.LocationScope() +
+            " ORDER BY OccurredAt DESC, MovementId DESC");
+        ViewBag.UnitStatuses = DmeInventory.ManualStatuses;
+        ViewBag.InventoryError = TempData["InventoryError"];
+        ViewBag.InventoryNotice = TempData["InventoryNotice"];
+
         return View();
+    }
+
+    // ------------------------------------------------------------ stock actions
+    /// <summary>
+    /// Every inventory write goes through DmeInventory, which holds the rules
+    /// (see its header). These actions only collect the form, audit, and say
+    /// what happened.
+    /// </summary>
+    private async Task<IActionResult> InventoryOutcome(InventoryResult result, string action, object detail, string done)
+    {
+        if (!result.Success)
+            TempData["InventoryError"] = result.Error;
+        else
+        {
+            await _audit.RecordAsync(action, "DmeInventory", null, before: null, after: detail);
+            TempData["InventoryNotice"] = done;
+        }
+        return RedirectToAction("Inventory");
+    }
+
+    /// <summary>Goods arrived at a branch from a manufacturer or distributor.</summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public Task<IActionResult> ReceiveStock(string hcpcs, int branch, int qty, string? serials, string? reference)
+    {
+        var list = DmeInventory.ParseSerials(serials);
+        var result = _inventory.Receive(hcpcs, branch, qty, list, reference, CurrentUserId());
+        return InventoryOutcome(result, "DME_STOCK_RECEIVED",
+            new { Hcpcs = hcpcs, LocationId = branch, Qty = list.Count > 0 ? list.Count : qty, Serials = list, Reference = reference },
+            $"Received {hcpcs}.");
+    }
+
+    /// <summary>
+    /// A counted correction to a consumable. Admin only: it changes the
+    /// company's stock figure with nothing physical to point at.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public Task<IActionResult> AdjustStock(string hcpcs, int branch, int delta, string? reason)
+    {
+        var result = _inventory.Adjust(hcpcs, branch, delta, reason, CurrentUserId());
+        return InventoryOutcome(result, "DME_STOCK_ADJUSTED",
+            new { Hcpcs = hcpcs, LocationId = branch, Delta = delta, Reason = reason },
+            $"Corrected {hcpcs}.");
+    }
+
+    /// <summary>Stock moved between two of this supplier's branches.</summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public Task<IActionResult> TransferStock(string hcpcs, int fromBranch, int toBranch, int qty, List<int>? unitIds)
+    {
+        var result = _inventory.Transfer(hcpcs, fromBranch, toBranch, qty, unitIds ?? new List<int>(), CurrentUserId());
+        return InventoryOutcome(result, "DME_STOCK_TRANSFERRED",
+            new { Hcpcs = hcpcs, From = fromBranch, To = toBranch, Qty = qty, UnitIds = unitIds },
+            $"Moved {hcpcs}.");
+    }
+
+    /// <summary>
+    /// A unit goes for repair, comes back, is recalled or is written off.
+    /// Taking a unit OUT of stock (recalled, written off) is admin only, like a
+    /// stock correction.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public Task<IActionResult> SetUnitStatus(int unitId, string status, string? note)
+    {
+        var leavesStock = status == "recalled" || status == "written-off";
+        var result = leavesStock && !(User.IsInRole("0") || User.IsInRole("1"))
+            ? InventoryResult.Refused("Only an administrator can take a unit out of stock.")
+            : _inventory.SetUnitStatus(unitId, status, note, CurrentUserId());
+        return InventoryOutcome(result, "DME_UNIT_STATUS_CHANGED",
+            new { UnitId = unitId, Status = status, Note = note },
+            "Unit updated.");
+    }
+
+    /// <summary>
+    /// Rented equipment came back. The rental stops billing and the unit goes
+    /// back on a shelf, or to cleaning and repair first.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ReturnRental(int id, int branch, string condition)
+    {
+        var result = _inventory.ReturnRental(id, branch, condition, CurrentUserId());
+        if (!result.Success)
+            TempData["RentalReturnError"] = result.Error;
+        else
+            await _audit.RecordAsync("DME_RENTAL_RETURNED", "DmeRental", id,
+                before: new { Status = "active" },
+                after: new { Status = "returned", LocationId = branch, Condition = condition });
+        return RedirectToAction("Rentals");
     }
 
     // ---------------------------------------------------------------- Orders
@@ -872,6 +976,13 @@ public class DmeController : Controller
         ViewBag.Lines = _db.Query("SELECT * FROM dbo.vDmeOrderLines WHERE OrderId=@id ORDER BY LineId", new { id });
         ViewBag.Documents = _documents.ForOrder(id);
         ViewBag.PodError = TempData["PodError"];
+
+        // The units on the shelf at the branch this order is delivered from, so
+        // the driver picks the REAL serial at delivery. It used to be invented.
+        ViewBag.ShelfUnits = _db.Query(
+            "SELECT UnitId, Hcpcs, SerialNumber FROM dbo.DmeSerializedUnits " +
+            "WHERE Status='in-stock' AND LocationId=@branchId ORDER BY Hcpcs, SerialNumber",
+            new { branchId = F.I(o["LocationId"]) });
         return View();
     }
 
@@ -1004,6 +1115,24 @@ public class DmeController : Controller
         var statusBefore = F.S(o["Status"]);
         var stageBefore = F.S(o["Stage"]);
 
+        // Stock is checked BEFORE anything is written. A delivery that cannot
+        // come out of this branch's shelf must not leave a claim and a rental
+        // behind it. Serialised lines name the exact units (unit_{LineId} on the
+        // form); consumables need enough on hand. Drop-shipped lines are skipped.
+        var stockLines = _db.Query("SELECT * FROM dbo.DmeOrderLines WHERE OrderId=@id", new { id });
+        var chosen = new Dictionary<int, IReadOnlyList<int>>();
+        foreach (var key in Request.Form.Keys.Where(k => k.StartsWith("unit_")))
+            if (int.TryParse(key[5..], out var lineId))
+                chosen[lineId] = Request.Form[key].Select(v => int.TryParse(v, out var u) ? u : 0).Where(u => u > 0).ToList();
+
+        var (stockPlan, stockError) = _inventory.PlanDelivery(stockLines, F.I(o["LocationId"]), chosen);
+        if (stockError != null)
+        {
+            TempData["PodError"] = stockError;
+            return RedirectToAction("Order", new { id });
+        }
+        var unitsByLine = stockPlan!.ToDictionary(p => p.LineId);
+
         _db.Execute("UPDATE dbo.DmeOrders SET Status='delivered', Stage='delivered', PodSignedBy=@sb, PodSignedAt=SYSUTCDATETIME(), PodSignature=@sig WHERE OrderId=@id",
             new { id, sb = signedBy ?? F.S(o["CustomerName"]), sig = (object?)signature ?? DBNull.Value });
 
@@ -1033,7 +1162,12 @@ public class DmeController : Controller
         foreach (var l in lines)
         {
             var isRental = F.S(l["Mode"]) == "rental";
-            var serial = F.B(l["IsSerialized"]) ? "SN-" + Guid.NewGuid().ToString("N")[..6].ToUpper() : null;
+            // The serial of the unit actually handed over, picked from the
+            // shelf. Never invented: a recall names a real serial. A drop-shipped
+            // line has no unit of ours, so it has none.
+            var picked = unitsByLine.TryGetValue(F.I(l["LineId"]), out var pl) ? pl : null;
+            var serial = picked != null && picked.Serials.Count > 0 ? string.Join(", ", picked.Serials) : null;
+            var unitId = picked != null && picked.UnitIds.Count > 0 ? picked.UnitIds[0] : (int?)null;
             var charge = isRental ? F.Dec(l["MonthlyRate"]) : F.Dec(l["UnitPrice"]) * F.I(l["Qty"]);
             claimTotal += charge;
 
@@ -1046,12 +1180,15 @@ public class DmeController : Controller
                 var cap = _db.Scalar("SELECT CappedRentalMonths FROM dbo.HcpcsCodes WHERE Hcpcs=@h", new { h = F.S(l["Hcpcs"]) });
                 var next = Convert.ToDateTime(deliveryDate).AddMonths(1);
                 rentalId = Convert.ToInt32(_db.Scalar(@"
-                    INSERT INTO dbo.DmeRentals (CustomerId,OrderId,Hcpcs,ItemName,Serial,MonthlyRate,StartDate,NextBillDate,CapMonths,Status,TenantId)
+                    INSERT INTO dbo.DmeRentals (CustomerId,OrderId,Hcpcs,ItemName,Serial,MonthlyRate,StartDate,NextBillDate,CapMonths,Status,TenantId,UnitId)
                     OUTPUT inserted.RentalId
-                    VALUES (@custId,@id,@h,@n,@s,@mr,@sd,@nb,@cap,'active',@TenantId)",
-                    new { custId, id, h = F.S(l["Hcpcs"]), n = F.S(l["ItemName"]), s = serial ?? "—",
+                    VALUES (@custId,@id,@h,@n,@s,@mr,@sd,@nb,@cap,'active',@TenantId,@unitId)",
+                    new { custId, id, h = F.S(l["Hcpcs"]), n = F.S(l["ItemName"]),
+                          s = serial == null ? "—" : serial.Length > 40 ? serial[..40] : serial,
                           mr = F.Dec(l["MonthlyRate"]), sd = deliveryDate, nb = next,
-                          cap = (object?)(cap == null ? DBNull.Value : F.I(cap)) }));
+                          cap = (object?)(cap == null ? DBNull.Value : F.I(cap)),
+                          // Which physical unit is out, so it can come back on Return.
+                          unitId = (object?)unitId ?? DBNull.Value }));
             }
 
             _db.Execute("INSERT INTO dbo.DmeClaimLines (ClaimId,Hcpcs,ItemName,Modifier,Units,Charge,RentalId,TenantId) VALUES (@claimId,@h,@n,@mod,@u,@c,@rid,@TenantId)",
@@ -1095,8 +1232,23 @@ public class DmeController : Controller
                 // whichever one the person clicking happens to be viewing. A
                 // delivery made while looking at "all branches" still has to come
                 // out of a real depot's stock.
-                _db.Execute("INSERT INTO dbo.DmeSerializedUnits (Hcpcs,ItemName,SerialNumber,Status,CustomerId,InServiceDate,TenantId,LocationId) VALUES (@h,@n,@s,@st,@custId,@isd,@TenantId,@fulfillingLocation)",
-                    new { h = F.S(l["Hcpcs"]), n = F.S(l["ItemName"]), s = serial ?? "—", st = isRental ? "rented" : "sold", custId, isd = deliveryDate, fulfillingLocation });
+                // The units were received onto the shelf (Inventory, Receive
+                // stock) and picked by serial on the delivery form; PlanDelivery
+                // checked they are in stock at this branch. They now go out to
+                // the customer. Guarded on Status so a unit is never handed out
+                // twice.
+                var ids = picked!.UnitIds;
+                var unitParams = new Dictionary<string, object?>
+                {
+                    ["st"] = isRental ? "rented" : "sold", ["custId"] = custId, ["isd"] = deliveryDate,
+                    ["lineId"] = F.I(l["LineId"]), ["serials"] = serial,
+                };
+                for (var i = 0; i < ids.Count; i++) unitParams["u" + i] = ids[i];
+                _db.Execute(
+                    "UPDATE dbo.DmeSerializedUnits SET Status=@st, CustomerId=@custId, InServiceDate=@isd " +
+                    "WHERE Status='in-stock' AND UnitId IN (" + string.Join(",", ids.Select((_, i) => "@u" + i)) + ");" +
+                    "UPDATE dbo.DmeOrderLines SET SerialNumber=LEFT(@serials,40) WHERE LineId=@lineId;",
+                    unitParams);
             }
 
             // Stock leaves the warehouse. Recording the movement is what lets
@@ -1145,6 +1297,8 @@ public class DmeController : Controller
         ViewBag.Overdue = live.Count(r => (F.DaysUntil(r["NextBillDate"]) ?? 99) < 0);
         ViewBag.DueSoon = live.Count(r => { var d = F.DaysUntil(r["NextBillDate"]); return d.HasValue && d.Value >= 0 && d.Value <= 7; });
         ViewBag.BillingBacklog = (int)ViewBag.Overdue + (int)ViewBag.DueSoon;
+        // The branches a returned unit can be booked back into.
+        LoadLocationContext();
         return View(rows);
     }
 

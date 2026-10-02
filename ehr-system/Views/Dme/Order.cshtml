@@ -5,6 +5,7 @@
     var documents = (IReadOnlyList<OrderDocument>)ViewBag.Documents;
     var o = (Dictionary<string, object?>)ViewBag.Order;
     var lines = (List<Dictionary<string, object?>>)ViewBag.Lines;
+    var shelfUnits = (List<Dictionary<string, object?>>)ViewBag.ShelfUnits;
     var status = F.S(o["Status"]);
     int si = status == "billed" ? 4 : status == "delivered" ? 3 : status == "confirmed" ? 2 : 0;
     var stages = new[] { "Order received", "Eligibility / HCPCS", "Order / ship", "Proof of delivery", "Claim prepared" };
@@ -200,6 +201,39 @@
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="id" value="@F.I(o["OrderId"])" />
                     <input type="hidden" name="signature" id="podSig" />
+                    @*
+                        Which physical units are going out. A serialised line that ships
+                        from this supplier's own shelf names its units by serial, picked
+                        from what was received at this order's location. The serial used
+                        to be invented at this point. Drop-shipped lines are skipped:
+                        nothing of ours leaves a shelf.
+                    *@
+                    @foreach (var l in lines.Where(l => F.B(l["IsSerialized"]) && l["DistributorId"] is null or DBNull))
+                    {
+                        var hcpcs = F.S(l["Hcpcs"]);
+                        var available = shelfUnits.Where(u => F.S(u["Hcpcs"]) == hcpcs).ToList();
+                        var qty = Math.Max(F.I(l["Qty"]), 1);
+                        <label class="form-label">@F.S(l["ItemName"]) <span class="dme-mono dme-muted">@hcpcs</span> &middot; serial</label>
+                        @if (available.Count < qty)
+                        {
+                            <div class="dme-banner" style="background:#fdecea;color:#8a1c13;margin-bottom:8px">
+                                <i class="bi bi-exclamation-triangle"></i>
+                                @(available.Count == 0 ? "None" : "Only " + available.Count) on the shelf at @F.S(o["LocationName"]).
+                                Receive it on the <a href="/Dme/Inventory">Inventory</a> screen first, or ship this line direct.
+                            </div>
+                        }
+                        @for (var i = 0; i < Math.Min(qty, Math.Max(available.Count, 1)); i++)
+                        {
+                            <select name="unit_@F.I(l["LineId"])" class="form-select mb-2" required>
+                                <option value="">Select the unit&hellip;</option>
+                                @foreach (var u in available)
+                                {
+                                    <option value="@F.I(u["UnitId"])">@F.S(u["SerialNumber"])</option>
+                                }
+                            </select>
+                        }
+                    }
+
                     <label class="form-label">Received by</label>
                     <input name="signedBy" class="form-control mb-2" value="@F.S(o["CustomerName"])" />
 

@@ -351,6 +351,7 @@ public static class F
         ["submitted"] = ("blue", "Submitted"), ["paid"] = ("green", "Paid"), ["rented"] = ("blue", "On rent"),
         ["sold"] = ("gray", "Sold"), ["in-stock"] = ("gray", "In stock"), ["ended"] = ("gray", "Ended"),
         ["maintenance"] = ("amber", "Maintenance"), ["recalled"] = ("red", "Recalled"), ["denied"] = ("red", "Denied"),
+        ["written-off"] = ("red", "Written off"), ["returned"] = ("gray", "Returned"),
         // Payment outcomes. Derived in vDmeClaims from the payments posted, so
         // these chips can never disagree with the money behind them.
         ["unpaid"] = ("gray", "Awaiting payment"), ["partial"] = ("amber", "Part paid"),

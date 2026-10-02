@@ -4,31 +4,216 @@
     var catalog = (List<Dictionary<string, object?>>)ViewBag.Catalog;
     var units = (List<Dictionary<string, object?>>)ViewBag.Units;
     var dropShipments = (List<Dictionary<string, object?>>)ViewBag.DropShipments;
+    var ledger = (List<Dictionary<string, object?>>)ViewBag.Ledger;
+    var locations = (List<Dictionary<string, object?>>)ViewBag.Locations;
+    var unitStatuses = (IReadOnlyDictionary<string, string>)ViewBag.UnitStatuses;
+    var currentLocationId = (int?)ViewBag.CurrentLocationId;
+    var defaultBranch = currentLocationId ?? (locations.Count > 0 ? F.I(locations[0]["LocationId"]) : 0);
     int low = catalog.Count(x => F.I(x["OnHand"]) <= F.I(x["ReorderPoint"]));
     int rented = units.Count(u => F.S(u["Status"]) == "rented");
+    int onShelf = units.Count(u => F.S(u["Status"]) == "in-stock");
     // StockHere is only computed when a single branch is being viewed; it is
     // NULL for the all-locations roll-up, where "here" has no meaning.
-    bool showsBranchStock = ViewBag.CurrentLocationId != null;
+    bool showsBranchStock = currentLocationId != null;
+    // Units that are this supplier's and on a shelf: the only ones that can be
+    // moved between branches or have their status changed by hand.
+    var shelfUnits = units.Where(u => F.S(u["Status"]) is "in-stock" or "maintenance").ToList();
 }
 
 <div class="dme-wrap">
     <div class="dme-head"><div><h1>Inventory</h1><div class="dme-sub">Serialized units &amp; warehouse stock</div></div></div>
 
+    @if (ViewBag.InventoryError != null)
+    {
+        <div class="dme-banner" style="background:#fdecea;color:#8a1c13"><i class="bi bi-exclamation-triangle"></i> @ViewBag.InventoryError</div>
+    }
+    @if (ViewBag.InventoryNotice != null)
+    {
+        <div class="dme-banner" style="background:#e7f6ef;color:#0f6e56"><i class="bi bi-check-circle"></i> @ViewBag.InventoryNotice</div>
+    }
+
     <div class="dme-kpis">
         <div class="dme-kpi"><div class="k-label">Catalog items</div><div class="k-value">@catalog.Count</div><div class="k-foot">HCPCS Level II</div></div>
-        <div class="dme-kpi"><div class="k-label">Serialized units</div><div class="k-value">@units.Count</div><div class="k-foot">tracked by serial</div></div>
+        <div class="dme-kpi"><div class="k-label">Units on the shelf</div><div class="k-value">@onShelf</div><div class="k-foot">serialised, ready to deliver</div></div>
         <div class="dme-kpi"><div class="k-label">Units on rent</div><div class="k-value">@rented</div><div class="k-foot">out with customers</div></div>
         <div class="dme-kpi"><div class="k-label">Low stock</div><div class="k-value">@low</div><div class="k-foot">at/below reorder point</div></div>
     </div>
+
+    @if (catalog.Count == 0)
+    {
+        <div class="dme-banner"><i class="bi bi-info-circle"></i> Add the items you supply on the <a href="/Hcpcs">HCPCS Catalog</a> first. Stock is received against those items.</div>
+    }
+    else
+    {
+    @*
+        The three ways stock changes by hand. Delivery takes stock out on its own
+        (the units are picked by serial on the delivery form), and a rental comes
+        back through Return on the Rentals screen. Every one of these writes a row
+        in the stock history below, and on-hand is the sum of that history.
+    *@
+    <div class="dme-card">
+        <div class="dme-card-head"><h2>Stock in and out</h2><span class="dme-muted" style="font-size:12px">every change is recorded in the history below</span></div>
+        <div class="dme-card-body">
+            <details>
+                <summary style="cursor:pointer;font-weight:600"><i class="bi bi-box-arrow-in-down"></i> Receive stock</summary>
+                <div class="dme-muted" style="font-size:12.5px;margin:6px 0 10px">
+                    Goods that arrived at a location from a manufacturer or distributor. An item tracked by
+                    serial number is received one serial per unit, so each unit can be picked by its serial at delivery.
+                </div>
+                <form method="post" action="/Dme/ReceiveStock" class="row g-2 js-stock-form">
+                    @Html.AntiForgeryToken()
+                    <div class="col-md-5">
+                        <label class="form-label">Item</label>
+                        <select name="hcpcs" class="form-select js-item" required>
+                            <option value="">Select&hellip;</option>
+                            @foreach (var x in catalog)
+                            {
+                                <option value="@F.S(x["Hcpcs"])" data-serialized="@(F.B(x["IsSerialized"]) ? "1" : "0")">@F.S(x["Hcpcs"]) &middot; @F.S(x["Name"])</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Arrived at</label>
+                        <select name="branch" class="form-select">
+                            @foreach (var l in locations)
+                            {
+                                <option value="@F.I(l["LocationId"])" selected="@(F.I(l["LocationId"]) == defaultBranch)">@F.S(l["Name"])</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2 js-qty">
+                        <label class="form-label">Quantity</label>
+                        <input type="number" name="qty" class="form-control" min="1" max="5000" value="1" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Invoice / PO</label>
+                        <input name="reference" class="form-control" maxlength="100" />
+                    </div>
+                    <div class="col-12 js-serials" hidden>
+                        <label class="form-label">Serial numbers <span class="dme-muted" style="font-size:11px">one per line, or separated by commas</span></label>
+                        <textarea name="serials" class="form-control dme-mono" rows="3" placeholder="OXC-44910&#10;OXC-44911"></textarea>
+                    </div>
+                    <div class="col-12 d-flex justify-content-end">
+                        <button type="submit" class="dme-btn dme-btn-primary dme-btn-sm">Receive</button>
+                    </div>
+                </form>
+            </details>
+
+            @if (locations.Count > 1)
+            {
+                <hr style="margin:14px 0" />
+                <details>
+                    <summary style="cursor:pointer;font-weight:600"><i class="bi bi-arrow-left-right"></i> Move between locations</summary>
+                    <div class="dme-muted" style="font-size:12.5px;margin:6px 0 10px">
+                        Stock sent from one of your locations to another. Serialised items are moved by unit.
+                    </div>
+                    <form method="post" action="/Dme/TransferStock" class="row g-2 js-stock-form js-transfer">
+                        @Html.AntiForgeryToken()
+                        <div class="col-md-4">
+                            <label class="form-label">Item</label>
+                            <select name="hcpcs" class="form-select js-item" required>
+                                <option value="">Select&hellip;</option>
+                                @foreach (var x in catalog)
+                                {
+                                    <option value="@F.S(x["Hcpcs"])" data-serialized="@(F.B(x["IsSerialized"]) ? "1" : "0")">@F.S(x["Hcpcs"]) &middot; @F.S(x["Name"])</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">From</label>
+                            <select name="fromBranch" class="form-select js-from">
+                                @foreach (var l in locations)
+                                {
+                                    <option value="@F.I(l["LocationId"])" selected="@(F.I(l["LocationId"]) == defaultBranch)">@F.S(l["Name"])</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">To</label>
+                            <select name="toBranch" class="form-select">
+                                @foreach (var l in locations)
+                                {
+                                    <option value="@F.I(l["LocationId"])" selected="@(F.I(l["LocationId"]) != defaultBranch)">@F.S(l["Name"])</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-2 js-qty">
+                            <label class="form-label">Quantity</label>
+                            <input type="number" name="qty" class="form-control" min="1" max="5000" value="1" />
+                        </div>
+                        <div class="col-12 js-units" hidden>
+                            <label class="form-label">Units</label>
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach (var u in shelfUnits)
+                                {
+                                    <label class="dme-chip gray js-unit" data-hcpcs="@F.S(u["Hcpcs"])" data-loc="@F.I(u["LocationId"])" style="cursor:pointer" hidden>
+                                        <input type="checkbox" name="unitIds" value="@F.I(u["UnitId"])" /> <span class="dme-mono">@F.S(u["SerialNumber"])</span>
+                                    </label>
+                                }
+                            </div>
+                            <div class="dme-muted js-none" style="font-size:12px" hidden>No units of this item on the shelf at that location.</div>
+                        </div>
+                        <div class="col-12 d-flex justify-content-end">
+                            <button type="submit" class="dme-btn dme-btn-primary dme-btn-sm">Move</button>
+                        </div>
+                    </form>
+                </details>
+            }
+
+            <hr style="margin:14px 0" />
+            <details>
+                <summary style="cursor:pointer;font-weight:600"><i class="bi bi-sliders"></i> Correct a count</summary>
+                <div class="dme-muted" style="font-size:12.5px;margin:6px 0 10px">
+                    For consumables only, after a physical count, breakage or loss. Administrators only.
+                    A serialised unit is taken out of stock by changing its status in the table below.
+                </div>
+                <form method="post" action="/Dme/AdjustStock" class="row g-2">
+                    @Html.AntiForgeryToken()
+                    <div class="col-md-4">
+                        <label class="form-label">Item</label>
+                        <select name="hcpcs" class="form-select" required>
+                            <option value="">Select&hellip;</option>
+                            @foreach (var x in catalog.Where(x => !F.B(x["IsSerialized"])))
+                            {
+                                <option value="@F.S(x["Hcpcs"])">@F.S(x["Hcpcs"]) &middot; @F.S(x["Name"])</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">At</label>
+                        <select name="branch" class="form-select">
+                            @foreach (var l in locations)
+                            {
+                                <option value="@F.I(l["LocationId"])" selected="@(F.I(l["LocationId"]) == defaultBranch)">@F.S(l["Name"])</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Add / remove</label>
+                        <input type="number" name="delta" class="form-control" min="-5000" max="5000" placeholder="-2" required />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Reason</label>
+                        <input name="reason" class="form-control" maxlength="150" placeholder="Count on 10/02" required />
+                    </div>
+                    <div class="col-12 d-flex justify-content-end">
+                        <button type="submit" class="dme-btn dme-btn-light dme-btn-sm requires-admin">Record correction</button>
+                    </div>
+                </form>
+            </details>
+        </div>
+    </div>
+    }
 
     <div class="dme-grid2">
         <div class="dme-card">
             <div class="dme-card-head"><h2>Serialized units</h2></div>
             <table class="dme-table">
-                <thead><tr><th>Item</th><th>Serial</th><th>Location</th><th>Status</th><th>In service</th></tr></thead>
+                <thead><tr><th>Item</th><th>Serial</th><th>Location</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var u in units)
                     {
+                        var st = F.S(u["Status"]);
                         <tr>
                             <td>@F.S(u["ItemName"]) <span class="dme-muted dme-mono">@F.S(u["Hcpcs"])</span></td>
                             <td class="dme-mono">@F.S(u["SerialNumber"])</td>
@@ -36,10 +221,31 @@
                                and the ones still in stock belong to no customer at all. *@
                             <td class="dme-muted">@F.S(u["LocationName"])</td>
                             <td>@Html.Raw(F.StatusChip(u["Status"]))</td>
-                            <td class="dme-muted">@F.Date(u["InServiceDate"])</td>
+                            <td style="text-align:right">
+                                @* Only a unit on the shelf can have its status changed here. One
+                                   with a customer comes back through Return on Rentals. *@
+                                @if (st is "in-stock" or "maintenance")
+                                {
+                                    <details style="display:inline-block;text-align:left">
+                                        <summary class="dme-btn dme-btn-light dme-btn-sm" style="list-style:none;cursor:pointer">Change</summary>
+                                        <form method="post" action="/Dme/SetUnitStatus" class="dme-card" style="position:absolute;right:24px;z-index:5;padding:12px;width:260px;margin-top:4px">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="unitId" value="@F.I(u["UnitId"])" />
+                                            <select name="status" class="form-select form-select-sm mb-2">
+                                                @foreach (var s in unitStatuses.Where(s => s.Key != st))
+                                                {
+                                                    <option value="@s.Key">@s.Value</option>
+                                                }
+                                            </select>
+                                            <input name="note" class="form-control form-control-sm mb-2" maxlength="150" placeholder="Why (required to leave stock)" />
+                                            <button type="submit" class="dme-btn dme-btn-primary dme-btn-sm w-100">Save</button>
+                                        </form>
+                                    </details>
+                                }
+                            </td>
                         </tr>
                     }
-                    @if (units.Count == 0) { <tr><td colspan="5" class="dme-empty">No serialized units.</td></tr> }
+                    @if (units.Count == 0) { <tr><td colspan="5" class="dme-empty">No serialized units. Receive stock to register them.</td></tr> }
                 </tbody>
             </table>
         </div>
@@ -82,6 +288,7 @@
                             }
                         </tr>
                     }
+                    @if (catalog.Count == 0) { <tr><td colspan="4" class="dme-empty">No items in your catalog yet.</td></tr> }
                 </tbody>
             </table>
         </div>
@@ -137,4 +344,68 @@
             }
         </div>
     </div>
+
+    @* The ledger itself. On-hand is the sum of these rows and nothing else, so
+       any number above can be explained by reading down this list. *@
+    <div class="dme-card">
+        <div class="dme-card-head">
+            <h2>Stock history</h2>
+            <span class="dme-muted" style="font-size:12px">latest 50 changes</span>
+        </div>
+        <table class="dme-table">
+            <thead><tr><th>When</th><th>Item</th><th>Location</th><th>Change</th><th>What</th><th>By</th></tr></thead>
+            <tbody>
+                @foreach (var m in ledger)
+                {
+                    var q = F.I(m["Qty"]);
+                    <tr>
+                        <td class="dme-muted">@F.Date(m["OccurredAt"])</td>
+                        <td><span class="dme-mono">@F.S(m["Hcpcs"])</span> @F.S(m["ItemName"])</td>
+                        <td class="dme-muted">@F.S(m["LocationName"])</td>
+                        <td class="dme-mono" style="color:@(q < 0 ? "#a32d2d" : "#0f6e56")">@(q > 0 ? "+" : "")@q</td>
+                        <td><span class="dme-chip gray">@F.S(m["Reason"])</span> <span class="dme-muted" style="font-size:12px">@F.S(m["Note"])</span></td>
+                        <td class="dme-muted">@F.S(m["CreatedByName"])</td>
+                    </tr>
+                }
+                @if (ledger.Count == 0) { <tr><td colspan="6" class="dme-empty">No stock has moved yet.</td></tr> }
+            </tbody>
+        </table>
+    </div>
 </div>
+
+<script>
+    // Show the serial box (receive) or the unit picker (move) when the chosen
+    // item is tracked by serial, and the quantity box otherwise. Display only:
+    // the server decides by the item, not by which box was visible.
+    (function () {
+        document.querySelectorAll('.js-stock-form').forEach(function (form) {
+            var item = form.querySelector('.js-item');
+            var qty = form.querySelector('.js-qty');
+            var serials = form.querySelector('.js-serials');
+            var unitsBox = form.querySelector('.js-units');
+            var from = form.querySelector('.js-from');
+
+            function refresh() {
+                var opt = item.options[item.selectedIndex];
+                var serialised = opt && opt.getAttribute('data-serialized') === '1';
+                if (qty) qty.hidden = serialised;
+                if (serials) serials.hidden = !serialised;
+                if (unitsBox) {
+                    unitsBox.hidden = !serialised;
+                    var shown = 0;
+                    unitsBox.querySelectorAll('.js-unit').forEach(function (u) {
+                        var match = serialised && u.getAttribute('data-hcpcs') === item.value
+                                    && u.getAttribute('data-loc') === (from ? from.value : '');
+                        u.hidden = !match;
+                        if (!match) u.querySelector('input').checked = false;
+                        if (match) shown++;
+                    });
+                    unitsBox.querySelector('.js-none').hidden = !serialised || shown > 0;
+                }
+            }
+            item.addEventListener('change', refresh);
+            if (from) from.addEventListener('change', refresh);
+            refresh();
+        });
+    })();
+</script>

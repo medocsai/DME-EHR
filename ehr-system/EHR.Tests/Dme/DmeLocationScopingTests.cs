@@ -145,13 +145,16 @@ public class DmeLocationScopingTests
     [InlineData("DmeStockMovements", "stock physically moves out of one branch, not the company")]
     public void EveryInsertIntoALocationOwningTableSuppliesOne(string table, string why)
     {
-        var controller = File.ReadAllText(Path.Combine(ProductionRoot(), "Controllers", "DmeController.cs"));
+        // Units and stock movements are also written by the inventory service
+        // (Receive, Transfer, Return), so both files are read.
+        var controller = File.ReadAllText(Path.Combine(ProductionRoot(), "Controllers", "DmeController.cs"))
+                       + File.ReadAllText(Path.Combine(ProductionRoot(), "Services", "DmeInventory.cs"));
 
         var inserts = Regex.Matches(controller,
             $@"INSERT\s+INTO\s+dbo\.{table}\s*\(([^)]*)\)",
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
-        inserts.Should().NotBeEmpty($"DmeController writes {table}");
+        inserts.Should().NotBeEmpty($"the product writes {table}");
 
         foreach (System.Text.RegularExpressions.Match insert in inserts)
         {

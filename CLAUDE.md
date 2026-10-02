@@ -138,6 +138,7 @@ and 1,745 clinical claims that DME never read. Do not reintroduce them.
 19. `2026-09-08_DME_Doctors.sql`
 20. `2026-09-09_DME_Customer_Balances.sql`
 21. `2026-10-02_DME_Customer_Documents.sql`
+22. `2026-10-02_DME_Inventory.sql` (has a UTF-8 BOM on purpose, keep it)
 Then `POST /Dme/BackfillPhi` once as an admin. Verified end to end on a scratch
 database. Note `ALTER SECURITY POLICY` and any batch naming a dropped column are
 validated at COMPILE time, so `IF NOT EXISTS` guards do not protect them: use
@@ -295,6 +296,34 @@ boxes on New Customer.
   saved and the refusal is shown on the customer page (`TempData["DocError"]`).
 - The migration narrows the six-kind table the unmerged corrections branch
   created, and STOPS (never deletes) if a row is filed under another kind.
+
+### Inventory (added 2026-10-02)
+Migration `2026-10-02_DME_Inventory.sql`, service `Services/DmeInventory.cs`,
+screens `/Dme/Inventory` (Receive, Move between locations, Correct a count,
+unit status, Stock history) and Return on `/Dme/Rentals`.
+- **The ledger only ever went down before this.** Nothing wrote a receipt, so a
+  new tenant's on-hand went negative on the first delivery from stock.
+- **On-hand is still `SUM(DmeStockMovements.Qty)`.** Reasons are constrained:
+  opening | receipt | delivery | return | adjustment | transfer.
+- **A serialised item moves as UNITS.** Received with one serial per unit,
+  picked by serial on the delivery form, moved by unit, returned by unit. Its
+  ledger count always equals its units in `in-stock` + `maintenance`, which is
+  why a serialised item cannot be adjusted by number (change the unit's status).
+  The migration reconciled the demo opening balances to the units once.
+- **Delivery checks stock BEFORE it writes anything** (`PlanDelivery`), and no
+  longer invents a serial (`"SN-" + Guid` is gone; a test fails if it returns).
+  Short of stock, it refuses and says: receive it, or mark the line drop-shipped.
+- **`DmeRentals.UnitId`** is which unit is out. Return sets the rental to
+  `returned`, puts the unit back (in-stock or maintenance) and writes a +1
+  `return`. The return date is that movement's `OccurredAt`, not a column.
+- **Every multi-row write is one SQL batch with its own transaction**: DmeDb
+  opens a connection per statement. Parameters are `@branchId`/`@fromId`/`@toId`,
+  never `@locationId` (the injected-parameter trap).
+- **`UX_DmeSerializedUnits_Serial` is FILTERED**: writes to the table need
+  `QUOTED_IDENTIFIER ON` (`sqlcmd -I`). The filter excludes the hyphen and em dash
+  placeholders older deliveries wrote, which is why the file needs its BOM.
+- Count corrections and taking a unit out of stock (recalled, written off) are
+  roles 0 and 1 only.
 
 ### Customer field rules (added 2026-10-02)
 `CustomerFieldProblem` in `DmeController` is the rule for DOB, email, SSN last
@@ -619,7 +648,7 @@ which supplier they are looking at.
   session cookie is issued against the same expiry.
 
 ### Tests
-`dotnet test ehr-system/EHR.Tests` — **504 passing**. It was 304 before the
+`dotnet test ehr-system/EHR.Tests` — **528 passing**. It was 304 before the
 clinical EHR was removed; 193 of those tested code that no longer exists. The DME suite is
 in `EHR.Tests/Dme/`. Four SecurityOverhaul test files are excluded in the csproj
 because they test `EHR.Services.Security`, which exists in IMEHR but was never

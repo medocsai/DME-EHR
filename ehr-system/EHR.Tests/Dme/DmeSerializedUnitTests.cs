@@ -83,7 +83,9 @@ public class DmeSerializedUnitTests
         var deliver = DeliverLoop();
 
         var guardAt = deliver.IndexOf("if (F.B(l[\"IsSerialized\"]))", StringComparison.Ordinal);
-        var unitAt = deliver.IndexOf("INSERT INTO dbo.DmeSerializedUnits", StringComparison.Ordinal);
+        // The unit is handed out (an UPDATE of a unit received onto the shelf),
+        // not created at delivery any more. The ordering rule is unchanged.
+        var unitAt = deliver.IndexOf("UPDATE dbo.DmeSerializedUnits", StringComparison.Ordinal);
         var movementAt = deliver.IndexOf("INSERT INTO dbo.DmeStockMovements", StringComparison.Ordinal);
 
         guardAt.Should().BeGreaterThan(-1);
