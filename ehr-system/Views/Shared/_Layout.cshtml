@@ -376,6 +376,98 @@
         </div>
     </div>
 
+    @*
+        Location management (admin): the list of branches, and add / edit.
+
+        Same story as the switcher above. The sidebar "Locations" link calls
+        openLocationManagement(), which looks for #locationManagementModal; the
+        modal went in the 2026-08-25 cleanup and the link silently did nothing.
+        Restored here, in the layout, because the link is on every screen.
+        LocationModule binds #locationForm's submit at init, which is why this
+        markup sits before the scripts.
+
+        The clinical fields the original carried (Place of Service, Facility
+        NPI, Longevity) are left out. DME bills under the supplier on Settings.
+    *@
+    <div class="modal fade" id="locationManagementModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-building me-2"></i>Manage locations</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="text-muted small">Your branches. Customers, orders and stock each belong to one.</span>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="openAddLocationForm()">
+                            <i class="bi bi-plus-lg me-1"></i>Add location
+                        </button>
+                    </div>
+                    <div class="location-management-list" id="locationManagementList"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="locationFormModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="locationFormTitle">Add location</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="locationForm">
+                    <div class="modal-body">
+                        <input type="hidden" id="locationFormId">
+                        <div class="mb-3">
+                            <label class="form-label">Location name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="locationFormName" required maxlength="100" autocomplete="off">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Address</label>
+                            <input type="text" class="form-control" id="locationFormAddress" autocomplete="off">
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">City</label>
+                                <input type="text" class="form-control js-name" id="locationFormCity" autocomplete="off">
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">State</label>
+                                <input type="text" class="form-control js-upper" id="locationFormState" maxlength="2" placeholder="TX" autocomplete="off">
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">ZIP</label>
+                                <input type="text" class="form-control js-digits" id="locationFormZip" maxlength="9" inputmode="numeric" autocomplete="off">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Phone</label>
+                            <input type="tel" class="form-control js-phone" id="locationFormPhone" placeholder="(214) 555-0101" autocomplete="off">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Time zone <span class="text-danger">*</span></label>
+                            <select class="form-select" id="locationFormTimezone" required>
+                                <option value="">Loading time zones...</option>
+                            </select>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="locationFormPrimary">
+                            <label class="form-check-label" for="locationFormPrimary">Primary (default) location</label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="locationFormSubmit">Save location</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- All Modals -->
     @await RenderSectionAsync("Modals", required: false)
 
@@ -476,7 +568,7 @@
     <script src="~/js/shared/constants/OrderConstants.js?v=1776285000"></script>
     <!-- Dx & CPT Codes picker (shared by encounter step + amendment modal) -->
     <!-- CareEpisode module removed for IM workflow (replaced by Encounters) -->
-    <script src="~/js/modules/locations/LocationModule.js?v=1776982990"></script>
+    <script src="~/js/modules/locations/LocationModule.js?v=1776982991"></script>
 
     <!-- Recording Service & Scribe Module -->
     <script src="~/js/core/RecordingService.js?v=1776285000"></script>

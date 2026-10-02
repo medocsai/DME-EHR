@@ -231,18 +231,12 @@ public class LocationService : ILocationService
 
         var tenantId = _tenantProvider.TenantId.Value;
 
-        // If this is set as primary, unset any existing primary location
-        if (dto.IsPrimary)
-        {
-            var existingPrimary = await _context.Locations
-                .Where(l => l.TenantId == tenantId && l.IsPrimary == true)
-                .ToListAsync();
+        await using var tx = await _context.Database.BeginTransactionAsync();
 
-            foreach (var loc in existingPrimary)
-            {
-                loc.IsPrimary = false;
-            }
-        }
+        // If this is set as primary, demote the current one FIRST (see
+        // DemoteOtherPrimariesAsync for why it is a save of its own).
+        if (dto.IsPrimary)
+            await DemoteOtherPrimariesAsync(tenantId, exceptLocationId: null);
 
         // Validate timezone if provided
         var timeZoneId = dto.TimeZoneId ?? TimezoneHelper.DefaultTimeZoneId;
@@ -270,6 +264,7 @@ public class LocationService : ILocationService
 
         _context.Locations.Add(location);
         await _context.SaveChangesAsync();
+        await tx.CommitAsync();
 
         return location;
     }
@@ -284,18 +279,12 @@ public class LocationService : ILocationService
         if (_tenantProvider.TenantId.HasValue && location.TenantId != _tenantProvider.TenantId.Value)
             return null;
 
-        // If setting as primary, unset any existing primary location
-        if (dto.IsPrimary == true && location.IsPrimary != true)
-        {
-            var existingPrimary = await _context.Locations
-                .Where(l => l.TenantId == location.TenantId && l.IsPrimary == true && l.LocationId != locationId)
-                .ToListAsync();
+        await using var tx = await _context.Database.BeginTransactionAsync();
 
-            foreach (var loc in existingPrimary)
-            {
-                loc.IsPrimary = false;
-            }
-        }
+        // If setting as primary, demote the current one FIRST (see
+        // DemoteOtherPrimariesAsync for why it is a save of its own).
+        if (dto.IsPrimary == true && location.IsPrimary != true)
+            await DemoteOtherPrimariesAsync(location.TenantId, exceptLocationId: locationId);
 
         // Cannot unset primary if this is the only location or the only primary
         if (dto.IsPrimary == false && location.IsPrimary == true)
@@ -330,6 +319,7 @@ public class LocationService : ILocationService
         if (dto.EnableLongevity.HasValue) location.EnableLongevity = dto.EnableLongevity.Value;
 
         await _context.SaveChangesAsync();
+        await tx.CommitAsync();
         return location;
     }
 
@@ -402,20 +392,40 @@ public class LocationService : ILocationService
             throw new InvalidOperationException("Cannot set an inactive location as primary. Please reactivate the location first.");
         }
 
-        // Unset any existing primary location
-        var existingPrimary = await _context.Locations
-            .Where(l => l.TenantId == location.TenantId && l.IsPrimary == true && l.LocationId != locationId)
-            .ToListAsync();
+        await using var tx = await _context.Database.BeginTransactionAsync();
 
-        foreach (var loc in existingPrimary)
-        {
-            loc.IsPrimary = false;
-        }
+        await DemoteOtherPrimariesAsync(location.TenantId, exceptLocationId: locationId);
 
         location.IsPrimary = true;
         await _context.SaveChangesAsync();
+        await tx.CommitAsync();
 
         return true;
+    }
+
+    /// <summary>
+    /// Clears the primary flag on the tenant's other branches and SAVES, before
+    /// the caller marks the new primary.
+    ///
+    /// WHY A SAVE OF ITS OWN. UX_Locations_OnePrimaryPerTenant allows one
+    /// primary per tenant and SQL Server checks it per statement. Changing both
+    /// rows in one SaveChanges sends two UPDATEs in key order, so moving the
+    /// primary to a LOWER LocationId set the new one first, briefly had two
+    /// primaries, and failed with a 500: making branch 2 primary worked, making
+    /// branch 1 primary again did not. Demote, save, then promote; the caller
+    /// wraps both in one transaction so a failure leaves the old primary.
+    /// </summary>
+    private async Task DemoteOtherPrimariesAsync(int tenantId, int? exceptLocationId)
+    {
+        var others = await _context.Locations
+            .Where(l => l.TenantId == tenantId && l.IsPrimary == true
+                        && (exceptLocationId == null || l.LocationId != exceptLocationId))
+            .ToListAsync();
+
+        if (others.Count == 0) return;
+
+        foreach (var l in others) l.IsPrimary = false;
+        await _context.SaveChangesAsync();
     }
 
     public async Task<string> GetLocationTimezoneAsync(int locationId)

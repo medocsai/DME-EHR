@@ -434,11 +434,7 @@ class LocationModule {
             document.getElementById('locationFormState').value = location.State || '';
             document.getElementById('locationFormZip').value = location.ZipCode || '';
             document.getElementById('locationFormPhone').value = location.Phone || '';
-            document.getElementById('locationFormFacilityNpi').value = location.FacilityNpi || '';
-            document.getElementById('locationFormPlaceOfService').value = location.PlaceOfServiceCode || '11';
             document.getElementById('locationFormPrimary').checked = location.IsPrimary || false;
-            const elLongEdit = document.getElementById('locationFormEnableLongevity');
-            if (elLongEdit) elLongEdit.checked = !!location.EnableLongevity;
 
             await this._loadTimezones(location.TimeZoneId || 'America/Chicago');
 
@@ -467,10 +463,10 @@ class LocationModule {
             ZipCode: document.getElementById('locationFormZip').value,
             Phone: document.getElementById('locationFormPhone').value,
             IsPrimary: document.getElementById('locationFormPrimary').checked,
-            TimeZoneId: document.getElementById('locationFormTimezone').value,
-            FacilityNpi: document.getElementById('locationFormFacilityNpi').value,
-            PlaceOfServiceCode: document.getElementById('locationFormPlaceOfService').value,
-            EnableLongevity: !!(document.getElementById('locationFormEnableLongevity') || {}).checked
+            TimeZoneId: document.getElementById('locationFormTimezone').value
+            // No FacilityNpi, PlaceOfServiceCode or EnableLongevity: those were
+            // the clinical EHR's. DME bills under the supplier (Settings), and
+            // the fields are left untouched on update because they are not sent.
         };
 
         if (!data.TimeZoneId) {
@@ -577,7 +573,6 @@ class LocationModule {
                             ${loc.TimeZoneAbbreviation ? `(${this._escape(loc.TimeZoneAbbreviation)})` : ''}
                         </small>
                     </div>
-                    <small class="text-muted">${loc.PatientCount || 0} patients</small>
                 </div>
                 <div class="location-management-actions">
                     <button class="btn btn-outline-primary btn-sm" data-action="edit-location" data-location-id="${loc.LocationId}" title="Edit">
@@ -601,11 +596,7 @@ class LocationModule {
         document.getElementById('locationFormState').value = '';
         document.getElementById('locationFormZip').value = '';
         document.getElementById('locationFormPhone').value = '';
-        document.getElementById('locationFormFacilityNpi').value = '';
-        document.getElementById('locationFormPlaceOfService').value = '11';
         document.getElementById('locationFormPrimary').checked = false;
-        const elLongNew = document.getElementById('locationFormEnableLongevity');
-        if (elLongNew) elLongNew.checked = false;
     }
 
     async _loadTimezones(selectedValue) {
