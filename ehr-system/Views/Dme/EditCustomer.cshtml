@@ -34,33 +34,38 @@
                    single save would mean one Save button that half-applies when a payer
                    is wrong. *@
                 <div class="row g-3">
-                    <div class="col-md-6"><label class="form-label">First name <span style="color:#d6453f">*</span></label><input name="firstName" class="form-control" value="@F.S(c["FirstName"])" required /></div>
-                    <div class="col-md-6"><label class="form-label">Last name <span style="color:#d6453f">*</span></label><input name="lastName" class="form-control" value="@F.S(c["LastName"])" required /></div>
+                    <div class="col-md-6"><label class="form-label">First name <span style="color:#d6453f">*</span></label><input name="firstName" class="form-control js-name" maxlength="100" value="@F.S(c["FirstName"])" required /></div>
+                    <div class="col-md-6"><label class="form-label">Last name <span style="color:#d6453f">*</span></label><input name="lastName" class="form-control js-name" maxlength="100" value="@F.S(c["LastName"])" required /></div>
                     <div class="col-md-5">
                         <label class="form-label">Date of birth</label>
                         @* Plain text, not type="date", for the same reason the create form
                            uses one: a DOB is pasted off a referral more often than typed. *@
-                        <input name="dob" class="form-control js-dob" placeholder="mm/dd/yyyy" value="@F.S(c["Dob"])" autocomplete="bday" />
+                        <input name="dob" class="form-control js-dateinput" placeholder="mm/dd/yyyy" value="@F.S(c["Dob"])" autocomplete="bday" />
+                        <div class="form-text js-field-error" style="font-size:11px;color:#d6453f" hidden>That date could not be read. Use mm/dd/yyyy.</div>
                         <div class="form-text" style="font-size:11px">Type or paste. mm/dd/yyyy</div>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Gender</label>
                         <select name="gender" class="form-select">
-                            <option value=""></option>
+                            <option value="">Select&hellip;</option>
                             <option selected="@(gender == "Male")">Male</option>
                             <option selected="@(gender == "Female")">Female</option>
                             <option selected="@(gender == "Other")">Other</option>
                         </select>
                     </div>
-                    <div class="col-md-3"><label class="form-label">SSN <span class="dme-muted" style="font-size:11px">(last 4)</span></label><input name="ssnLast4" class="form-control" maxlength="4" value="@F.S(c["SsnLast4"])" /></div>
-                    <div class="col-md-3"><label class="form-label">Height (in)</label><input type="number" name="heightInches" class="form-control" value="@F.S(c["HeightInches"])" /></div>
-                    <div class="col-md-3"><label class="form-label">Weight (lb)</label><input type="number" name="weightLbs" class="form-control" value="@F.S(c["WeightLbs"])" /></div>
-                    <div class="col-md-6"><label class="form-label">Phone</label><input name="phone" class="form-control" value="@F.S(c["Phone"])" /></div>
-                    <div class="col-12"><label class="form-label">Email</label><input type="email" name="email" class="form-control" value="@F.S(c["Email"])" /></div>
+                    <div class="col-md-3"><label class="form-label">SSN <span class="dme-muted" style="font-size:11px">(last 4)</span></label><input name="ssnLast4" class="form-control js-digits" maxlength="4" inputmode="numeric" value="@F.S(c["SsnLast4"])" /></div>
+                    <div class="col-md-3"><label class="form-label">Height (in)</label><input type="number" name="heightInches" class="form-control" min="0" max="120" value="@F.S(c["HeightInches"])" /></div>
+                    <div class="col-md-3"><label class="form-label">Weight (lb)</label><input type="number" name="weightLbs" class="form-control" min="0" max="1500" value="@F.S(c["WeightLbs"])" /></div>
+                    <div class="col-md-6"><label class="form-label">Phone</label><input name="phone" class="form-control js-phone" placeholder="(214) 555-0101" inputmode="tel" value="@F.S(c["Phone"])" /></div>
+                    <div class="col-12">
+                        <label class="form-label">Email</label>
+                        <input type="email" name="email" class="form-control js-email" value="@F.S(c["Email"])" />
+                        <div class="form-text js-field-error" style="font-size:11px;color:#d6453f" hidden>That is not an email address.</div>
+                    </div>
                     <div class="col-md-6"><label class="form-label">Address</label><input name="addressLine1" class="form-control" value="@F.S(c["AddressLine1"])" /></div>
-                    <div class="col-md-3"><label class="form-label">City</label><input name="city" class="form-control" value="@F.S(c["City"])" /></div>
-                    <div class="col-md-1"><label class="form-label">State</label><input name="state" class="form-control" maxlength="2" value="@F.S(c["State"])" /></div>
-                    <div class="col-md-2"><label class="form-label">ZIP</label><input name="zip" class="form-control" maxlength="10" value="@F.S(c["Zip"])" /></div>
+                    <div class="col-md-3"><label class="form-label">City</label><input name="city" class="form-control js-name" value="@F.S(c["City"])" /></div>
+                    <div class="col-md-1"><label class="form-label">State</label><input name="state" class="form-control js-upper" maxlength="2" placeholder="TX" value="@F.S(c["State"])" /></div>
+                    <div class="col-md-2"><label class="form-label">ZIP</label><input name="zip" class="form-control js-digits" maxlength="9" inputmode="numeric" value="@F.S(c["Zip"])" /></div>
                 </div>
             </div>
         </div>
@@ -69,9 +74,9 @@
             <div class="dme-card-head"><h2>Emergency contact</h2></div>
             <div class="dme-card-body">
                 <div class="row g-3">
-                    <div class="col-md-6"><label class="form-label">Contact name</label><input name="emergencyName" class="form-control" value="@F.S(c["EmergencyName"])" /></div>
-                    <div class="col-md-6"><label class="form-label">Relationship</label><input name="emergencyRel" class="form-control" value="@F.S(c["EmergencyRel"])" /></div>
-                    <div class="col-md-6"><label class="form-label">Phone</label><input name="emergencyPhone" class="form-control" value="@F.S(c["EmergencyPhone"])" /></div>
+                    <div class="col-md-6"><label class="form-label">Contact name</label><input name="emergencyName" class="form-control js-name" value="@F.S(c["EmergencyName"])" /></div>
+                    <div class="col-md-6"><label class="form-label">Relationship</label><input name="emergencyRel" class="form-control js-name" value="@F.S(c["EmergencyRel"])" /></div>
+                    <div class="col-md-6"><label class="form-label">Phone</label><input name="emergencyPhone" class="form-control js-phone" placeholder="(214) 555-0101" inputmode="tel" value="@F.S(c["EmergencyPhone"])" /></div>
                 </div>
             </div>
         </div>

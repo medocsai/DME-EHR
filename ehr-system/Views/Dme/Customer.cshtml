@@ -6,6 +6,8 @@
     var diagnoses = (List<Dictionary<string, object?>>)ViewBag.Diagnoses;
     var equipment = (List<Dictionary<string, object?>>)ViewBag.Equipment;
     var orders = (List<Dictionary<string, object?>>)ViewBag.Orders;
+    var documents = (IReadOnlyList<EHR.Services.CustomerDocument>)ViewBag.Documents;
+    var documentKinds = (IReadOnlyList<(string Value, string Name)>)ViewBag.DocumentKinds;
     int ht = F.I(c["HeightInches"]);
     var customerId = F.I(c["CustomerId"]);
 }
@@ -235,6 +237,72 @@
                         @if (orders.Count == 0) { <tr><td class="dme-empty">No orders.</td></tr> }
                     </tbody>
                 </table>
+            </div>
+
+            @* The insurance card and the photo ID: the documents about the PERSON.
+               Everything that defends a claim (written order, CMN, records, prior
+               auth, proof of delivery) is attached on the order instead, because it
+               is per item and per period. See Services/DmeCustomerDocuments.cs. *@
+            <div class="dme-card" id="documents">
+                <div class="dme-card-head">
+                    <h2>Documents</h2>
+                    <span class="dme-muted" style="font-size:12px">insurance card, photo ID</span>
+                </div>
+                <div class="dme-card-body">
+                    @if (TempData["DocError"] != null)
+                    {
+                        <div class="alert alert-danger" style="font-size:13px">@TempData["DocError"]</div>
+                    }
+
+                    @if (documents.Count == 0)
+                    {
+                        <div class="dme-muted" style="font-size:13px;margin-bottom:12px">Nothing attached yet.</div>
+                    }
+                    else
+                    {
+                        <table class="dme-table" style="margin-bottom:12px">
+                            <tbody>
+                            @foreach (var d in documents)
+                            {
+                                <tr>
+                                    <td>
+                                        @* Through our own controller, not a storage URL: it
+                                           authenticates, checks the tenant and writes an audit row. *@
+                                        <a href="/Dme/DownloadCustomerDoc/@d.DocumentId" target="_blank" rel="noopener">
+                                            <i class="bi bi-paperclip"></i> @d.FileName
+                                        </a>
+                                    </td>
+                                    <td><span class="dme-chip gray">@d.KindName</span></td>
+                                    <td class="dme-muted">@d.UploadedAt.ToLocalTime().ToString("MMM d, yyyy")</td>
+                                    <td style="text-align:right">
+                                        <form method="post" action="/Dme/RemoveCustomerDoc" style="display:inline"
+                                              onsubmit="return confirm('Remove this document from the customer?');">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="id" value="@d.DocumentId" />
+                                            <input type="hidden" name="customerId" value="@customerId" />
+                                            <button type="submit" class="dme-btn dme-btn-light dme-btn-sm requires-admin">remove</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    }
+
+                    <form method="post" action="/Dme/AttachCustomerDoc" enctype="multipart/form-data" class="d-flex gap-2 align-items-center flex-wrap">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@customerId" />
+                        <select name="kind" class="form-select" style="max-width:170px">
+                            @foreach (var k in documentKinds)
+                            {
+                                <option value="@k.Value">@k.Name</option>
+                            }
+                        </select>
+                        <input type="file" name="file" class="form-control" style="max-width:260px"
+                               accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff" required />
+                        <button type="submit" class="dme-btn dme-btn-light"><i class="bi bi-upload"></i> Attach</button>
+                    </form>
+                </div>
             </div>
         </div>
     </div>

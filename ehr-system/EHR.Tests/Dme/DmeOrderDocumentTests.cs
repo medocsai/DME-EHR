@@ -101,7 +101,7 @@ public class DmeOrderDocumentTests
         var storage = new RecordingStorage();
         var enc = Encryption();
 
-        return (new DmeOrderDocuments(db.Object, storage, new FilePathBuilder(), enc), storage, enc, db);
+        return (new DmeOrderDocuments(db.Object, new DmeDocumentStore(storage, new FilePathBuilder(), enc)), storage, enc, db);
     }
 
     private static byte[] RealPdf()
@@ -271,7 +271,9 @@ public class DmeOrderDocumentTests
     [Fact]
     public void TheHashIsOfThePlaintext()
     {
-        var service = Read("Services", "DmeOrderDocuments.cs");
+        // The file rules moved into the shared store, which both order and
+        // customer documents go through, so that is where the ordering lives.
+        var service = Read("Services", "DmeDocumentStore.cs");
 
         var hashLine = service.Split('\n').First(l => l.Contains("SHA256.HashData"));
         hashLine.Should().Contain("bytes",

@@ -30,7 +30,10 @@
        inside their own markup. An inline script runs during parsing, so a tag
        at the end of the body defines the function AFTER the call that needs it,
        and both pickers silently do nothing. *@
-    <script src="~/js/dme/Typeahead.js?v=2"></script>
+    <script src="~/js/dme/Typeahead.js?v=3"></script>
+    @* Phone, name, state, ZIP, email and date rules on the DME forms. Binds on
+       DOMContentLoaded, so its place in the page does not matter. *@
+    <script src="~/js/dme/FormFields.js?v=1"></script>
 
     @await RenderSectionAsync("Styles", required: false)
 </head>

@@ -1,7 +1,4 @@
-using System.Security.Cryptography;
 using EHR.Helpers;
-using EHR.Services.Storage;
-using EHR.Services.Storage.Helpers;
 
 namespace EHR.Services;
 
@@ -16,9 +13,6 @@ namespace EHR.Services;
 public record OrderDocument(
     int DocumentId, int OrderId, string Category, string FileName, string ContentType,
     long FileSize, string UploadedByName, DateTime UploadedAt);
-
-/// <summary>Outcome of an attach attempt, with a sentence a person can act on.</summary>
-public record AttachResult(bool Success, string? Error = null, int DocumentId = 0);
 
 /// <summary>Proof-of-delivery files attached to an order.</summary>
 public interface IDmeOrderDocuments
@@ -55,26 +49,12 @@ public interface IDmeOrderDocuments
 /// photographed had nowhere to go. On a drop-shipped order there is no signature
 /// at all and the carrier's paperwork IS the proof.
 ///
-/// WHAT IT KNOWS THAT NOBODY ELSE HAS TO
-///
-/// 1. The file is ENCRYPTED before it leaves the app. A proof of delivery
-///    carries the customer's name, home address and signature. It is PHI, and
-///    the bucket must never hold it in the clear.
-///
-/// 2. The stored filename is OPAQUE and the original is encrypted into the row.
-///    A bucket listing must not read "john-doe-oxygen-pod.pdf".
-///
-/// 3. Validation is THREE ways: extension, MIME type, and the leading magic
-///    bytes actually matching the extension. The third is the one that stops a
-///    renamed executable, and FileValidator already implements it.
-///
-/// 4. The hash is of the PLAINTEXT, taken before encryption. That is what makes
-///    "this is the document that was uploaded" checkable years later, when the
-///    encryption key may have been rotated.
-///
-/// 5. Nothing here hands out a URL. Files are served by a controller action that
-///    authenticates, checks the tenant and writes an audit row. See the note in
-///    LocalFileStorageService.GetSignedUrlAsync.
+/// WHAT IT KNOWS
+/// Its own table and the list of categories. Every rule about the FILE itself
+/// (encrypted before it leaves the app, opaque stored name, the three-way
+/// validation, hash of the plaintext, never a signed URL) lives in
+/// DmeDocumentStore and is shared with customer documents, so the magic-bytes
+/// check exists once.
 ///
 /// WHO CALLS IT
 /// DmeController: AttachPod, DownloadPod, RemovePod.
@@ -82,17 +62,10 @@ public interface IDmeOrderDocuments
 public sealed class DmeOrderDocuments : IDmeOrderDocuments
 {
     private readonly IDmeDb _db;
-    private readonly IFileStorageService _storage;
-    private readonly FilePathBuilder _paths;
-    private readonly FileValidator _validator;
-    private readonly EncryptionHelper _encryption;
+    private readonly DmeDocumentStore _files;
 
-    /// <summary>
-    /// Bigger than a phone photo of a delivery ticket, smaller than an accident.
-    /// A modern phone camera produces 3 to 12MB; 25MB leaves room for a
-    /// multi-page scan without letting somebody attach a video.
-    /// </summary>
-    public const long MaxFileBytes = 25L * 1024 * 1024;
+    /// <summary>The size cap, owned by DmeDocumentStore.</summary>
+    public const long MaxFileBytes = DmeDocumentStore.MaxFileBytes;
 
     /// <summary>
     /// What a document can be filed as, and what a person calls it.
@@ -121,25 +94,10 @@ public sealed class DmeOrderDocuments : IDmeOrderDocuments
     public static string CategoryLabel(string category)
         => Categories.TryGetValue(category ?? "", out var label) ? label : category ?? "";
 
-    /// <summary>
-    /// What a proof of delivery actually is. Deliberately narrower than the
-    /// shared validator's list: a spreadsheet is not a proof of delivery, and
-    /// every extra type is another parser somebody's antivirus has to trust.
-    /// </summary>
-    private static readonly HashSet<string> AllowedExtensions =
-        new(StringComparer.OrdinalIgnoreCase) { ".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff" };
-
-    public DmeOrderDocuments(
-        IDmeDb db,
-        IFileStorageService storage,
-        FilePathBuilder paths,
-        EncryptionHelper encryption)
+    public DmeOrderDocuments(IDmeDb db, DmeDocumentStore files)
     {
         _db = db;
-        _storage = storage;
-        _paths = paths;
-        _encryption = encryption;
-        _validator = new FileValidator(MaxFileBytes);
+        _files = files;
     }
 
     /// <inheritdoc />
@@ -156,7 +114,7 @@ public sealed class DmeOrderDocuments : IDmeOrderDocuments
             F.I(r["DocumentId"]),
             F.I(r["OrderId"]),
             F.S(r["Category"]),
-            _encryption.Decrypt(F.S(r["FileName"])) ?? "document",
+            _files.Unseal(F.S(r["FileName"])),
             F.S(r["ContentType"]),
             Convert.ToInt64(r["FileSize"]),
             F.S(r["UploadedByName"]),
@@ -173,23 +131,8 @@ public sealed class DmeOrderDocuments : IDmeOrderDocuments
         if (!Categories.ContainsKey(category ?? ""))
             return new AttachResult(false, "That is not a document type this product files.");
 
-        if (bytes.Length == 0)
-            return new AttachResult(false, "That file is empty.");
-
-        if (bytes.Length > MaxFileBytes)
-            return new AttachResult(false, $"That file is larger than {MaxFileBytes / 1024 / 1024}MB.");
-
-        var extension = Path.GetExtension(fileName);
-        if (!AllowedExtensions.Contains(extension))
-            return new AttachResult(false,
-                $"'{extension}' is not a proof of delivery. Attach a PDF or a picture.");
-
-        // The check that matters. Extension and MIME both come from the browser
-        // and are whatever the uploader says they are; the leading bytes are the
-        // file itself.
-        if (!_validator.ValidateFileContent(bytes, extension))
-            return new AttachResult(false,
-                "That file is not really a " + extension.TrimStart('.').ToUpperInvariant() + ".");
+        var problem = _files.Problem(fileName, bytes, "a document we can file");
+        if (problem != null) return new AttachResult(false, problem);
 
         // The order has to be this tenant's. DmeDb scopes the read, so an order
         // belonging to another supplier simply is not found.
@@ -197,18 +140,9 @@ public sealed class DmeOrderDocuments : IDmeOrderDocuments
         if (order == null)
             return new AttachResult(false, "That order does not exist.");
 
-        // Hash the PLAINTEXT, before encryption, so the document stays checkable
-        // across a key rotation.
-        var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-
-        var cipher = _encryption.EncryptBytes(bytes);
-        var storageName = _paths.GenerateEncryptedFileName(fileName);
-        var folder = $"pod/{_db.TenantId}/{orderId}";
-
-        var upload = await _storage.UploadBytesAsync(
-            cipher, storageName, folder, "application/octet-stream");
-
-        if (!upload.Success)
+        // Hashed, encrypted and stored by the shared store, in that order.
+        var stored = await _files.PutAsync(fileName, bytes, $"pod/{_db.TenantId}/{orderId}");
+        if (stored == null)
             return new AttachResult(false, "The file could not be stored. Try again.");
 
         var id = Convert.ToInt32(_db.Scalar(@"
@@ -220,11 +154,11 @@ public sealed class DmeOrderDocuments : IDmeOrderDocuments
             {
                 orderId,
                 category,
-                name = _encryption.Encrypt(fileName),   // the original name is PHI
-                path = upload.CloudPath,
+                name = _files.Seal(fileName),           // the original name is PHI
+                path = stored.StoragePath,
                 ct = contentType,
-                size = (long)bytes.Length,              // the PLAINTEXT size, which is what a person sees
-                hash,
+                size = stored.Size,                     // the PLAINTEXT size, which is what a person sees
+                hash = stored.Hash,
                 userId = (object?)userId ?? DBNull.Value
             }));
 
@@ -242,15 +176,10 @@ public sealed class DmeOrderDocuments : IDmeOrderDocuments
 
         if (row == null) return null;
 
-        var cipher = await _storage.DownloadBytesAsync(F.S(row["StoragePath"]));
-        if (cipher == null) return null;
-
-        var plain = _encryption.DecryptBytes(cipher);
+        var plain = await _files.GetAsync(F.S(row["StoragePath"]));
         if (plain == null) return null;
 
-        return (plain,
-                _encryption.Decrypt(F.S(row["FileName"])) ?? "document",
-                F.S(row["ContentType"]));
+        return (plain, _files.Unseal(F.S(row["FileName"])), F.S(row["ContentType"]));
     }
 
     /// <inheritdoc />
@@ -277,7 +206,7 @@ public sealed class DmeOrderDocuments : IDmeOrderDocuments
         // product is storage risk with no purpose. A failure here is logged by
         // the storage service and does not undo the removal, because the
         // document is already unreachable either way.
-        await _storage.DeleteFileAsync(F.S(row["StoragePath"]));
+        await _files.DeleteAsync(F.S(row["StoragePath"]));
         return true;
     }
 }

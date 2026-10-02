@@ -32,13 +32,15 @@ public class DmeController : Controller
     private readonly IDmeDistributors _distributors;
     private readonly IDmeDoctors _doctors;
     private readonly IDmeOrderDocuments _documents;
+    private readonly IDmeCustomerDocuments _customerDocs;
 
     public DmeController(IDmeDb db, IDmeAudit audit, DmeCustomerPhi phi,
                          IDmePaymentService payments, IDmeSftpAccountService sftp,
                          IDmePayerCatalog payers, IDmeIcdCatalog icd,
                          IDmeDistributors distributors, IDmeOrderDocuments documents,
-                         IDmeDoctors doctors)
+                         IDmeDoctors doctors, IDmeCustomerDocuments customerDocs)
     {
+        _customerDocs = customerDocs;
         _icd = icd;
         _distributors = distributors;
         _doctors = doctors;
@@ -283,6 +285,8 @@ public class DmeController : Controller
         ViewBag.Insurances = _db.Query("SELECT * FROM dbo.DmeCustomerInsurances WHERE CustomerId=@id ORDER BY CASE Kind WHEN 'primary' THEN 0 ELSE 1 END", new { id });
         ViewBag.Diagnoses = _db.Query("SELECT * FROM dbo.DmeCustomerDiagnoses WHERE CustomerId=@id ORDER BY IsPrimary DESC", new { id });
         ViewBag.Equipment = _db.Query("SELECT * FROM dbo.DmeSerializedUnits WHERE CustomerId=@id", new { id });
+        ViewBag.Documents = _customerDocs.ForCustomer(id);
+        ViewBag.DocumentKinds = _customerDocs.Kinds;
 
         // What this customer owes. PR money is the patient share, and a supplier
         // is required to make a genuine effort to collect it: routinely waiving
@@ -347,6 +351,13 @@ public class DmeController : Controller
         if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
         {
             TempData["CustomerError"] = "A customer needs a first and last name.";
+            return RedirectToAction("EditCustomer", new { id });
+        }
+
+        var problem = CustomerFieldProblem(dob, email, ssnLast4, state, zip);
+        if (problem != null)
+        {
+            TempData["CustomerError"] = problem;
             return RedirectToAction("EditCustomer", new { id });
         }
 
@@ -590,6 +601,46 @@ public class DmeController : Controller
     /// Takes PLAINTEXT, because the only place the plaintext legitimately
     /// exists is in the request that supplied it.
     /// </summary>
+    /// <summary>
+    /// The shape rules for a customer, shared by creating and correcting one so
+    /// the two cannot drift apart.
+    ///
+    /// Each is checked only when something was typed, because all of these are
+    /// optional: an empty field is a fact ("we do not have it"), a malformed one
+    /// is a mistake. The browser filters the same fields as they are typed
+    /// (wwwroot/js/dme/FormFields.js), which is a courtesy; this is the rule.
+    /// State and ZIP are printed onto the CMS-1500, where a wrong one is a
+    /// denial rather than a cosmetic problem.
+    ///
+    /// Returns null when everything is acceptable.
+    /// </summary>
+    private static string? CustomerFieldProblem(
+        string? dob, string? email, string? ssnLast4, string? state, string? zip)
+    {
+        static bool Filled(string? v) => !string.IsNullOrWhiteSpace(v);
+        static bool Match(string? v, string pattern) =>
+            System.Text.RegularExpressions.Regex.IsMatch(v!.Trim(), pattern);
+
+        // DateInput.Parse returns null for blank AND for unreadable, so without
+        // this the customer saves with a typed DOB silently dropped.
+        if (Filled(dob) && DateInput.Parse(dob) == null)
+            return "That date of birth could not be read. Use mm/dd/yyyy.";
+
+        if (Filled(email) && !Match(email, @"^[^\s@]+@[^\s@]+\.[^\s@]{2,}$"))
+            return "That email address is not valid.";
+
+        if (Filled(ssnLast4) && !Match(ssnLast4, @"^\d{4}$"))
+            return "The SSN box takes the last four digits only.";
+
+        if (Filled(state) && !Match(state, @"^[A-Za-z]{2}$"))
+            return "State is the two letter code, for example TX.";
+
+        if (Filled(zip) && !Match(zip, @"^\d{5}(-?\d{4})?$"))
+            return "ZIP is five digits, or nine.";
+
+        return null;
+    }
+
     private void IndexCustomerForSearch(int customerId, string? firstName, string? lastName, string? phone)
     {
         _db.Execute("DELETE FROM dbo.DmeCustomerSearchTokens WHERE CustomerId=@customerId", new { customerId });
@@ -621,16 +672,35 @@ public class DmeController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    // Room for the two optional files (insurance card, photo ID) at the shared cap.
+    [RequestSizeLimit(2 * DmeDocumentStore.MaxFileBytes + 1024 * 1024)]
     public async Task<IActionResult> CreateCustomer(
         string firstName, string lastName, string? dob, string? gender, string? ssnLast4,
         int? heightInches, int? weightLbs, string? phone, string? email,
         string? addressLine1, string? city, string? state, string? zip,
         string? emergencyName, string? emergencyRel, string? emergencyPhone,
         int insPayerId, string? insMemberId, string? insGroup, decimal insCopay, int insCoins, decimal insDeductible,
-        string? dxCode, int locationId = 0)
+        string? dxCode, int locationId = 0,
+        IFormFile? insuranceCardFile = null, IFormFile? photoIdFile = null)
     {
+        // A refusal re-renders the form with what was typed. Redirecting would
+        // throw away a whole intake because one box was wrong.
+        IActionResult Refuse(string message)
+        {
+            ViewData["Title"] = "New Customer";
+            ViewData["ActivePage"] = "customers";
+            ViewBag.CustomerError = message;
+            ViewBag.Posted = Request.Form;
+            LoadLocationContext();
+            return View("NewCustomer");
+        }
+
         if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
-            return RedirectToAction("NewCustomer");
+            return Refuse("A customer needs a first and last name.");
+
+        var problem = CustomerFieldProblem(dob, email, ssnLast4, state, zip);
+        if (problem != null)
+            return Refuse(problem);
 
         // The branch is checked against this tenant rather than trusted from the
         // form. A posted id from another supplier would otherwise plant a
@@ -641,10 +711,7 @@ public class DmeController : Controller
             new { locationId });
 
         if (branch == null)
-        {
-            TempData["CustomerError"] = "Choose which location this customer belongs to.";
-            return RedirectToAction("NewCustomer");
-        }
+            return Refuse("Choose which location this customer belongs to.");
 
         // PHI is encrypted before it reaches the database. Nothing downstream
         // gets a chance to forget: the encrypted column list lives in
@@ -722,6 +789,19 @@ public class DmeController : Controller
         await _audit.RecordAsync("DME_CUSTOMER_CREATED", "DmeCustomer", custId,
             before: null,
             after: new { AccountNo = acct, Payer = payer?.Name, PrimaryDx = diagnosis?.Code });
+
+        // The card and the ID picked on the form. The customer is already saved,
+        // so a refused file is reported on the customer page rather than undoing
+        // the intake; the operator re-attaches it there.
+        var docErrors = new List<string>();
+        foreach (var (kind, file) in new[] { ("insurance-card", insuranceCardFile), ("id", photoIdFile) })
+        {
+            if (file == null || file.Length == 0) continue;
+            var error = await AttachCustomerFile(custId, kind, file);
+            if (error != null) docErrors.Add(error);
+        }
+        if (docErrors.Count > 0)
+            TempData["DocError"] = "The customer was saved. " + string.Join(" ", docErrors);
 
         return RedirectToAction("Customer", new { id = custId });
     }
@@ -1581,6 +1661,91 @@ public class DmeController : Controller
         }
 
         return RedirectToAction("Order", new { id = orderId });
+    }
+
+    // ------------------------------------------------- customer documents
+    /// <summary>
+    /// Attach the insurance card or the photo ID to a customer. Everything that
+    /// defends a claim goes on the order instead (AttachPod), because it is per
+    /// item and per period; see Services/DmeCustomerDocuments.cs.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(DmeDocumentStore.MaxFileBytes + 1024 * 1024)]
+    public async Task<IActionResult> AttachCustomerDoc(int id, string kind, IFormFile? file)
+    {
+        if (file == null || file.Length == 0)
+            TempData["DocError"] = "Choose a file to attach.";
+        else
+        {
+            var error = await AttachCustomerFile(id, kind, file);
+            if (error != null) TempData["DocError"] = error;
+        }
+
+        return RedirectToAction("Customer", new { id });
+    }
+
+    /// <summary>
+    /// One file onto one customer, audited. Shared by the New Customer form and
+    /// the customer page so the two cannot record it differently. Returns the
+    /// sentence to show, or null when it was filed.
+    /// </summary>
+    private async Task<string?> AttachCustomerFile(int customerId, string kind, IFormFile file)
+    {
+        // Read once into memory. The cap is 25MB and the bytes have to be hashed
+        // AND encrypted, so streaming would buy nothing but complexity.
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer);
+
+        var result = await _customerDocs.AttachAsync(
+            customerId, kind, file.FileName, file.ContentType ?? "application/octet-stream",
+            buffer.ToArray(), CurrentUserId());
+
+        if (!result.Success) return result.Error;
+
+        // The file NAME is not recorded: it is PHI, and copying it into the
+        // audit log would widen the blast radius of a log leak.
+        await _audit.RecordAsync("DME_CUSTOMER_DOC_ATTACHED", "DmeCustomer", customerId,
+            before: null,
+            after: new { result.DocumentId, Kind = kind, Size = file.Length });
+
+        return null;
+    }
+
+    /// <summary>
+    /// Send a customer document back to the browser. Not a signed URL, for the
+    /// same reason DownloadPod is not: a signed URL leaves the tenant check and
+    /// the audit trail behind.
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> DownloadCustomerDoc(int id)
+    {
+        var doc = await _customerDocs.OpenAsync(id);
+        if (doc == null) return NotFound();
+
+        Response.Headers.ContentDisposition =
+            $"inline; filename=\"{Uri.EscapeDataString(doc.Value.FileName)}\"";
+
+        return File(doc.Value.Bytes, doc.Value.ContentType);
+    }
+
+    /// <summary>
+    /// Take a document off a customer. The ROW survives with a DeletedAt; the
+    /// bytes do not. Admin only, like RemovePod.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "0,1")]
+    public async Task<IActionResult> RemoveCustomerDoc(int id, int customerId)
+    {
+        if (await _customerDocs.RemoveAsync(id))
+        {
+            await _audit.RecordAsync("DME_CUSTOMER_DOC_REMOVED", "DmeCustomer", customerId,
+                before: new { DocumentId = id, Attached = true },
+                after: new { DocumentId = id, Attached = false });
+        }
+
+        return RedirectToAction("Customer", new { id = customerId });
     }
 
     // ------------------------------------------------- referring physicians

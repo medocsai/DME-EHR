@@ -137,6 +137,7 @@ and 1,745 clinical claims that DME never read. Do not reintroduce them.
 18. `2026-09-08_DME_Cmn_Derived.sql`
 19. `2026-09-08_DME_Doctors.sql`
 20. `2026-09-09_DME_Customer_Balances.sql`
+21. `2026-10-02_DME_Customer_Documents.sql`
 Then `POST /Dme/BackfillPhi` once as an admin. Verified end to end on a scratch
 database. Note `ALTER SECURITY POLICY` and any batch naming a dropped column are
 validated at COMPILE time, so `IF NOT EXISTS` guards do not protect them: use
@@ -277,8 +278,30 @@ The client: "allow the option to attach Proof of delivery files as pdf,
 pictures, etc." Migration `2026-08-27_DME_Order_Documents.sql`, service
 `Services/DmeOrderDocuments.cs`, panel on `/Dme/Order/{id}`.
 
-**This is the first REAL file upload in the product.** The Attachments panel on
-the New Customer screen is still demo UI that persists nothing.
+**This was the first REAL file upload in the product.** Customer documents
+(below) use the same rules.
+
+### Customer documents (added 2026-10-02)
+Migration `2026-10-02_DME_Customer_Documents.sql`, service
+`Services/DmeCustomerDocuments.cs`, panel on `/Dme/Customer/{id}`, two file
+boxes on New Customer.
+- **Exactly two kinds: `insurance-card` and `id`.** The documents about the
+  PERSON. Everything that defends a claim (SWO, CMN, records, prior auth, POD)
+  stays on the ORDER. A CMN posted to a customer is refused.
+- **One set of file rules: `Services/DmeDocumentStore.cs`.** Both document
+  services go through it (validate, hash the plaintext, encrypt, opaque key).
+  Neither may hash, encrypt or validate on its own; a test scans for it.
+- **A refused file on New Customer does not undo the intake.** The customer is
+  saved and the refusal is shown on the customer page (`TempData["DocError"]`).
+- The migration narrows the six-kind table the unmerged corrections branch
+  created, and STOPS (never deletes) if a row is filed under another kind.
+
+### Customer field rules (added 2026-10-02)
+`CustomerFieldProblem` in `DmeController` is the rule for DOB, email, SSN last
+4, state and ZIP (5 or 9 digits), run by BOTH create and edit.
+`wwwroot/js/dme/FormFields.js` (`js-phone`, `js-name`, `js-digits`, `js-upper`,
+`js-email`, `js-dateinput`) filters as you type and is a courtesy only. A refused
+New Customer re-renders with what was typed; files must be picked again.
 
 ### Where the bytes go
 - **`IFileStorageService` has two implementations and configuration picks.** A
@@ -596,7 +619,7 @@ which supplier they are looking at.
   session cookie is issued against the same expiry.
 
 ### Tests
-`dotnet test ehr-system/EHR.Tests` — **460 passing**. It was 304 before the
+`dotnet test ehr-system/EHR.Tests` — **504 passing**. It was 304 before the
 clinical EHR was removed; 193 of those tested code that no longer exists. The DME suite is
 in `EHR.Tests/Dme/`. Four SecurityOverhaul test files are excluded in the csproj
 because they test `EHR.Services.Security`, which exists in IMEHR but was never

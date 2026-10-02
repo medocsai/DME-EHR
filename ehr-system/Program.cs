@@ -131,7 +131,9 @@ builder.Services.AddScoped<IDmeDoctors, DmeDoctors>();
 // Proof-of-delivery attachments. Scoped because it holds the request-scoped
 // DmeDb; it owns validation, encryption and the document row together so no
 // caller can do two of the three. See Services/DmeOrderDocuments.cs.
+builder.Services.AddScoped<DmeDocumentStore>();
 builder.Services.AddScoped<IDmeOrderDocuments, DmeOrderDocuments>();
+builder.Services.AddScoped<IDmeCustomerDocuments, DmeCustomerDocuments>();
 
 // Google Cloud Storage Services
 builder.Services.Configure<GoogleCloudStorageOptions>(
