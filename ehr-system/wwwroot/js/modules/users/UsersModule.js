@@ -2,7 +2,12 @@
  * UsersModule - User management functionality
  *
  * Handles loading, displaying, creating, editing, and managing users.
- * Includes password reset, email change, and provider linking.
+ * Includes password reset and email change.
+ *
+ * There is no provider linking. Providers were the clinical EHR's
+ * clinicians; DME has none, the table and Users.ProviderId went with the
+ * clinical schema on 2026-08-25, and every call to /api/providers was a 404
+ * that surfaced as an "API Error: HTTP 404" on this screen.
  *
  * @example
  *   const users = new UsersModule({ api: App.api, eventBus: App.eventBus });
@@ -20,7 +25,6 @@ class UsersModule {
 
         // State
         this.users = [];
-        this.providers = [];
         this.currentFilter = 'active';
         this.isInitialized = false;
 
@@ -38,7 +42,6 @@ class UsersModule {
         this._handleUserFormSubmit = this._handleUserFormSubmit.bind(this);
         this._handleResetPasswordSubmit = this._handleResetPasswordSubmit.bind(this);
         this._handleChangeEmailSubmit = this._handleChangeEmailSubmit.bind(this);
-        this._handleProviderSelectChange = this._handleProviderSelectChange.bind(this);
         this._handleTableClick = this._handleTableClick.bind(this);
         this._handleFilterClick = this._handleFilterClick.bind(this);
     }
@@ -86,12 +89,6 @@ class UsersModule {
         const changeEmailForm = document.getElementById('adminChangeEmailForm');
         if (changeEmailForm) {
             changeEmailForm.addEventListener('submit', this._handleChangeEmailSubmit);
-        }
-
-        // Provider select change
-        const providerSelect = document.getElementById('userProviderSelect');
-        if (providerSelect) {
-            providerSelect.addEventListener('change', this._handleProviderSelectChange);
         }
 
         // Role change shows or hides the branch checklist, because Clinic Admin
@@ -160,15 +157,6 @@ class UsersModule {
     }
 
     /**
-     * Handle provider select change
-     * @private
-     * @param {Event} e - Change event
-     */
-    _handleProviderSelectChange(e) {
-        const providerId = e.target.value ? parseInt(e.target.value) : null;
-        this._updateProviderBadge(providerId);
-    }
-
     /**
      * Load users from API
      * @returns {Promise<void>}
@@ -187,25 +175,8 @@ class UsersModule {
                 queryParam = '?activeOnly=';
             }
 
-            // Load users and providers in parallel.
-            //
-            // The provider fetch is allowed to FAIL. /api/providers is a
-            // clinical endpoint that no longer exists in DME: it went with the
-            // rest of the clinical schema on 2026-08-25, and this call was left
-            // behind. Inside a Promise.all its 404 rejected the whole thing, so
-            // load() threw, init() never completed and the User Management
-            // screen sat on its loading overlay forever.
-            //
-            // An empty provider list is the correct answer for a DME install
-            // anyway. Removing the provider UI properly is a separate cleanup;
-            // see docs/OPEN-THREADS.md.
-            const [users, providers] = await Promise.all([
-                this._apiGet(`/users${queryParam}`),
-                this._apiGet('/providers?activeOnly=false').catch(() => [])
-            ]);
-
+            const users = await this._apiGet(`/users${queryParam}`);
             this.users = users || [];
-            this.providers = providers || [];
 
             this._render();
             this._emit('users:loaded', { users: this.users, filter: this.currentFilter });
@@ -252,34 +223,25 @@ class UsersModule {
     _render() {
         if (!this.tableBody) return;
 
-        // Create provider lookup map
-        const providerMap = new Map();
-        this.providers.forEach(p => providerMap.set(p.ProviderId, p));
-
         if (!this.users.length) {
             this.tableBody.innerHTML = `
                 <tr>
-                    <td colspan="8" class="text-center text-muted py-4">No users found</td>
+                    <td colspan="7" class="text-center text-muted py-4">No users found</td>
                 </tr>
             `;
             return;
         }
 
-        this.tableBody.innerHTML = this.users.map(u => this._renderUserRow(u, providerMap)).join('');
+        this.tableBody.innerHTML = this.users.map(u => this._renderUserRow(u)).join('');
     }
 
     /**
      * Render a single user row
      * @private
      * @param {Object} user - User object
-     * @param {Map} providerMap - Provider lookup map
      * @returns {string} HTML
      */
-    _renderUserRow(user, providerMap) {
-        const provider = user.ProviderId ? providerMap.get(user.ProviderId) : null;
-        const providerDisplay = provider
-            ? `<span class="badge bg-primary"><i class="bi bi-person-badge me-1"></i>${this._escape(provider.FirstName)} ${this._escape(provider.LastName)}</span>`
-            : '<span class="text-muted small">-</span>';
+    _renderUserRow(user) {
 
         const escapedName = `${this._escape(user.FirstName)} ${this._escape(user.LastName)}`;
         const escapedEmail = this._escape(user.Email);
@@ -310,7 +272,6 @@ class UsersModule {
                 <td><strong>${escapedName}</strong></td>
                 <td>${escapedEmail}</td>
                 <td><span class="badge bg-secondary">${this.roleNames[user.Role] || 'User'}</span></td>
-                <td>${providerDisplay}</td>
                 <td>${this._escape(user.TenantName || "-")}</td>
                 <!-- Which branches this person can work in. Clinic Admin and Super
                      Admin are not scoped, so they show "All" rather than a list
@@ -336,16 +297,11 @@ class UsersModule {
      */
     async openAddModal() {
         try {
-            // Load fresh providers
-            this.providers = await this._apiGet('/providers?activeOnly=true').catch(() => []) || [];
-
             if (!this.userForm) return;
 
             this.userForm.reset();
             document.getElementById('userId').value = '';
 
-            this._populateProviderSelect(null);
-            this._updateProviderBadge(null);
             await this._populateClinicSelect(null);
 
             // Show password field for new users
@@ -360,7 +316,7 @@ class UsersModule {
             modal.show();
         } catch (error) {
             console.error('[UsersModule] Failed to open add modal:', error);
-            this._showError('Failed to load providers');
+            this._showError('Failed to open the user form');
         }
     }
 
@@ -421,14 +377,9 @@ class UsersModule {
      */
     async edit(userId) {
         try {
-            const [user, providers] = await Promise.all([
-                this._apiGet(`/users/${userId}`),
-                this._apiGet('/providers?activeOnly=false').catch(() => [])
-            ]);
+            const user = await this._apiGet(`/users/${userId}`);
 
             if (!user) return;
-
-            this.providers = providers || [];
 
             if (!this.userForm) return;
 
@@ -442,8 +393,6 @@ class UsersModule {
             this.userForm.querySelector('[name="Role"]').value = user.Role;
             this.userForm.querySelector('[name="IsActive"]').checked = user.IsActive !== false;
 
-            this._populateProviderSelect(user.ProviderId);
-            this._updateProviderBadge(user.ProviderId);
             await this._populateClinicSelect(user.TenantId);
 
             // Hide password field for edit
@@ -453,9 +402,6 @@ class UsersModule {
             await this._populateLocationChecklist((user.Locations || []).map(l => l.LocationId));
 
             document.querySelector("#userModal .modal-title").textContent = "Edit User";
-
-            // Close provider modal if open
-            bootstrap.Modal.getInstance(document.getElementById('providerModal'))?.hide();
 
             const modal = new bootstrap.Modal(this.userModal);
             modal.show();
@@ -493,10 +439,6 @@ class UsersModule {
         if (tenantId) {
             data.TenantId = parseInt(tenantId);
         }
-
-        // Add ProviderId
-        const providerId = formData.get('ProviderId');
-        data.ProviderId = providerId ? parseInt(providerId) : null;
 
         // Which branches this user may work in.
         //
@@ -730,47 +672,9 @@ class UsersModule {
     }
 
     /**
-     * Populate provider dropdown
-     * @private
-     * @param {number|null} selectedProviderId - Currently selected provider ID
-     */
-    _populateProviderSelect(selectedProviderId) {
-        const select = document.getElementById('userProviderSelect');
-        if (!select) return;
-
-        select.innerHTML = '<option value="">-- No Provider (Non-Clinician Account) --</option>';
-
-        this.providers.forEach(p => {
-            const option = document.createElement('option');
-            option.value = p.ProviderId;
-            option.textContent = `${p.FirstName} ${p.LastName}${p.Credentials ? `, ${p.Credentials}` : ''}${p.Specialty ? ` - ${p.Specialty}` : ''}`;
-            if (selectedProviderId && p.ProviderId === selectedProviderId) {
-                option.selected = true;
-            }
-            select.appendChild(option);
-        });
     }
 
     /**
-     * Update provider badge in modal
-     * @private
-     * @param {number|null} providerId - Provider ID
-     */
-    _updateProviderBadge(providerId) {
-        const badge = document.getElementById('userProviderBadge');
-        if (!badge) return;
-
-        if (providerId) {
-            const provider = this.providers.find(p => p.ProviderId === providerId);
-            if (provider) {
-                badge.className = 'badge bg-primary';
-                badge.innerHTML = `<i class="bi bi-person-badge me-1"></i>${this._escape(provider.FirstName)} ${this._escape(provider.LastName)}`;
-                return;
-            }
-        }
-
-        badge.className = 'badge bg-secondary';
-        badge.textContent = 'No Provider';
     }
 
     /**
@@ -886,11 +790,6 @@ class UsersModule {
             changeEmailForm.removeEventListener('submit', this._handleChangeEmailSubmit);
         }
 
-        const providerSelect = document.getElementById('userProviderSelect');
-        if (providerSelect) {
-            providerSelect.removeEventListener('change', this._handleProviderSelectChange);
-        }
-
         if (this.tableBody) {
             this.tableBody.removeEventListener('click', this._handleTableClick);
         }
@@ -901,7 +800,6 @@ class UsersModule {
         }
 
         this.users = [];
-        this.providers = [];
         this.tableBody = null;
         this.userModal = null;
         this.userForm = null;
@@ -942,7 +840,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const body = document.querySelector('#usersTable tbody');
                 if (body) {
                     body.innerHTML =
-                        '<tr><td colspan="8" class="text-center text-muted py-4">' +
+                        '<tr><td colspan="7" class="text-center text-muted py-4">' +
                         'Could not confirm your sign in. Reload the page, and sign in again if that does not help.' +
                         '</td></tr>';
                 }
